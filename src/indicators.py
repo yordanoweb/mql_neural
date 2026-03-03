@@ -66,6 +66,96 @@ def calculate_ema(data, period, smoothing=2):
             result.append(ema)
     return result
 
+
+def calculate_atr(highs, lows, closes, period=14, method='sma'):
+    """Calculate Average True Range (ATR).
+
+    Parameters
+    ----------
+    highs : list of float
+    lows : list of float
+    closes : list of float
+    period : int, default 14
+        Look‑back period for smoothing the true range.
+    method : {'sma','ema'}
+        Smoothing method to apply to the true range.  'sma' returns a
+        simple moving average of the TR; 'ema' applies an exponential
+        moving average (Wilder's smoothing).
+
+    Returns
+    -------
+    atr : list of float or None
+        ATR values aligned with input data; entries before enough data
+        are ``None``.
+    """
+    tr = calculate_true_range(highs, lows, closes)
+    if method.lower() == 'sma':
+        return calculate_sma(tr, period)
+    elif method.lower() == 'ema':
+        return calculate_ema(tr, period)
+    else:
+        raise ValueError(f"Unknown method {method!r}, expected 'sma' or 'ema'.")
+
+
+def calculate_rsi(closes, period=14):
+    """Calculate the Relative Strength Index (RSI).
+
+    This implementation follows Wilder's original formula using smoothed
+    average gains and losses.  The returned list contains ``None`` until
+    enough data points are available to compute the first RSI value.
+
+    Parameters
+    ----------
+    closes : list of float
+    period : int, default 14
+        Look‑back period for the RSI calculation.
+
+    Returns
+    -------
+    rsi : list of float or None
+        RSI values in the range ``0..100``.
+    """
+    n = len(closes)
+    if n == 0:
+        return []
+
+    # compute gains and losses
+    gains = [0.0] * n
+    losses = [0.0] * n
+    for i in range(1, n):
+        delta = closes[i] - closes[i-1]
+        gains[i] = max(delta, 0.0)
+        losses[i] = max(-delta, 0.0)
+
+    avg_gain = [None] * n
+    avg_loss = [None] * n
+    rsi = [None] * n
+
+    # first average is simple average of initial period
+    if n >= period + 1:
+        first_avg_gain = sum(gains[1:period+1]) / period
+        first_avg_loss = sum(losses[1:period+1]) / period
+        avg_gain[period] = first_avg_gain
+        avg_loss[period] = first_avg_loss
+        # first RSI value
+        if first_avg_loss == 0:
+            rsi[period] = 100.0
+        else:
+            rs = first_avg_gain / first_avg_loss
+            rsi[period] = 100 - (100 / (1 + rs))
+
+        # subsequent values use Wilder's smoothing
+        for i in range(period + 1, n):
+            avg_gain[i] = (avg_gain[i-1] * (period - 1) + gains[i]) / period
+            avg_loss[i] = (avg_loss[i-1] * (period - 1) + losses[i]) / period
+            if avg_loss[i] == 0:
+                rsi[i] = 100.0
+            else:
+                rs = avg_gain[i] / avg_loss[i]
+                rsi[i] = 100 - (100 / (1 + rs))
+
+    return rsi
+
 def calculate_true_range(highs, lows, closes):
     """Calculate True Range"""
     tr_values = []
@@ -290,6 +380,10 @@ if __name__ == "__main__":
     # Calculate Stochastic
     k_fast, d_fast, k_slow, d_slow = calculate_stochastic(highs, lows, closes, k_period=14, d_period=3, slowing=3)
 
+    # Calculate ATR and RSI using new helpers
+    atr = calculate_atr(highs, lows, closes, period=14, method='ema')
+    rsi = calculate_rsi(closes, period=14)
+
     # Display results
     print("\n" + "="*60)
     print("ADX (Average Directional Index) Results")
@@ -315,6 +409,26 @@ if __name__ == "__main__":
             ds = f"{d_slow[i]:.2f}" if d_slow[i] is not None else "N/A"
             print(f"{dates[i]:<12} {kf:<10} {df:<10} {ks:<10} {ds:<10}")
 
+    # ATR results
+    print("\n" + "="*60)
+    print("ATR (Average True Range) Results")
+    print("="*60)
+    print(f"{'Date':<12} {'ATR':<8}")
+    print("-"*60)
+    for i in range(len(dates)):
+        if atr[i] is not None:
+            print(f"{dates[i]:<12} {atr[i]:<8.4f}")
+
+    # RSI results
+    print("\n" + "="*60)
+    print("RSI (Relative Strength Index) Results")
+    print("="*60)
+    print(f"{'Date':<12} {'RSI':<8}")
+    print("-"*60)
+    for i in range(len(dates)):
+        if rsi[i] is not None:
+            print(f"{dates[i]:<12} {rsi[i]:<8.2f}")
+
     print("\n" + "="*60)
     print("INTERPRETATION GUIDE")
     print("="*60)
@@ -330,3 +444,12 @@ if __name__ == "__main__":
     print("   • %K < 20: Oversold conditions")
     print("   • %K crosses above %D: Buy signal")
     print("   • %K crosses below %D: Sell signal")
+
+    print("\n🛠️ ATR (Average True Range):")
+    print("   • Measures volatility; higher ATR means higher price swings")
+    print("   • Often used to set stop‑loss distance (e.g. 1–2×ATR)")
+
+    print("\n📈 RSI (Relative Strength Index):")
+    print("   • RSI > 70: Overbought, potential reversal down")
+    print("   • RSI < 30: Oversold, potential reversal up")
+    print("   • Crosses of 50 can indicate momentum shifts")
