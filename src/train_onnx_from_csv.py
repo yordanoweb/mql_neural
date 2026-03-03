@@ -10,8 +10,8 @@ from skl2onnx.common.data_types import FloatTensorType
 
 # --- CONFIGURACIÓN ---
 if len(sys.argv) < 2:
-    print("Usage: python train_onnx_m15.py <csv_file>")
-    print("Example: python train_onnx_m15.py eurusd_m15_2024.csv")
+    print("Usage: python train_onnx_from_csv.py <csv_file>")
+    print("Example: python train_onnx_from_csv.py eurusd_m15_2024.csv")
     sys.exit(1)
 
 csv_file = sys.argv[1]
