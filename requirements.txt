@@ -1,0 +1,8 @@
+skl2onnx
+MetaTrader5
+pandas
+numpy
+scikit-learn
+onnx
+onnxruntime
+pandas_ta
