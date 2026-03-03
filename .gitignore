@@ -1,6 +1,3 @@
-.onnx
-*.csv
-
 # MQL executables
 *.ex5
 src/*.ex5
@@ -91,3 +88,6 @@ tmp/**
 # Ignore local Python venv and pyenv file (placed after wildcard/negations)
 .venv/
 .python-version
+
+.onnx
+*.csv
