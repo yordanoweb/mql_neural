@@ -1,8 +1,7 @@
-skl2onnx
-MetaTrader5
-pandas
-numpy
-scikit-learn
-onnx
-onnxruntime
-pandas_ta
+skl2onnx==1.20.0
+pandas==3.0.1
+numpy==1.26.4
+scikit-learn==1.8.0
+onnx==1.20.1
+onnxruntime==1.18.0
+
