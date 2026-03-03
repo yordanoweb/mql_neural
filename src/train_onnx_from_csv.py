@@ -7,6 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
+from indicators import calculate_rsi  as rsi
 
 # --- CONFIGURACIÓN ---
 if len(sys.argv) < 2:
@@ -26,11 +27,9 @@ print(f"Cargando tasas desde: {csv_file}")
 print(f"ONNX de salida será: {output_filename}")
 
 def calculate_rsi(series, period=14):
-    delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
+    """Calculate RSI using indicators module, compatible with pandas Series"""
+    rsi_list = rsi(series.values.tolist(), period)
+    return pd.Series(rsi_list, index=series.index)
 
 # 1. CARGA DE DATOS DESDE CSV
 df = pd.read_csv(csv_file)
