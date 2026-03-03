@@ -89,5 +89,5 @@ tmp/**
 .venv/
 .python-version
 
-.onnx
+*.onnx
 *.csv
