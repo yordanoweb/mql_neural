@@ -5,19 +5,16 @@
 
 #include <Trade\Trade.mqh>
 
-//--- RECURSOS
-#resource "\\Files\\model_m15.onnx" as uchar ExtModel[]
-
 //--- ENUMERACIONES
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
 input group "Configuración IA"
+input string     InpModelFile  = "model_m15.onnx";  // Dynamic model filename
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
 input float      InpMinConf    = 0.62;         
-input int        InpStartHour  = 9;            // Hora inicio (Broker)
-input int        InpEndHour    = 18;           // Hora fin (Broker)
-
+input int        InpStartHour  = 9;            
+input int        InpEndHour    = 18;           
 input group "Gestión de Riesgo"
 input double     InpLot        = 1;          
 input int        InpMagic      = 123456;       
@@ -32,8 +29,16 @@ const int FEATURES    = 3;
 
 int OnInit()
 {
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
-   if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
+   // Load ONNX model directly from file
+   onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
+   
+   if(onnx_handle == INVALID_HANDLE)
+   {
+      Print("ERROR: Failed to load ONNX model: ", InpModelFile);
+      Print("Error Code: ", GetLastError());
+      Print("Make sure the file is in: C:\\Program Files\\MetaTrader 5\\MQL5\\Files\\");
+      return(INIT_FAILED);
+   }
 
    long input_shape[] = {1, 60}; // 20 velas * 3 atributos
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
