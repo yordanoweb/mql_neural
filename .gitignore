@@ -1,0 +1,88 @@
+*.onnx
+
+# MQL executables
+*.ex5
+src/*.ex5
+
+# Common executable formats
+# Windows executables
+*.exe
+*.msi
+*.dll
+*.bat
+*.cmd
+*.com
+*.scr
+
+# Unix/Linux executables
+# Files without extension that are executable
+*
+!*/
+!*.*
+!Makefile
+!LICENSE
+!README
+!CHANGELOG
+!CONTRIBUTING
+!*.md
+!*.txt
+!*.json
+!*.yaml
+!*.yml
+!*.xml
+!*.html
+!*.css
+!*.js
+!*.ts
+!*.py
+!*.go
+!*.rs
+!*.c
+!*.cpp
+!*.h
+!*.hpp
+!*.java
+!*.php
+!*.rb
+!*.sh
+!*.mq4
+!*.mq5
+!*.mqh
+!*.gitignore
+!*.gitattributes
+
+# Binary formats
+*.bin
+*.o
+*.obj
+*.so
+*.dylib
+*.a
+*.lib
+
+# Compiled Java
+*.class
+*.jar
+*.war
+
+# Python bytecode
+*.pyc
+*.pyo
+__pycache__/
+
+# Go binaries
+go.sum
+
+# Node.js
+node_modules/
+
+# Build directories
+build/
+dist/
+out/
+target/
+bin/
+
+# Temporary files
+tmp/**
+*.ex5
