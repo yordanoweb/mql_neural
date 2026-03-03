@@ -1,15 +1,29 @@
-import MetaTrader5 as mt5
 import pandas as pd
 import numpy as np
 import sys
+import os
+from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
 # --- CONFIGURACIÓN ---
-symbol = sys.argv[1] if len(sys.argv) > 1 else "EURUSD"
-print(f"--- ENTRENAMIENTO RÁPIDO PARA: {symbol} ---")
+if len(sys.argv) < 2:
+    print("Usage: python train_onnx_m15.py <csv_file>")
+    print("Example: python train_onnx_m15.py eurusd_m15_2024.csv")
+    sys.exit(1)
+
+csv_file = sys.argv[1]
+if not os.path.exists(csv_file):
+    print(f"Error: File '{csv_file}' not found")
+    sys.exit(1)
+
+# Generate output filename: same basename as CSV but with .onnx extension
+output_filename = Path(csv_file).stem + ".onnx"
+print(f"--- ENTRENAMIENTO RÁPIDO ---")
+print(f"Cargando tasas desde: {csv_file}")
+print(f"ONNX de salida será: {output_filename}")
 
 def calculate_rsi(series, period=14):
     delta = series.diff()
@@ -18,16 +32,13 @@ def calculate_rsi(series, period=14):
     rs = gain / loss
     return 100 - (100 / (1 + rs))
 
-# 1. OBTENCIÓN DE DATOS
-if not mt5.initialize():
-    quit()
+# 1. CARGA DE DATOS DESDE CSV
+df = pd.read_csv(csv_file)
+print(f"Registros cargados: {len(df)}")
 
-candles_count = 50000 
-rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M15, 0, candles_count)
-mt5.shutdown()
-
-df = pd.DataFrame(rates)
-pip_unit = 0.01 if "JPY" in symbol else 0.0001
+# Infer pip unit from data (optional, or set based on symbol detection if available)
+# If symbol info is not available, we'll use a reasonable default
+pip_unit = 0.0001  # Default for most pairs; could be refined if symbol is known
 
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
@@ -72,12 +83,12 @@ search.fit(X, y)
 model = search.best_estimator_
 print(f"Mejor configuración: {search.best_params_}")
 
-# 4. EXPORTAR SIEMPRE COMO model_m15.onnx
-output_filename = "model_m15.onnx"
+# 4. EXPORTAR CON NOMBRE BASADO EN CSV
 initial_type = [('float_input', FloatTensorType([None, 60]))]
 onx = convert_sklearn(model, initial_types=initial_type, options={type(model): {'zipmap': False}})
 
 with open(output_filename, "wb") as f:
     f.write(onx.SerializeToString())
 
-print(f"--- PROCESO COMPLETADO EN SEGUNDOS ---")
+print(f"Modelo guardado en: {output_filename}")
+print(f"--- PROCESO COMPLETADO ---")
