@@ -8,6 +8,7 @@ from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 from indicators import calculate_rsi  as rsi
+import onnx
 
 # --- CONFIGURACIÓN ---
 if len(sys.argv) < 2:
@@ -84,10 +85,15 @@ print(f"Mejor configuración: {search.best_params_}")
 
 # 4. EXPORTAR CON NOMBRE BASADO EN CSV
 initial_type = [('float_input', FloatTensorType([None, 60]))]
-onx = convert_sklearn(model, initial_types=initial_type, options={type(model): {'zipmap': False}})
+# Use target_opset=12 for MetaTrader 5 compatibility (MT5 supports opset 1-21, but lower is safer)
+onx = convert_sklearn(model, initial_types=initial_type, target_opset=12, options={type(model): {'zipmap': False}})
+
+# Validate ONNX model before saving
+onnx.checker.check_model(onx)
 
 with open(output_filename, "wb") as f:
     f.write(onx.SerializeToString())
 
 print(f"Modelo guardado en: {output_filename}")
+print(f"Opset version: 12 (MT5 compatible)")
 print(f"--- PROCESO COMPLETADO ---")
