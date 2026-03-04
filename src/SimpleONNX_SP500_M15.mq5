@@ -113,12 +113,12 @@ void OnTick()
       double half_tp = tp_dist / 2.0;
       bool should_close = false;
 
-      if(PositionGetInteger(POSITION_TYPE) == POSITION_BUY)
+      if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
       {
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          if(ask >= entry_price + half_tp) should_close = true;
       }
-      else if(PositionGetInteger(POSITION_TYPE) == POSITION_SELL)
+      else if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
       {
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          if(bid <= entry_price - half_tp) should_close = true;
@@ -126,7 +126,8 @@ void OnTick()
 
       if(should_close)
       {
-         m_trade.Close(_Symbol);
+         ulong pos_ticket = PositionGetInteger(POSITION_TICKET);
+         m_trade.PositionClose(pos_ticket);
          return;
       }
    }
