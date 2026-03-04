@@ -158,7 +158,6 @@ void OnTick()
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
-      last_entry_bar = current_bar_index;
    }
 
    Comment("AI M15 Trend | Confidence: ", DoubleToString(confidence*100, 2), "%",
