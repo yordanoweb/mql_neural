@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\xauusd_rates_m15_trend.onnx" as uchar ExtModel[]
+#resource "\\Files\\eurusd_rates_m15_trend.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };

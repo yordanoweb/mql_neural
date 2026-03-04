@@ -16,6 +16,7 @@ input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
 input float      InpMinConf    = 0.52;
 input int        InpStartHour  = 12;
 input int        InpEndHour    = 18;
+input int        InpCooldownCandles = 1;       // Cooldown candles before re-entry
 input group "Risk"
 input double     InpLot        = 1;
 input int        InpMagic      = 123456;
@@ -57,9 +58,13 @@ void OnTick()
 
    // 2. BAR CONTROL
    static datetime last_bar = 0;
+   static int last_entry_bar = -InpCooldownCandles - 1; // Track last entry bar index
    datetime current_bar = iTime(_Symbol, _Period, 0);
    if(current_bar == last_bar) return;
    last_bar = current_bar;
+
+   int current_bar_index = 0; // Always 0 for the current bar
+   int bars_since_entry = current_bar_index - last_entry_bar;
 
    // 3. DATA
    double close[], open[], high[], low[];
@@ -142,8 +147,8 @@ void OnTick()
       }
    }
 
-   // 8. EXECUTION WITH TIME FILTER
-   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
+   // 8. EXECUTION WITH TIME FILTER AND COOLDOWN
+   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf && bars_since_entry >= InpCooldownCandles)
    {
       double sl_dist = current_atr * InpMultiplier;
       double tp_dist = sl_dist * 1.5;
@@ -158,8 +163,10 @@ void OnTick()
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
+      last_entry_bar = current_bar_index;
    }
-   
+
    Comment("AI M15 Trend | Confidence: ", DoubleToString(confidence*100, 2), "%",
-           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
+           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
+           "\nCooldown: ", (bars_since_entry < InpCooldownCandles ? "WAITING" : "READY"));
 }
