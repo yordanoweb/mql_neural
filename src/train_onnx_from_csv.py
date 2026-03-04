@@ -10,7 +10,7 @@ from skl2onnx.common.data_types import FloatTensorType
 from indicators import calculate_rsi  as rsi
 import onnx
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURATION ---
 if len(sys.argv) < 2:
     print("Usage: python train_onnx_from_csv.py <csv_file>")
     print("Example: python train_onnx_from_csv.py eurusd_m15_2024.csv")
@@ -23,18 +23,18 @@ if not os.path.exists(csv_file):
 
 # Generate output filename: same basename as CSV but with .onnx extension
 output_filename = Path(csv_file).stem + ".onnx"
-print(f"--- ENTRENAMIENTO RÁPIDO ---")
-print(f"Cargando tasas desde: {csv_file}")
-print(f"ONNX de salida será: {output_filename}")
+print(f"--- QUICK TRAINING ---")
+print(f"Loading rates from: {csv_file}")
+print(f"Output ONNX will be: {output_filename}")
 
 def calculate_rsi(series, period=14):
     """Calculate RSI using indicators module, compatible with pandas Series"""
     rsi_list = rsi(series.values.tolist(), period)
     return pd.Series(rsi_list, index=series.index)
 
-# 1. CARGA DE DATOS DESDE CSV
+# 1. LOAD DATA FROM CSV
 df = pd.read_csv(csv_file)
-print(f"Registros cargados: {len(df)}")
+print(f"Records loaded: {len(df)}")
 
 # Infer pip unit from data (optional, or set based on symbol detection if available)
 # If symbol info is not available, we'll use a reasonable default
@@ -46,7 +46,7 @@ df['feat_rsi'] = calculate_rsi(df['close'], 14) / 100.0
 df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
 df.dropna(inplace=True)
 
-# 2. PREPARAR VENTANAS (60 entradas)
+# 2. PREPARE WINDOWS (60 inputs)
 window = 20
 X, y = [], []
 features = ['feat_body', 'feat_range', 'feat_rsi']
@@ -59,21 +59,21 @@ for i in range(window, len(df) - 1):
 X = np.array(X).astype(np.float32)
 y = np.array(y)
 
-# 3. OPTIMIZACIÓN RÁPIDA (Solo 10 iteraciones)
-print("Buscando configuración eficiente (Random Search)...")
+# 3. QUICK OPTIMIZATION (Only 10 iterations)
+print("Searching for efficient configuration (Random Search)...")
 param_dist = {
     'n_estimators': [100, 150, 200],
     'max_depth': [5, 8, 12],
     'min_samples_leaf': [1, 5]
 }
 
-# TimeSeriesSplit con 2 pliegues para velocidad
+# TimeSeriesSplit with 2 folds for speed
 tscv = TimeSeriesSplit(n_splits=2)
 
 search = RandomizedSearchCV(
     RandomForestClassifier(random_state=42),
     param_distributions=param_dist,
-    n_iter=5, # Solo prueba 5 combinaciones al azar (muy rápido)
+    n_iter=5, # Only tests 5 random combinations (very fast)
     cv=tscv,
     scoring='accuracy',
     n_jobs=-1
@@ -81,9 +81,9 @@ search = RandomizedSearchCV(
 
 search.fit(X, y)
 model = search.best_estimator_
-print(f"Mejor configuración: {search.best_params_}")
+print(f"Best configuration: {search.best_params_}")
 
-# 4. EXPORTAR CON NOMBRE BASADO EN CSV
+# 4. EXPORT WITH NAME BASED ON CSV
 initial_type = [('float_input', FloatTensorType([None, 60]))]
 # Use target_opset=12 for MetaTrader 5 compatibility (MT5 supports opset 1-21, but lower is safer)
 onx = convert_sklearn(model, initial_types=initial_type, target_opset=12, options={type(model): {'zipmap': False}})
@@ -94,6 +94,6 @@ onnx.checker.check_model(onx)
 with open(output_filename, "wb") as f:
     f.write(onx.SerializeToString())
 
-print(f"Modelo guardado en: {output_filename}")
+print(f"Model saved to: {output_filename}")
 print(f"Opset version: 12 (MT5 compatible)")
-print(f"--- PROCESO COMPLETADO ---")
+print(f"--- PROCESS COMPLETED ---")

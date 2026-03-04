@@ -2,44 +2,44 @@ import MetaTrader5 as mt5
 import numpy as np
 
 def test_data_extraction():
-    # 1. Intentar conexión (usa path si es necesario, pero si ya te funcionó antes, empty está bien)
+    # 1. Attempt connection (use path if needed; if it worked before, empty is fine)
     if not mt5.initialize():
-        print(f"Error de inicialización: {mt5.last_error()}")
+        print(f"Initialization error: {mt5.last_error()}")
         return
 
-    print("--- Conexión establecida ---")
+    print("--- Connection established ---")
 
-    # 2. Verificar si el símbolo está disponible en el Market Watch
-    symbol = "EURUSD" # Cambia esto si usas otro (ej. "GBPUSD")
+    # 2. Check if the symbol is available in Market Watch
+    symbol = "EURUSD" # Change this if you use another (e.g. "GBPUSD")
     symbol_info = mt5.symbol_info(symbol)
     
     if symbol_info is None:
-        print(f"Símbolo {symbol} no encontrado. Intentando seleccionarlo...")
+        print(f"Symbol {symbol} not found. Attempting to select it...")
         mt5.symbol_select(symbol, True)
         symbol_info = mt5.symbol_info(symbol)
 
     if not symbol_info.visible:
-        print(f"Error: El símbolo {symbol} no es visible en el Market Watch de Wine.")
+        print(f"Error: Symbol {symbol} is not visible in Wine's Market Watch.")
         mt5.shutdown()
         return
 
-    # 3. EXTRAER DATOS (La prueba de fuego del flujo de memoria)
-    # Pedimos las últimas 10 velas de 1 Hora
+    # 3. EXTRACT DATA (The acid test for memory flow)
+    # Request the last 10 one-hour candles
     rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, 10)
 
     if rates is None or len(rates) == 0:
-        print(f"Error al extraer datos: {mt5.last_error()}")
+        print(f"Error extracting data: {mt5.last_error()}")
     else:
-        # Convertir a un structured array de NumPy para verificar integridad
+        # Convert to a NumPy structured array to verify integrity
         data_array = np.array(rates)
-        print(f"\n¡Éxito! Datos recibidos para {symbol}:")
-        print(f"Cantidad de velas: {len(data_array)}")
-        print(f"Estructura del primer registro (Open, High, Low, Close):")
-        print(data_array) # Indices de OHLC en el struct de MT5
+        print(f"\nSuccess! Data received for {symbol}:")
+        print(f"Number of candles: {len(data_array)}")
+        print(f"Structure of first record (Open, High, Low, Close):")
+        print(data_array) # OHLC indices in the MT5 struct
         
-        # Verificamos que no sean ceros (problema común de sincronización en Wine)
+        # Check they are not zeros (common sync issue in Wine)
         if data_array['close'].any():
-            print("\nIntegridad de datos: OK (Los precios no son nulos)")
+            print("\nData integrity: OK (Prices are non-zero)")
 
     mt5.shutdown()
 

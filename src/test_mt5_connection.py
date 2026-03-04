@@ -1,11 +1,11 @@
 import MetaTrader5 as mt5
 
-# IMPORTANTE: Usa la ruta de Windows dentro de tu prefijo
+# IMPORTANT: Use the Windows path inside your prefix
 path = "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
 
 if not mt5.initialize(path=path):
-    print("Fallo al conectar. Error:", mt5.last_error())
+    print("Connection failed. Error:", mt5.last_error())
 else:
-    print("¡Conexión exitosa!")
-    print("Versión:", mt5.version())
+    print("Connection successful!")
+    print("Version:", mt5.version())
     mt5.shutdown()
