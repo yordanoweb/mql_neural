@@ -1,1 +1,0 @@
-All Python scripts have been moved here from src/. Update your imports and script paths accordingly.
