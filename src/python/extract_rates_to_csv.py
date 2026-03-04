@@ -83,7 +83,7 @@ def extract_rates(symbol, timeframe, start_date, end_date, output_file):
     
     # Initialize MetaTrader 5
     if not mt5.initialize():
-    # ...existing code...
+        raise ConnectionError("Failed to initialize MetaTrader 5. Ensure MT5 is running.")
     
     try:
         print(f"Connecting to MetaTrader 5...")
