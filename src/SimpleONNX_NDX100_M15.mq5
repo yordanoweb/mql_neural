@@ -21,6 +21,7 @@ input double     InpLot        = 1;
 input int        InpMagic      = 123456;       
 input int        InpATR        = 5;           
 input double     InpMultiplier = 1.1;          
+input bool       InpCloseAtHalfTP = true;      // Close at half TP
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
@@ -103,7 +104,34 @@ void OnTick()
    long  prediction = output_label[0];
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
 
-   // 7. EXECUTION WITH TIME FILTER
+   // 7. CLOSE AT HALF TP (if enabled and position exists)
+   if(InpCloseAtHalfTP && PositionSelect(_Symbol))
+   {
+      double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl_dist = current_atr * InpMultiplier;
+      double tp_dist = sl_dist * 1.5;
+      double half_tp = tp_dist / 2.0;
+      bool should_close = false;
+
+      if(PositionGetInteger(POSITION_TYPE) == POSITION_BUY)
+      {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         if(ask >= entry_price + half_tp) should_close = true;
+      }
+      else if(PositionGetInteger(POSITION_TYPE) == POSITION_SELL)
+      {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if(bid <= entry_price - half_tp) should_close = true;
+      }
+
+      if(should_close)
+      {
+         m_trade.Close(_Symbol);
+         return;
+      }
+   }
+
+   // 8. EXECUTION WITH TIME FILTER
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
    {
       double sl_dist = current_atr * InpMultiplier;
