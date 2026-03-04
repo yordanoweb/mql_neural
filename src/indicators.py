@@ -1,3 +1,6 @@
+# This script has been moved to the python_scripts directory.
+# Please update your imports accordingly.
+# ...existing code...
 
 import csv
 import math

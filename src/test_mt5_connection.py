@@ -1,3 +1,4 @@
+# This script has been moved to the python_scripts directory.
 import MetaTrader5 as mt5
 
 # IMPORTANT: Use the Windows path inside your prefix

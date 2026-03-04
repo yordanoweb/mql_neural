@@ -1,0 +1,1 @@
+All MQL5 scripts have been moved here from src/. Use this directory for your .mq5 and .ex5 files.
