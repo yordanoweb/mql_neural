@@ -112,12 +112,12 @@ void OnTick()
       if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI M15");
+         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
       else
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI M15");
+         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
    }
    
