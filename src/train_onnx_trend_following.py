@@ -39,7 +39,7 @@ plus_di, minus_di, dx, adx = calculate_adx(
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 # ...existing code...
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
-df['feat_rsi'] = calculate_rsi(df['close'], 14) / 100.0
+df['feat_rsi'] = pd.Series(calculate_rsi(df['close'], 14)) / 100.0
 df['feat_adx'] = pd.Series(adx)
 df['feat_plus_di'] = pd.Series(plus_di)
 df['feat_minus_di'] = pd.Series(minus_di)

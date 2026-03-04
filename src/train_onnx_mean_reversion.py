@@ -43,7 +43,7 @@ k_fast, d_fast, k_slow, d_slow = calculate_stochastic(
 # Feature engineering
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
-df['feat_rsi'] = calculate_rsi(df['close'], 14) / 100.0
+df['feat_rsi'] = pd.Series(calculate_rsi(df['close'], 14)) / 100.0
 df['feat_adx'] = pd.Series(adx)
 df['feat_k_slow'] = pd.Series(k_slow)
 df['feat_d_slow'] = pd.Series(d_slow)
