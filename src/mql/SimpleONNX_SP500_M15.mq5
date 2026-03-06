@@ -150,6 +150,6 @@ void OnTick()
       }
    }
    
-   Comment("AI M15 | Confidence: ", DoubleToString(confidence*100, 2), "%",
+   Comment("AI | Confidence: ", DoubleToString(confidence*100, 2), "%",
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
 }

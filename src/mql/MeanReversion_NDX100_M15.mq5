@@ -163,6 +163,6 @@ void OnTick()
       }
    }
    
-   Comment("AI M15 MeanRev | Confidence: ", DoubleToString(confidence*100, 2), "%",
+   Comment("AI MeanRev | Confidence: ", DoubleToString(confidence*100, 2), "%",
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
 }
