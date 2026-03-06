@@ -11,16 +11,21 @@ from indicators import calculate_rsi, calculate_adx
 import onnx
 
 # --- CONFIGURATION ---
-if len(sys.argv) < 2:
-    print("Usage: python train_onnx_trend_following.py <csv_file>")
+if len(sys.argv) < 3:
+    print("Usage: python train_onnx_trend_following.py <csv_file> <onnx_output_dir>")
     sys.exit(1)
 
 csv_file = sys.argv[1]
+onnx_output_dir = sys.argv[2]
+
 if not os.path.exists(csv_file):
     print(f"Error: File '{csv_file}' not found")
     sys.exit(1)
 
-output_filename = Path(csv_file).stem + "_trend.onnx"
+if not os.path.exists(onnx_output_dir):
+    os.makedirs(onnx_output_dir)
+
+output_filename = Path(onnx_output_dir) / (Path(csv_file).stem + "_trend.onnx")
 print(f"--- TREND-FOLLOWING TRAINING ---")
 print(f"Loading rates from: {csv_file}")
 print(f"Output ONNX will be: {output_filename}")
