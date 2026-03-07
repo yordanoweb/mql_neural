@@ -1,11 +1,9 @@
 //+------------------------------------------------------------------+
-//|                                    TrendFollowing_NDX100_M15.mq5 |
+//|                                            TrendFollowing_H1.mq5 |
 //+------------------------------------------------------------------+
 #property strict
 
 #include <Trade\Trade.mqh>
-
-#resource "\\Files\\ndx100_rates_m15_trend.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -13,6 +11,7 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
+input string     InpModelName = "doj_rates_h1_trend.onnx";
 input float      InpMinConf    = 0.52;
 input int        InpStartHour  = 12;
 input int        InpEndHour    = 18;
@@ -31,7 +30,7 @@ const int FEATURES    = 6;  // body, range, rsi, adx, plus_di, minus_di
 
 int OnInit()
 {
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
    long input_shape[] = {1, WINDOW_SIZE * FEATURES};

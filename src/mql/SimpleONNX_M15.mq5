@@ -1,11 +1,9 @@
 //+------------------------------------------------------------------+
-//|                                    TrendFollowing_NDX100_M15.mq5 |
+//|                                              SimpleONNX_EA.mq5   |
 //+------------------------------------------------------------------+
 #property strict
 
 #include <Trade\Trade.mqh>
-
-#resource "\\Files\\xauusd_rates_h1_trend.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -13,28 +11,29 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input float      InpMinConf    = 0.52;
-input int        InpStartHour  = 12;
-input int        InpEndHour    = 18;
+input string     InpModelName  = "model_sp500_m15.onnx";
+input float      InpMinConf    = 0.51;
+input int        InpStartHour  = 15;
+input int        InpEndHour    = 17;
 input group "Risk"
 input double     InpLot        = 1;
-input int        InpMagic      = 123456;
-input int        InpATR        = 5;
-input double     InpMultiplier = 1.1;
+input int        InpMagic      = 1234567;
+input int        InpATR        = 12;
+input double     InpMultiplier = 1.2;
 input bool       InpCloseAtHalfTP = true;      // Close at half TP
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
 const int WINDOW_SIZE = 20; // For M15 we use a window of 20
-const int FEATURES    = 6;  // body, range, rsi, adx, plus_di, minus_di
+const int FEATURES    = 3;
 
 int OnInit()
 {
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
-   long input_shape[] = {1, WINDOW_SIZE * FEATURES};
+   long input_shape[] = {1, 60}; // 20 candles * 3 attributes
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
 
    long out_shape_label[] = {1};
@@ -52,7 +51,7 @@ void OnTick()
 {
    // 1. CORRECT TIME FILTER
    MqlDateTime dt;
-   TimeCurrent(dt);
+   TimeCurrent(dt); 
    bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
 
    // 2. BAR CONTROL
@@ -81,29 +80,19 @@ void OnTick()
    CopyBuffer(atr_handle, 0, 0, 1, atr_buffer);
    double current_atr = atr_buffer[0];
 
-   int adx_handle = iADX(_Symbol, _Period, 14);
-   double adx_buffer[], plus_di_buffer[], minus_di_buffer[];
-   ArraySetAsSeries(adx_buffer, true);
-   ArraySetAsSeries(plus_di_buffer, true);
-   ArraySetAsSeries(minus_di_buffer, true);
-   CopyBuffer(adx_handle, 0, 0, WINDOW_SIZE, adx_buffer);      // ADX
-   CopyBuffer(adx_handle, 1, 0, WINDOW_SIZE, plus_di_buffer);  // +DI
-   CopyBuffer(adx_handle, 2, 0, WINDOW_SIZE, minus_di_buffer); // -DI
-
    // 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
    float input_buffer[];
    ArrayResize(input_buffer, WINDOW_SIZE * FEATURES);
+   
+   // _Digits is the correct variable. If it's 5 or 3 decimals, adjust to pips (x10).
    double pip_unit = _Point * (_Digits == 5 || _Digits == 3 ? 10 : 1);
 
    for(int i=0; i < WINDOW_SIZE; i++)
    {
       int mql_idx = WINDOW_SIZE - 1 - i;
-      input_buffer[i * FEATURES + 0] = (float)((close[mql_idx] - open[mql_idx]) / pip_unit); // body
-      input_buffer[i * FEATURES + 1] = (float)((iHigh(_Symbol, _Period, mql_idx) - iLow(_Symbol, _Period, mql_idx)) / pip_unit); // range
-      input_buffer[i * FEATURES + 2] = (float)(rsi_buffer[mql_idx] / 100.0); // rsi
-      input_buffer[i * FEATURES + 3] = (float)(adx_buffer[mql_idx]); // adx
-      input_buffer[i * FEATURES + 4] = (float)(plus_di_buffer[mql_idx]); // +DI
-      input_buffer[i * FEATURES + 5] = (float)(minus_di_buffer[mql_idx]); // -DI
+      input_buffer[i * 3 + 0] = (float)((close[mql_idx] - open[mql_idx]) / pip_unit);
+      input_buffer[i * 3 + 1] = (float)((iHigh(_Symbol, _Period, mql_idx) - iLow(_Symbol, _Period, mql_idx)) / pip_unit);
+      input_buffer[i * 3 + 2] = (float)(rsi_buffer[mql_idx] / 100.0);
    }
 
    // 6. INFERENCE
@@ -159,7 +148,7 @@ void OnTick()
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
    }
-
-   Comment("AI Trend | Confidence: ", DoubleToString(confidence*100, 2), "%",
+   
+   Comment("AI | Confidence: ", DoubleToString(confidence*100, 2), "%",
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
 }
