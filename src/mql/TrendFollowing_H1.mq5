@@ -28,6 +28,52 @@ CTrade   m_trade;
 const int WINDOW_SIZE = 20; // For M15 we use a window of 20
 const int FEATURES    = 6;  // body, range, rsi, adx, plus_di, minus_di
 
+//--- STATUS CACHES FOR COMMENT
+static float  g_confidence = 0;
+static long   g_prediction = -1;
+static double g_atr        = 0;
+
+void ShowStatus()
+{
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+
+   string info = "\n\n\n";
+   info += MQLInfoString(MQL_PROGRAM_NAME) + " | " + _Symbol + " | " + EnumToString(_Period);
+   info += "\nModel: " + InpModelName;
+   info += "\nLogic: " + EnumToString(InpLogic) + " | Magic: " + IntegerToString(InpMagic) + " | Lot: " + DoubleToString(InpLot, 2);
+   info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) + " | Mult: " + DoubleToString(InpMultiplier, 1) + " | HalfTP: " + (InpCloseAtHalfTP ? "ON" : "OFF");
+   info += "\nSpread: " + IntegerToString(SymbolInfoInteger(_Symbol, SYMBOL_SPREAD)) + " pts | MinConf: " + DoubleToString(InpMinConf * 100, 1) + "%";
+
+   string signal = "WAITING";
+   if(g_prediction >= 0)
+   {
+      bool is_sell = (InpLogic == LOGIC_MIRROR && g_prediction == 1) || (InpLogic == LOGIC_NORMAL && g_prediction == 0);
+      signal = is_sell ? "SELL" : "BUY";
+   }
+   info += "\nConfidence: " + DoubleToString(g_confidence * 100, 2) + "% | Signal: " + signal;
+   info += "\nSchedule: " + StringFormat("%02d:00-%02d:00", InpStartHour, InpEndHour) + " > " + (valid_time ? "ACTIVE" : "RESTRICTED");
+
+   if(PositionSelect(_Symbol))
+   {
+      long   pos_type   = PositionGetInteger(POSITION_TYPE);
+      double pos_open   = PositionGetDouble(POSITION_PRICE_OPEN);
+      double pos_profit = PositionGetDouble(POSITION_PROFIT);
+      double pos_sl     = PositionGetDouble(POSITION_SL);
+      double pos_tp     = PositionGetDouble(POSITION_TP);
+      double pos_lots   = PositionGetDouble(POSITION_VOLUME);
+      info += "\n--- Open Trade ---";
+      info += "\nType: " + (pos_type == POSITION_TYPE_BUY ? "BUY" : "SELL") + " | Lots: " + DoubleToString(pos_lots, 2);
+      info += "\nEntry: " + DoubleToString(pos_open, _Digits) + " | P/L: " + (pos_profit >= 0 ? "+" : "") + DoubleToString(pos_profit, 2);
+      info += "\nSL: " + DoubleToString(pos_sl, _Digits) + " | TP: " + DoubleToString(pos_tp, _Digits);
+   }
+   else
+      info += "\n--- No Open Trade ---";
+
+   Comment(info);
+}
+
 int OnInit()
 {
    onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
@@ -42,10 +88,15 @@ int OnInit()
    OnnxSetOutputShape(onnx_handle, 1, out_shape_probs);
 
    m_trade.SetExpertMagicNumber(InpMagic);
+   EventSetTimer(5);
    return(INIT_SUCCEEDED);
 }
 
 void OnDeinit(const int reason) { if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle); }
+void OnTimer()
+{
+   ShowStatus();
+}
 
 void OnTick()
 {
@@ -79,6 +130,7 @@ void OnTick()
    ArraySetAsSeries(atr_buffer, true);
    CopyBuffer(atr_handle, 0, 0, 1, atr_buffer);
    double current_atr = atr_buffer[0];
+   g_atr = current_atr;
 
    int adx_handle = iADX(_Symbol, _Period, 14);
    double adx_buffer[], plus_di_buffer[], minus_di_buffer[];
@@ -112,6 +164,8 @@ void OnTick()
 
    long  prediction = output_label[0];
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
+   g_confidence = confidence;
+   g_prediction = prediction;
 
    // 7. CLOSE AT HALF TP (if enabled and position exists)
    if(InpCloseAtHalfTP && PositionSelect(_Symbol))
@@ -158,7 +212,4 @@ void OnTick()
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, MQLInfoString(MQL_PROGRAM_NAME));
       }
    }
-
-   Comment("AI Trend | Confidence: ", DoubleToString(confidence*100, 2), "%",
-           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
 }
