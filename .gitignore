@@ -91,3 +91,4 @@ tmp/**
 
 *.onnx
 *.csv
+src/mql/Credentials.mqh
