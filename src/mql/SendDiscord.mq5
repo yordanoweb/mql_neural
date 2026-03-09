@@ -4,10 +4,9 @@
 #property strict
 
 #include "Credentials.mqh"
+#include "Credentials.mqh"
 
 input group "Discord ===================="
-input long   CHANNEL_ID = 0;                     // Main channel ID
-input long   ORDERS_STREAM_CHANNEL_ID = 0;       // Orders stream channel ID
 input int    InpMagicNumber = 123456;            // Magic Number (filter by EA)
 input string InpNotificationTitle = "";          // Custom notification title (empty = use EA name)
 input bool   DISCORD_SEND = true;                // Enable sending notifications
@@ -27,15 +26,16 @@ bool SendDiscord(string message, long channel_id)
       return true;
    }
 
-   string token = CredentialDiscordToken();
+   string token = DISCORD_TOKEN;
+   long resolved_channel = (channel_id != 0) ? channel_id : DISCORD_CHANNEL_ID;
 
-   if(token == "" || channel_id == 0)
+   if(token == "" || resolved_channel == 0)
    {
       Print("ERRO: Token ou Channel ID não configurados!");
       return false;
    }
 
-   string url = "https://discord.com/api/v10/channels/" + IntegerToString(channel_id) + "/messages";
+   string url = "https://discord.com/api/v10/channels/" + IntegerToString(resolved_channel) + "/messages";
    
    // Properly escape special characters in JSON
    StringReplace(message, "\\", "\\\\"); // Escape backslashes first
@@ -169,14 +169,14 @@ int OnInit()
    if(DISCORD_SEND)
    {
       Print("Discord Trade Alerts iniciado para \"" + _Symbol + "\". Token: ", (DISCORD_TOKEN == "" ? "NÃO CONFIGURADO" : "OK"));
-      Print("Main Channel: ", CHANNEL_ID, " | Orders Channel: ", ORDERS_STREAM_CHANNEL_ID);
+      Print("Main Channel: ", DISCORD_CHANNEL_ID, " | Orders Channel: ", DISCORD_ORDERS_STREAM_ID);
       Print("Magic Number: ", InpMagicNumber);
    
       if(SEND_TEST_ON_START)
       {
          string ea_title = (InpNotificationTitle == "") ? MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
          string start_msg = "------------------------------\n🟢 **MT5 Trade Bot online!**\n🤖 **" + ea_title + "**\nMonitorando '**" + _Symbol + "**' ordens... ✅";
-         SendDiscord(start_msg, CHANNEL_ID);
+         SendDiscord(start_msg, DISCORD_CHANNEL_ID);
       }
    }
       
@@ -230,7 +230,7 @@ void OnTrade()
                if(message != "")
                {
                   // Send to appropriate channel
-                  long target_channel = (ORDERS_STREAM_CHANNEL_ID > 0) ? ORDERS_STREAM_CHANNEL_ID : CHANNEL_ID;
+                  long target_channel = (DISCORD_ORDERS_STREAM_ID > 0) ? DISCORD_ORDERS_STREAM_ID : DISCORD_CHANNEL_ID;
                   SendDiscord(message, target_channel);
                }
             }

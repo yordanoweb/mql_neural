@@ -18,7 +18,7 @@ CSupabaseTrades *supa = NULL;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   supa = new CSupabaseTrades(CredentialSupabaseURL(), CredentialSupabaseAnonKey(), CredentialSupabaseServiceKey());
+   supa = new CSupabaseTrades(SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_KEY);
    supa.UseServiceRole(true);
    robotName = RobotName;
 
