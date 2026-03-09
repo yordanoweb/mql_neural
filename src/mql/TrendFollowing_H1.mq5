@@ -20,7 +20,8 @@ input double     InpLot        = 1;
 input int        InpMagic      = 123456;
 input int        InpATR        = 5;
 input double     InpMultiplier = 1.1;
-input bool       InpCloseAtHalfTP = true;      // Close at half TP
+input bool       InpUseProfitClose   = true;   // Close when profit reaches % of SL
+input double     InpProfitPercentSL  = 0.30;   // % of SL as profit trigger
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
@@ -43,7 +44,8 @@ void ShowStatus()
    info += MQLInfoString(MQL_PROGRAM_NAME) + " | " + _Symbol + " | " + EnumToString(_Period);
    info += "\nModel: " + InpModelName;
    info += "\nLogic: " + EnumToString(InpLogic) + " | Magic: " + IntegerToString(InpMagic) + " | Lot: " + DoubleToString(InpLot, 2);
-   info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) + " | Mult: " + DoubleToString(InpMultiplier, 1) + " | HalfTP: " + (InpCloseAtHalfTP ? "ON" : "OFF");
+   info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) + " | Mult: " + DoubleToString(InpMultiplier, 1) +
+           " | ProfitClose: " + (InpUseProfitClose ? "ON @" + DoubleToString(InpProfitPercentSL * 100, 0) + "%SL" : "OFF");
    info += "\nSpread: " + IntegerToString(SymbolInfoInteger(_Symbol, SYMBOL_SPREAD)) + " pts | MinConf: " + DoubleToString(InpMinConf * 100, 1) + "%";
 
    string signal = "WAITING";
@@ -167,24 +169,23 @@ void OnTick()
    g_confidence = confidence;
    g_prediction = prediction;
 
-   // 7. CLOSE AT HALF TP (if enabled and position exists)
-   if(InpCloseAtHalfTP && PositionSelect(_Symbol))
+   // 7. PROFIT CLOSE AT % OF SL (if enabled and position exists)
+   if(InpUseProfitClose && PositionSelect(_Symbol))
    {
       double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
       double sl_dist = current_atr * InpMultiplier;
-      double tp_dist = sl_dist * 1.5;
-      double half_tp = tp_dist / 2.0;
+      double target_profit = sl_dist * InpProfitPercentSL;
       bool should_close = false;
 
       if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
       {
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         if(ask >= entry_price + half_tp) should_close = true;
+         if(ask >= entry_price + target_profit) should_close = true;
       }
       else if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
       {
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         if(bid <= entry_price - half_tp) should_close = true;
+         if(bid <= entry_price - target_profit) should_close = true;
       }
 
       if(should_close)
