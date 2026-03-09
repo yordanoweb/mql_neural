@@ -92,3 +92,6 @@ tmp/**
 *.onnx
 *.csv
 src/mql/Credentials.mqh
+
+secrets.txt
+passwords.txt
