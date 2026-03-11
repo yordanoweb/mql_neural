@@ -11,21 +11,21 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelName = "stochastic_adx.onnx";
+input string     InpModelName = "ndx100_rates_m5_stochastic_adx.onnx";
 input float      InpMinConf    = 0.52;
-input int        InpStartHour  = 12;
-input int        InpEndHour    = 18;
+input int        InpStartHour  = 13;
+input int        InpEndHour    = 20;
 
 input group "Risk"
-input double     InpLot        = 1;
-input int        InpMagic      = 123456;
-input int        InpATR        = 5;
+input double     InpLot        = 0.1;
+input int        InpMagic      = 1123456;
+input int        InpATR        = 14;
 input double     InpMultiplier = 1.1;
 input bool       InpUseProfitClose   = true;   // Close when profit reaches % of SL
 input double     InpProfitPercentSL  = 0.30;   // % of SL as profit trigger
 
 //--- INDICATOR PARAMETERS (matching Python training)
-const int STOCH_K_PERIOD = 7;
+const int STOCH_K_PERIOD = 5;
 const int STOCH_D_PERIOD = 3;
 const int STOCH_SLOWING  = 3;
 const int ADX_PERIOD     = 8;
