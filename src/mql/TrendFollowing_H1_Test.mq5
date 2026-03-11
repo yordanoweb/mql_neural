@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\btc_rates_h1_trend.onnx" as uchar ExtModel[]
+#resource "\\Files\\aapl_rates_h1_trend.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -169,38 +169,11 @@ void OnTick()
    g_confidence = confidence;
    g_prediction = prediction;
 
-   // 7. PROFIT CLOSE AT % OF SL (if enabled and position exists)
-   if(InpUseProfitClose && PositionSelect(_Symbol))
-   {
-      double entry_price = PositionGetDouble(POSITION_PRICE_OPEN);
-      double sl_dist = current_atr * InpMultiplier;
-      double target_profit = sl_dist * InpProfitPercentSL;
-      bool should_close = false;
-
-      if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
-      {
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         if(ask >= entry_price + target_profit) should_close = true;
-      }
-      else if(PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
-      {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         if(bid <= entry_price - target_profit) should_close = true;
-      }
-
-      if(should_close)
-      {
-         ulong pos_ticket = PositionGetInteger(POSITION_TICKET);
-         m_trade.PositionClose(pos_ticket);
-         return;
-      }
-   }
-
-   // 8. EXECUTION WITH TIME FILTER
+   // 7. EXECUTION WITH TIME FILTER
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
    {
       double sl_dist = current_atr * InpMultiplier;
-      double tp_dist = sl_dist * 1.5;
+      double tp_dist = InpUseProfitClose ? (sl_dist * InpProfitPercentSL) : (sl_dist * 1.5);
 
       if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
       {
