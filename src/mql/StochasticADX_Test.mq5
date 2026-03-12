@@ -1,9 +1,11 @@
 //+------------------------------------------------------------------+
-//|                                                StochasticADX.mq5 |
+//|                                            StochasticADX_H1.mq5 |
 //+------------------------------------------------------------------+
 #property strict
 
 #include <Trade\Trade.mqh>
+
+#resource "\\Files\\ndx100_rates_m15_stochastic_adx.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -11,7 +13,6 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelName = "ndx100_rates_m15_stochastic_adx.onnx";
 input float      InpMinConf    = 0.52;
 input int        InpStartHour  = 13;
 input int        InpEndHour    = 20;
@@ -49,7 +50,6 @@ void ShowStatus()
 
    string info = "\n\n\n";
    info += MQLInfoString(MQL_PROGRAM_NAME) + " | " + _Symbol + " | " + EnumToString(_Period);
-   info += "\nModel: " + InpModelName;
    info += "\nLogic: " + EnumToString(InpLogic) + " | Magic: " + IntegerToString(InpMagic) + " | Lot: " + DoubleToString(InpLot, 2);
    info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) + " | Mult: " + DoubleToString(InpMultiplier, 1) +
            " | ProfitClose: " + (InpUseProfitClose ? "ON @" + DoubleToString(InpProfitPercentSL * 100, 0) + "%SL" : "OFF");
@@ -98,7 +98,7 @@ long ApplyLogic(long prediction)
 
 int OnInit()
 {
-   onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
+   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
    long input_shape[] = {1, WINDOW_SIZE * FEATURES};
