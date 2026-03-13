@@ -5,13 +5,14 @@
 
 #include <Trade\Trade.mqh>
 
+#resource "\\Files\\ndx100_rates_h1_ema_rsi_atr.onnx" as uchar ExtModel[];
+
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelName  = "ndx100_rates_h1_ema_rsi_atr.onnx";
 input float      InpMinConf    = 0.66;
 input int        InpStartHour  = 12;
 input int        InpEndHour    = 20;
@@ -42,7 +43,6 @@ void ShowStatus()
 
    string info = "\n\n\n";
    info += MQLInfoString(MQL_PROGRAM_NAME) + " | " + _Symbol + " | " + EnumToString(_Period);
-   info += "\nModel: " + InpModelName;
    info += "\nLogic: " + EnumToString(InpLogic) + " | Magic: " + IntegerToString(InpMagic) + " | Lot: " + DoubleToString(InpLot, 2);
    info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) + " | Mult: " + DoubleToString(InpMultiplier, 1);
    info += "\nSpread: " + IntegerToString(SymbolInfoInteger(_Symbol, SYMBOL_SPREAD)) + " pts | MinConf: " + DoubleToString(InpMinConf * 100, 1) + "%";
@@ -61,7 +61,7 @@ void ShowStatus()
 
 int OnInit()
 {
-   onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
+   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
    long input_shape[] = {1, WINDOW_SIZE * FEATURES};

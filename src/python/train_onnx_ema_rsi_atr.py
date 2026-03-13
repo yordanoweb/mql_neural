@@ -41,8 +41,8 @@ window = 20
 # Feature engineering usando la librería de indicadores
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
-df['feat_ema'] = pd.Series(calculate_ema(df['close'].tolist(), 20))
-df['feat_rsi'] = pd.Series(calculate_rsi(df['close'].tolist(), 14)) / 100.0
+df['feat_ema'] = pd.Series(calculate_ema(df['close'].tolist(), 9))
+df['feat_rsi'] = pd.Series(calculate_rsi(df['close'].tolist(), 7)) / 100.0
 df['feat_atr'] = pd.Series(calculate_atr(
     df['high'].tolist(), df['low'].tolist(), df['close'].tolist(), 14, method='ema'
 ))
