@@ -402,7 +402,10 @@ bool BuildAndSendTradeData(ulong dealTicket, ENUM_DEAL_ENTRY entry)
       if(success)
          Print("Trade sent successfully. Ticket: ", dealTicket, " Status: ", status_code);
       else
+        {
          Print("Failed to send trade. Ticket: ", dealTicket, " Status: ", status_code, " Response: ", response);
+         Print("LAST ERROR: ", GetLastError());
+        }
    }
    
    return success;
