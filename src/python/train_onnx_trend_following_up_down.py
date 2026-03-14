@@ -28,7 +28,7 @@ if not os.path.exists(csv_file):
 if not os.path.exists(onnx_output_dir):
     os.makedirs(onnx_output_dir)
 
-output_filename = Path(onnx_output_dir) / (Path(csv_file).stem + "_trend_3class.onnx")
+output_filename = Path(onnx_output_dir) / (Path(csv_file).stem + "_trend_up_down.onnx")
 print(f"--- TREND-FOLLOWING TRAINING (3-CLASS) ---")
 print(f"Loading rates from: {csv_file}")
 print(f"Output ONNX will be: {output_filename}")
