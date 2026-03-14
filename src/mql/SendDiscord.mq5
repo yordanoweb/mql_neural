@@ -4,7 +4,6 @@
 #property strict
 
 #include "Credentials.mqh"
-#include "Credentials.mqh"
 
 input group "Discord ===================="
 input int    InpMagicNumber = 123456;            // Magic Number (filter by EA)
