@@ -7,7 +7,7 @@
 #include <Trade\Trade.mqh>
 
 // Resource with the ONNX model (must be compiled with the file)
-#resource "\\Files\\aapl_rates_h1_trend_3class.onnx" as uchar ExtModel[]
+#resource "\\Files\\ndx100_rates_h1_trend_up_down.onnx" as uchar ExtModel[]
 
 //--- INPUTS
 input group "AI Config"
