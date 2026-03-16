@@ -7,7 +7,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\ndx100_rates_h1_trend_up_down.onnx" as uchar ExtModel[];
+#resource "\\Files\\doj_rates_h1_trend_up_down.onnx" as uchar ExtModel[];
 
 //--- INPUTS
 input group "AI Config"

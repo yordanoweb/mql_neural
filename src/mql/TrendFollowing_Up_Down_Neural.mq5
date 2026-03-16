@@ -13,6 +13,7 @@ input string     InpModelName        = "doj_rates_h1_trend.onnx";
 input float      InpMinConf          = 0.52;
 input int        InpStartHour        = 12;
 input int        InpEndHour          = 18;
+input bool       InpInvertedTrust    = false;
 input group "Risk"
 input double     InpLot              = 1;
 input int        InpMagic            = 123456;
@@ -49,6 +50,7 @@ void ShowStatus()
    string info = "\n\n\n";
    info += MQLInfoString(MQL_PROGRAM_NAME) + " | " + _Symbol + " | " + EnumToString(_Period);
    info += "\nModel: " + InpModelName;
+   info += InpInvertedTrust ? "\nPrediction: INVERTED" : "";
    info += "\nMagic: " + IntegerToString(InpMagic) + " | Lot: " + DoubleToString(InpLot, 2);
    info += "\nATR(" + IntegerToString(InpATR) + "): " + DoubleToString(g_atr, _Digits) +
            " | Mult: " + DoubleToString(InpMultiplier, 1) +
@@ -204,6 +206,14 @@ void OnTick()
    if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_probs)) return;
 
    long  prediction  = output_label[0];        // 0, 1 o 2
+   
+   // --- INVERSIÓN DE POLARIDAD ---
+   if(InpInvertedTrust)
+     {
+      if(prediction == 1)      prediction = 2; // BUY -> SELL
+      else if(prediction == 2) prediction = 1; // SELL -> BUY
+     }
+
    float conf_no_sig = output_probs[0];        // P(sin señal)
    float conf_buy    = output_probs[1];        // P(BUY)
    float conf_sell   = output_probs[2];        // P(SELL)
