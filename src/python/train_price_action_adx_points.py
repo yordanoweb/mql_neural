@@ -83,11 +83,18 @@ def main():
     model_search.fit(X, y)
 
     # 5. Exportación
-    num_inputs = len(features_list) * args.window
-    initial_type = [('float_input', FloatTensorType([None, num_inputs]))]
-    onx = convert_sklearn(model_search.best_estimator_, initial_types=initial_type, target_opset=12,
-                          options={type(model_search.best_estimator_): {'zipmap': False}})
-    
+    # Modifica esta parte en train_price_action_adx_points.py
+    num_inputs = len(features_list) * args.window # Esto da 100
+    # Forzamos [1, 100] en lugar de [None, 100] para evitar ambigüedad en MQL5
+    # En lugar de [None, num_inputs], usamos una lista fija [1, 100]
+    initial_type = [('float_input', FloatTensorType([1, 100]))] # 100 es window(20) * features(5) 
+
+    onx = convert_sklearn(
+        model_search.best_estimator_, 
+        initial_types=initial_type, 
+        target_opset=12, # MetaTrader soporta bien el opset 12 [cite: 21]
+        options={type(model_search.best_estimator_): {'zipmap': False}}
+    )    
     output_path = output_dir / f"{csv_path.stem}_Selectivo.onnx"
     with open(output_path, "wb") as f:
         f.write(onx.SerializeToString())
