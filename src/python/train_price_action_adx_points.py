@@ -42,9 +42,12 @@ def main():
     df = df.dropna(subset=features_list).reset_index(drop=True)
 
     # 2. Etiquetado con Contador (AQUÍ ESTÁ LA CLAVE)
+    future_max = df['close'].shift(-1).rolling(window=args.future).max()
+    future_min = df['close'].shift(-1).rolling(window=args.future).min()
+
     labels = np.zeros(len(df))
-    buy_cond = (df['feat_adx'] > args.adx_thresh) & (df['feat_pdi'] > df['feat_mdi'])
-    sell_cond = (df['feat_adx'] > args.adx_thresh) & (df['feat_mdi'] > df['feat_pdi'])
+    buy_cond = (df['feat_adx'] > args.adx_thresh) & (df['feat_pdi'] > df['feat_mdi']) & (future_max > df['close'] + args.move_points)
+    sell_cond = (df['feat_adx'] > args.adx_thresh) & (df['feat_mdi'] > df['feat_pdi']) & (future_min < df['close'] - args.move_points)
     
     labels[buy_cond] = 1
     labels[sell_cond] = 2
