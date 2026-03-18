@@ -24,6 +24,8 @@ def run_backtest(parquet_path, window, buffer, atr_mult):
     atr_mean = atr.atr.rolling(50).mean()
     vol_filter = atr.atr > atr_mean * 1.2
 
+    momentum = close.pct_change(2)
+
     # 2.2 ATR para trailing stop
     atr_values = atr.atr
 
