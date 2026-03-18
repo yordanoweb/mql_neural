@@ -1,11 +1,17 @@
 # Nasdaq (NQ)
-python train_price_action_adx_points.py --csv NQ_M5.csv --output ./models --window 25 --future 12 --move_points 40 --adx_thresh 25
+python src/python/train_price_action_adx_points.py --csv csv/ndx100_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points 40 --adx_thresh 25
 
 # S&P500 (ES)
-python train_price_action_adx_points.py --csv ES_M5.csv --output ./models --window 25 --future 12 --move_points 15 --adx_thresh 25
+python src/python/train_price_action_adx_points.py --csv csv/sp500_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points 15 --adx_thresh 25
 
 # Dow Jones (YM)
-python train_price_action_adx_points.py --csv YM_M5.csv --output ./models --window 25 --future 12 --move_points 60 --adx_thresh 25
+python src/python/train_price_action_adx_points.py --csv csv/doj_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points 60 --adx_thresh 25
 
 # Oro (GC)
-python train_price_action_adx_points.py --csv GC_M5.csv --output ./models --window 25 --future 12 --move_points 3 --adx_thresh 22
+python src/python/train_price_action_adx_points.py --csv csv/xauusd_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points 3 --adx_thresh 22
+
+# zsh
+symbols=(ndx100 sp500 doj xauusd); points=(40 15 60 3); adx=(25 25 25 22); i=1; while (( i <= ${#symbols} )); do time python src/python/train_price_action_adx_points.py --csv csv/${symbols[i]}_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points ${points[i]} --adx_thresh ${adx[i]}; ((i++)); done
+
+# bash
+symbols=(ndx100 sp500 doj xauusd); points=(40 15 60 3); adx=(25 25 25 22); while [ $i -lt "${#symbols[@]}" ]; do time python src/python/train_price_action_adx_points.py --csv csv/${symbols[$i]}_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points ${points[$i]} --adx_thresh ${adx[$i]}; done
