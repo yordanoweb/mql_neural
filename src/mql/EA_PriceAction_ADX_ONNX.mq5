@@ -7,10 +7,10 @@
 input group "IA y Modelo"
 input string     InpModelName        = "modelo_selectivo_puntos.onnx";
 input float      InpMinConf          = 0.55;
-input int        WINDOW_SIZE         = 25; // Debe coincidir con --window usado en entrenamiento
+input int        WINDOW_SIZE         = 25; // Window usado en training
 
 input group "Filtros de Estrategia"
-input float      InpADXThresh        = 24.0; // Visualizar contra este umbral
+input float      InpADXThresh        = 24.0; // Visualizar este umbral
 input int        InpStartHour        = 13;
 input int        InpEndHour          = 21;
 
