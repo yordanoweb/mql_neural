@@ -7,7 +7,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
-from indicators import calculate_rsi, calculate_adx
+from ta.momentum import RSIIndicator
+from ta.trend import ADXIndicator
 import onnx
 
 # --- CONFIGURATION ---
@@ -35,34 +36,45 @@ print(f"Records loaded: {len(df)}")
 
 pip_unit = 0.0001
 
-# Feature engineering
+# Feature engineering con biblioteca "ta"
 window = 20
 adx_period = 14
-plus_di, minus_di, dx, adx = calculate_adx(
-    df['high'].tolist(), df['low'].tolist(), df['close'].tolist(), period=adx_period)
 
-df['feat_body']     = (df['close'] - df['open']) / pip_unit
-df['feat_range']    = (df['high'] - df['low']) / pip_unit
-df['feat_rsi']      = pd.Series(calculate_rsi(df['close'], 14)) / 100.0
-df['feat_adx']      = pd.Series(adx)
-df['feat_plus_di']  = pd.Series(plus_di)
-df['feat_minus_di'] = pd.Series(minus_di)
+# Calcular RSI usando ta
+rsi_indicator = RSIIndicator(close=df['close'], window=14)
+df['feat_rsi'] = rsi_indicator.rsi() / 100.0
+
+# Calcular ADX usando ta
+adx_indicator = ADXIndicator(
+    high=df['high'], 
+    low=df['low'], 
+    close=df['close'], 
+    window=adx_period
+)
+df['feat_adx'] = adx_indicator.adx()
+df['feat_plus_di'] = adx_indicator.adx_pos()  # +DI
+df['feat_minus_di'] = adx_indicator.adx_neg()  # -DI
+
+# Features básicas de precio
+df['feat_body'] = (df['close'] - df['open']) / pip_unit
+df['feat_range'] = (df['high'] - df['low']) / pip_unit
 
 # --- LABELS: multiclass trend-following ---
 # 0 = no signal
 # 1 = BUY  (trend alcista: ADX > thresh, +DI > -DI, precio sube >= move_pips)
 # 2 = SELL (trend bajista: ADX > thresh, -DI > +DI, precio baja >= move_pips)
-trend_thresh  = 25
-move_pips     = 5 * pip_unit
+trend_thresh = 25
+move_pips = 5 * pip_unit
 future_window = 5
 
 labels = []
 for i in range(window, len(df) - future_window):
-    adx_val   = adx[i]
-    pdi_val   = plus_di[i]
-    mdi_val   = minus_di[i]
+    adx_val = df['feat_adx'].iloc[i]
+    pdi_val = df['feat_plus_di'].iloc[i]
+    mdi_val = df['feat_minus_di'].iloc[i]
 
-    if adx_val is None or pdi_val is None or mdi_val is None:
+    # Verificar que no hay NaN
+    if pd.isna(adx_val) or pd.isna(pdi_val) or pd.isna(mdi_val):
         labels.append(0)
         continue
 
@@ -83,6 +95,7 @@ for i in range(window, len(df) - future_window):
     else:
         labels.append(0)
 
+# Ajustar DataFrame para eliminar filas sin labels
 df = df.iloc[window : len(df) - future_window].copy()
 df['target'] = labels
 
@@ -107,11 +120,11 @@ print(f"Training samples: {len(X)}")
 
 # --- MODEL TRAINING ---
 param_dist = {
-    'n_estimators':    [100, 150, 200],
-    'max_depth':       [5, 8, 12],
-    'min_samples_leaf':[1, 5],
+    'n_estimators': [100, 150, 200],
+    'max_depth': [5, 8, 12],
+    'min_samples_leaf': [1, 5],
     # class_weight balanced compensa el desbalance 0 >> 1,2
-    'class_weight':    ['balanced', None],
+    'class_weight': ['balanced', None],
 }
 tscv = TimeSeriesSplit(n_splits=2)
 search = RandomizedSearchCV(
