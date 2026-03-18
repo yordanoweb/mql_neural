@@ -1,0 +1,11 @@
+# Nasdaq (NQ)
+python train_price_action_adx_points.py --csv NQ_M5.csv --output ./models --window 25 --future 12 --move_points 40 --adx_thresh 25
+
+# S&P500 (ES)
+python train_price_action_adx_points.py --csv ES_M5.csv --output ./models --window 25 --future 12 --move_points 15 --adx_thresh 25
+
+# Dow Jones (YM)
+python train_price_action_adx_points.py --csv YM_M5.csv --output ./models --window 25 --future 12 --move_points 60 --adx_thresh 25
+
+# Oro (GC)
+python train_price_action_adx_points.py --csv GC_M5.csv --output ./models --window 25 --future 12 --move_points 3 --adx_thresh 22
