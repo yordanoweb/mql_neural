@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import argparse
 import sys
+import json
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
@@ -83,11 +84,15 @@ def main():
     model_search.fit(X, y)
 
     # 5. Exportación
-    # Modifica esta parte en train_price_action_adx_points.py
-    num_inputs = len(features_list) * args.window # Esto da 100
-    # Forzamos [1, 100] en lugar de [None, 100] para evitar ambigüedad en MQL5
-    # En lugar de [None, num_inputs], usamos una lista fija [1, 100]
-    initial_type = [('float_input', FloatTensorType([1, 100]))] # 100 es window(20) * features(5) 
+    num_inputs = len(features_list) * args.window
+    if X.shape[1] != num_inputs:
+        raise ValueError(
+            f"Mismatch interno: X tiene {X.shape[1]} features, pero "
+            f"window({args.window})*features({len(features_list)})={num_inputs}"
+        )
+    # Importante: el shape de entrada ONNX DEBE coincidir con el número de
+    # features con que se entrenó el bosque. No hardcodear 100.
+    initial_type = [('float_input', FloatTensorType([1, num_inputs]))]
 
     onx = convert_sklearn(
         model_search.best_estimator_, 
@@ -99,7 +104,24 @@ def main():
     with open(output_path, "wb") as f:
         f.write(onx.SerializeToString())
     
+    # Sidecar de metadatos para configurar EA sin adivinar parámetros.
+    meta = {
+        "model_file": output_path.name,
+        "window_size": args.window,
+        "features_per_bar": len(features_list),
+        "num_inputs": num_inputs,
+        "feature_order": features_list,
+        "future_window": args.future,
+        "adx_threshold": args.adx_thresh,
+        "move_points": args.move_points,
+    }
+    meta_path = output_dir / f"{csv_path.stem}_Selectivo.meta.json"
+    with open(meta_path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    
     print(f"✓ ÉXITO. Modelo guardado. Accuracy Balanceado: {model_search.best_score_:.4f}")
+    print(f"Input ONNX: [1, {num_inputs}] (window={args.window}, features={len(features_list)})")
+    print(f"Metadata: {meta_path}")
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,7 @@
 input group "IA y Modelo"
 input string     InpModelName        = "modelo_selectivo_puntos.onnx";
 input float      InpMinConf          = 0.55;
-input int        WINDOW_SIZE         = 20;
+input int        WINDOW_SIZE         = 25; // Debe coincidir con --window usado en entrenamiento
 
 input group "Filtros de Estrategia"
 input float      InpADXThresh        = 24.0; // Visualizar contra este umbral
@@ -44,7 +44,9 @@ int OnInit() {
 
    // Intentamos definir el shape. 
    // Si falla con 5805, probaremos con una dimensión simplificada.
-   long input_shape[] = {1, 100}; 
+   long input_shape[] = {1, WINDOW_SIZE * FEATURES}; 
+   PrintFormat("ONNX input esperado por EA: [1,%d] (WINDOW_SIZE=%d, FEATURES=%d)",
+               WINDOW_SIZE * FEATURES, WINDOW_SIZE, FEATURES);
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) {
       Print("Fallo inicial de Shape. Intentando autodefinición...");
       // Si el error persiste, a veces MetaTrader prefiere que NO definas el shape 
