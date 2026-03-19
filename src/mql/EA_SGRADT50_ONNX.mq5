@@ -513,7 +513,7 @@ void ShowStatus()
    else if(g_stoch_k > InpStochOverbought)
       stoch_zone = "OVERBOUGHT";
    else
-      stoch_zone = "NEUTRAL ─";
+      stoch_zone = "NEUTRAL";
    
    string stoch_cross = (g_stoch_k > g_stoch_d) ? "%K ABOVE %D" : "%K BELOW %D";
    
@@ -524,11 +524,8 @@ void ShowStatus()
                      : "NEW BAR";
    
    //--- Build panel
-   string info = "\n\n\n";
-   info += "SGRADT 5.0 - AI TRADING SYSTEM\n";
-   info += "--------------------------------\n";
-   
-   info += "SYMBOL: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
+   string info = "\n";
+
    info += "SESSION: " + StringFormat("%02d:00-%02d:00", InpStartHour, InpEndHour);
    info += " [" + (valid_time ? "ACTIVE" : "CLOSED") + "]\n";
    info += "MODE: " + mode_str + " | Inferences: " + (string)g_infer_count + "\n";
@@ -538,32 +535,26 @@ void ShowStatus()
    
    info += "--------------------------------\n";
    info += "ADX INDICATOR (Period: " + (string)InpADXPeriod + ")\n";
-   info += "--------------------------------\n";
    info += "   ADX: " + DoubleToString(g_curr_adx, 2) + " [" + trend_status + "]\n";
-   info += "   +DI: " + DoubleToString(g_curr_pdi, 2) + "\n";
-   info += "   -DI: " + DoubleToString(g_curr_mdi, 2) + "\n";
+   info += "   +DI: " + DoubleToString(g_curr_pdi, 2) + " | -DI: " + DoubleToString(g_curr_mdi, 2) + "\n";
    
    info += "--------------------------------\n";
    info += "STOCHASTIC (" + (string)InpStochK + "," + (string)InpStochD + "," + (string)InpStochSlowing + ")\n";
-   info += "--------------------------------\n";
-   info += "   %K: " + DoubleToString(g_stoch_k, 2) + "\n";
-   info += "   %D: " + DoubleToString(g_stoch_d, 2) + "\n";
+   info += "   %K: " + DoubleToString(g_stoch_k, 2) + " | %D: " + DoubleToString(g_stoch_d, 2) + "\n";
    info += "   Zone: " + stoch_zone + "\n";
    info += "   Cross: " + stoch_cross + "\n";
    
    info += "--------------------------------\n";
    info += "AI PREDICTION\n";
-   info += "--------------------------------\n";
    info += "   Signal: " + signal_text + "\n";
-   info += "\n   Confidence Levels:\n";
-   info += "   HOLD:  " + DoubleToString(g_conf_hold * 100, 2) + "%\n";
-   info += "   BUY:   " + DoubleToString(g_conf_buy  * 100, 2) + "%\n";
-   info += "   SELL:  " + DoubleToString(g_conf_sell * 100, 2) + "%\n";
+   info += "   Confidence Levels:\n";
+   info += "   - HOLD:  " + DoubleToString(g_conf_hold * 100, 2) + "%\n";
+   info += "   - BUY:   " + DoubleToString(g_conf_buy  * 100, 2) + "%\n";
+   info += "   - SELL:  " + DoubleToString(g_conf_sell * 100, 2) + "%\n";
    info += "\n   Minimum Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
    
    info += "--------------------------------\n";
    info += "RISK SETTINGS\n";
-   info += "--------------------------------\n";
    info += "   Lot Size: " + DoubleToString(InpLot, 2) + "\n";
    info += "   Stop Loss:   " + DoubleToString(InpStopPoints, 0) + " pts";
    info += " (" + DoubleToString(InpStopPoints * pt, 5) + ")\n";
