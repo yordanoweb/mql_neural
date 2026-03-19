@@ -14,6 +14,13 @@ input float      InpADXThresh        = 24.0; // Visualizar este umbral
 input int        InpStartHour        = 13;
 input int        InpEndHour          = 21;
 
+input group "Stochastic"
+input int        InpStochK           = 5;    // %K period
+input int        InpStochD           = 3;    // %D period (smoothing)
+input int        InpStochSlowing     = 3;    // Slowing
+input double     InpStochOversold    = 30.0; // Oversold level (BUY zone)
+input double     InpStochOverbought  = 70.0; // Overbought level (SELL zone)
+
 input group "Riesgo en PUNTOS NOMINALES"
 input double     InpLot              = 1.0;
 input int        InpMagic            = 888;
@@ -32,6 +39,10 @@ float    g_conf_sell  = 0;
 double   g_curr_adx   = 0;
 double   g_curr_pdi   = 0;
 double   g_curr_mdi   = 0;
+double   g_stoch_k    = 0;
+double   g_stoch_d    = 0;
+bool     g_stoch_buy  = false;
+bool     g_stoch_sell = false;
 
 //+------------------------------------------------------------------+
 int OnInit() {
@@ -78,6 +89,53 @@ void OnDeinit(const int reason)
 void OnTimer() { ShowStatus(); }
 
 //+------------------------------------------------------------------+
+//| Evaluates Stochastic confirmation for BUY or SELL                |
+//| BUY  : %K crossed above %D while coming from oversold zone       |
+//| SELL : %K crossed below %D while coming from overbought zone     |
+//+------------------------------------------------------------------+
+bool CheckStochastic(int direction)
+  {
+   int stoch_h = iStochastic(_Symbol, _Period,
+                              InpStochK, InpStochD, InpStochSlowing,
+                              MODE_SMA, STO_LOWHIGH);
+   if(stoch_h == INVALID_HANDLE)
+      return false;
+
+   double k_buf[], d_buf[];
+   ArraySetAsSeries(k_buf, true);
+   ArraySetAsSeries(d_buf, true);
+
+   // Need 2 bars to detect crossover
+   if(CopyBuffer(stoch_h, 0, 0, 2, k_buf) < 2) return false;
+   if(CopyBuffer(stoch_h, 1, 0, 2, d_buf) < 2) return false;
+
+   // Update globals for display (current bar = index 0)
+   g_stoch_k = k_buf[0];
+   g_stoch_d = d_buf[0];
+
+   if(direction == 1) // BUY confirmation
+     {
+      // %K crossed above %D (previous bar: K[1] <= D[1], current bar: K[0] > D[0])
+      // AND current %K is still below or near oversold threshold (not yet overbought)
+      bool cross_up    = (k_buf[1] <= d_buf[1]) && (k_buf[0] > d_buf[0]);
+      bool from_low    = (k_buf[1] < InpStochOversold || k_buf[0] < InpStochOversold + 10.0);
+      g_stoch_buy  = cross_up && from_low;
+      return g_stoch_buy;
+     }
+   else if(direction == 2) // SELL confirmation
+     {
+      // %K crossed below %D (previous bar: K[1] >= D[1], current bar: K[0] < D[0])
+      // AND current %K is still above or near overbought threshold
+      bool cross_down  = (k_buf[1] >= d_buf[1]) && (k_buf[0] < d_buf[0]);
+      bool from_high   = (k_buf[1] > InpStochOverbought || k_buf[0] > InpStochOverbought - 10.0);
+      g_stoch_sell = cross_down && from_high;
+      return g_stoch_sell;
+     }
+
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -94,6 +152,9 @@ void OnTick()
       g_curr_pdi = pdi_v[0];
    if(CopyBuffer(adx_h, 2, 0, 1, mdi_v) > 0)
       g_curr_mdi = mdi_v[0];
+
+   // Update stochastic globals on every tick for the panel
+   CheckStochastic(1); // also refreshes g_stoch_k / g_stoch_d
 
    if(current_bar == last_bar)
      {
@@ -155,7 +216,10 @@ void OnTick()
       bool time_ok = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
       float conf = (g_prediction == 1) ? g_conf_buy : (g_prediction == 2) ? g_conf_sell : 0;
 
-      if(g_prediction > 0 && conf >= InpMinConf && time_ok && !PositionSelect(_Symbol))
+      // --- STOCHASTIC CONFIRMATION ---
+      bool stoch_ok = CheckStochastic((int)g_prediction);
+
+      if(g_prediction > 0 && conf >= InpMinConf && time_ok && stoch_ok && !PositionSelect(_Symbol))
         {
          if(g_prediction == 1)
            {
@@ -183,6 +247,17 @@ void ShowStatus()
 // Color visual simple para la tendencia
    string trend_status = (g_curr_adx >= InpADXThresh) ? "STRONG" : "WEAK/RANGE";
 
+// Stochastic zone labels
+   string stoch_zone;
+   if(g_stoch_k < InpStochOversold)
+      stoch_zone = "OVERSOLD";
+   else if(g_stoch_k > InpStochOverbought)
+      stoch_zone = "OVERBOUGHT";
+   else
+      stoch_zone = "NEUTRAL";
+
+   string stoch_cross = (g_stoch_k > g_stoch_d) ? "%K > %D ▲" : "%K < %D ▼";
+
    string info = "\n\n\n=== " + MQLInfoString(MQL_PROGRAM_NAME) + " ===\n";
    info += "Instrumento: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
    info += "Horario: " + StringFormat("%02d:00-%02d:00", InpStartHour, InpEndHour) +
@@ -191,6 +266,12 @@ void ShowStatus()
    info += "ADX ACTUAL: " + DoubleToString(g_curr_adx, 2) + " (" + trend_status + ")\n";
    info += "+DI: " + DoubleToString(g_curr_pdi, 2) + " | -DI: " + DoubleToString(g_curr_mdi, 2) + "\n";
    info += "Umbral Min: " + DoubleToString(InpADXThresh, 1) + "\n";
+   info += "------------------------------------------\n";
+   info += "STOCHASTIC (" + (string)InpStochK + "," + (string)InpStochD + "," + (string)InpStochSlowing + ")\n";
+   info += "%K: " + DoubleToString(g_stoch_k, 2) + " | %D: " + DoubleToString(g_stoch_d, 2) + "\n";
+   info += "Zona: " + stoch_zone + " | " + stoch_cross + "\n";
+   info += "Conf BUY:  " + (g_stoch_buy  ? "YES ✓" : "NO") + "\n";
+   info += "Conf SELL: " + (g_stoch_sell ? "YES ✓" : "NO") + "\n";
    info += "------------------------------------------\n";
    info += "PREDICCIÓN IA: " + signal + "\n";
    info += "Confianza BUY:  " + DoubleToString(g_conf_buy * 100, 2) + "%\n";
