@@ -256,7 +256,7 @@ void ShowStatus()
    else
       stoch_zone = "NEUTRAL";
 
-   string stoch_cross = (g_stoch_k > g_stoch_d) ? "%K > %D ▲" : "%K < %D ▼";
+   string stoch_cross = (g_stoch_k > g_stoch_d) ? "%K > %D" : "%K < %D";
 
    string info = "\n\n\n=== " + MQLInfoString(MQL_PROGRAM_NAME) + " ===\n";
    info += "Instrumento: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
@@ -270,8 +270,8 @@ void ShowStatus()
    info += "STOCHASTIC (" + (string)InpStochK + "," + (string)InpStochD + "," + (string)InpStochSlowing + ")\n";
    info += "%K: " + DoubleToString(g_stoch_k, 2) + " | %D: " + DoubleToString(g_stoch_d, 2) + "\n";
    info += "Zona: " + stoch_zone + " | " + stoch_cross + "\n";
-   info += "Conf BUY:  " + (g_stoch_buy  ? "YES ✓" : "NO") + "\n";
-   info += "Conf SELL: " + (g_stoch_sell ? "YES ✓" : "NO") + "\n";
+   info += "Conf BUY:  " + (g_stoch_buy  ? "YES" : "NO") + "\n";
+   info += "Conf SELL: " + (g_stoch_sell ? "YES" : "NO") + "\n";
    info += "------------------------------------------\n";
    info += "PREDICCIÓN IA: " + signal + "\n";
    info += "Confianza BUY:  " + DoubleToString(g_conf_buy * 100, 2) + "%\n";
