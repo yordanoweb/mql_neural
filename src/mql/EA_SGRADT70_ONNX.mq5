@@ -520,11 +520,7 @@ bool HasPosition(ENUM_POSITION_TYPE type)
 void UpdatePanel()
 {
    string panel = "\n\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "  SGRADT 7.0 - EMA 9 STRATEGY (5 FEATURES)\n";
-   panel += StringRepeat("-", 52) + "\n";
    
-   panel += "SYMBOL: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
    panel += "SESSION: " + IntegerToString(InpStartHour, 2, '0') + ":00-" + 
             IntegerToString(InpEndHour, 2, '0') + ":00";
    panel += IsWithinSession() ? " [ACTIVE]\n" : " [CLOSED]\n";
@@ -560,8 +556,7 @@ void UpdatePanel()
    panel += StringRepeat("-", 52) + "\n";
    panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
    panel += StringRepeat("-", 52) + "\n";
-   panel += "   K: " + DoubleToString(stoch_k[0], 2) + "\n";
-   panel += "   D: " + DoubleToString(stoch_d[0], 2) + "\n";
+   panel += "   K: " + DoubleToString(stoch_k[0], 2) + " | " + " D: " + DoubleToString(stoch_d[0], 2) + "\n";
    
    string zone = "";
    if(stoch_k[0] <= InpStochOversold) zone = "OVERSOLD";
@@ -582,12 +577,11 @@ void UpdatePanel()
       
       panel += "   Signal: " + signal_text + "\n";
       
-      panel += "   Confidence:\n";
+      panel += "   Confidence (Min: " + DoubleToString(InpMinConf * 100, 1) + ")\n";
       panel += "   - HOLD:  " + DoubleToString(g_last_probas[0] * 100, 2) + "%\n";
       panel += "   - BUY:   " + DoubleToString(g_last_probas[1] * 100, 2) + "%\n";
       panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n";
       
-      panel += "   Min Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
    }
    else {
       panel += "   Waiting for first inference...\n";
@@ -598,8 +592,7 @@ void UpdatePanel()
    panel += "RISK SETTINGS\n";
    panel += StringRepeat("-", 52) + "\n";
    panel += "   Lot: " + DoubleToString(InpLot, 2) + "\n";
-   panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts\n";
-   panel += "   TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
+   panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts | TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
    panel += "   Exit: EMA 9 Cross\n";
    
    //--- Position Info
