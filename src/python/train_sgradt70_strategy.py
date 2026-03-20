@@ -198,7 +198,7 @@ def main():
                        help='ADX threshold para confirmar tendencia')
     
     # Training parameters
-    parser.add_argument('--n_iter', type=int, default=20,
+    parser.add_argument('--n_iter', type=int, default=7,
                        help='Iteraciones para RandomizedSearchCV')
     
     args = parser.parse_args()

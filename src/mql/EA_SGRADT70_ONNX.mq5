@@ -73,9 +73,9 @@ int      g_last_prediction = -1;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("\n", StringRepeat("=", 70));
+   Print("\n", StringRepeat("-", 70));
    Print("    SGRADT 7.0 - EMA 9 STRATEGY (5 Features)");
-   Print(StringRepeat("=", 70), "\n");
+   Print(StringRepeat("-", 70), "\n");
    
    //--- Load ONNX model
    string model_path = InpModelName;
@@ -173,9 +173,9 @@ int OnInit()
    
    ArrayInitialize(g_last_probas, 0.0);
    
-   Print("\n", StringRepeat("=", 70));
+   Print("\n", StringRepeat("-", 70));
    Print("    EA INITIALIZED SUCCESSFULLY");
-   Print(StringRepeat("=", 70), "\n");
+   Print(StringRepeat("-", 70), "\n");
    
    return INIT_SUCCEEDED;
 }
@@ -199,9 +199,9 @@ void OnDeinit(const int reason)
    
    Comment("");
    
-   Print("\n", StringRepeat("=", 70));
+   Print("\n", StringRepeat("-", 70));
    Print("    EA DEINITIALIZED");
-   Print(StringRepeat("=", 70), "\n");
+   Print(StringRepeat("-", 70), "\n");
 }
 
 //+------------------------------------------------------------------+
@@ -521,10 +521,7 @@ bool HasPosition(ENUM_POSITION_TYPE type)
 //+------------------------------------------------------------------+
 void UpdatePanel()
 {
-   string panel = "";
-   panel += StringRepeat("=", 52) + "\n";
-   panel += "  SGRADT 7.0 - EMA 9 STRATEGY (5 FEATURES)\n";
-   panel += StringRepeat("=", 52) + "\n\n";
+   string panel = "\n";
    
    panel += "SYMBOL: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
    panel += "SESSION: " + IntegerToString(InpStartHour, 2, '0') + ":00-" + 
@@ -532,7 +529,7 @@ void UpdatePanel()
    panel += IsWithinSession() ? " [ACTIVE]\n" : " [CLOSED]\n";
    
    string mode = (InpInferSeconds == 0) ? "NEW BAR" : IntegerToString(InpInferSeconds) + "s";
-   panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n\n";
+   panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n";
    
    //--- Indicators
    double ema[], adx[], stoch_k[], stoch_d[];
@@ -551,13 +548,13 @@ void UpdatePanel()
    panel += "   EMA: " + DoubleToString(ema[0], _Digits) + "\n";
    panel += "   Open: " + DoubleToString(open_current, _Digits);
    panel += (open_current > ema[0]) ? " [ABOVE]\n" : " [BELOW]\n";
-   panel += "   Close: " + DoubleToString(close_current, _Digits) + "\n\n";
+   panel += "   Close: " + DoubleToString(close_current, _Digits) + "\n";
    
    panel += StringRepeat("-", 52) + "\n";
    panel += "ADX (Period: " + IntegerToString(InpADXPeriod) + ")\n";
    panel += StringRepeat("-", 52) + "\n";
    panel += "   ADX: " + DoubleToString(adx[0], 2);
-   panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n\n" : " [RANGING]\n\n";
+   panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n" : " [RANGING]\n";
    
    panel += StringRepeat("-", 52) + "\n";
    panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
@@ -569,12 +566,12 @@ void UpdatePanel()
    if(stoch_k[0] <= InpStochOversold) zone = "OVERSOLD";
    else if(stoch_k[0] >= InpStochOverbought) zone = "OVERBOUGHT";
    else zone = "NEUTRAL";
-   panel += "   Zone: " + zone + "\n\n";
+   panel += "   Zone: " + zone + "\n";
    
    //--- AI Prediction
-   panel += StringRepeat("=", 52) + "\n";
+   panel += StringRepeat("-", 52) + "\n";
    panel += "AI PREDICTION\n";
-   panel += StringRepeat("=", 52) + "\n";
+   panel += StringRepeat("-", 52) + "\n";
    
    if(g_last_prediction >= 0) {
       string signal_text = "";
@@ -582,17 +579,17 @@ void UpdatePanel()
       else if(g_last_prediction == 1) signal_text = "BUY";
       else signal_text = "SELL";
       
-      panel += "   Signal: " + signal_text + "\n\n";
+      panel += "   Signal: " + signal_text + "\n";
       
       panel += "   Confidence:\n";
       panel += "   - HOLD:  " + DoubleToString(g_last_probas[0] * 100, 2) + "%\n";
       panel += "   - BUY:   " + DoubleToString(g_last_probas[1] * 100, 2) + "%\n";
-      panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n\n";
+      panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n";
       
-      panel += "   Min Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n\n";
+      panel += "   Min Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
    }
    else {
-      panel += "   Waiting for first inference...\n\n";
+      panel += "   Waiting for first inference...\n";
    }
    
    //--- Risk Settings
@@ -602,7 +599,7 @@ void UpdatePanel()
    panel += "   Lot: " + DoubleToString(InpLot, 2) + "\n";
    panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts\n";
    panel += "   TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
-   panel += "   Exit: EMA 9 Cross\n\n";
+   panel += "   Exit: EMA 9 Cross\n";
    
    //--- Position Info
    double pnl = 0;
@@ -618,11 +615,11 @@ void UpdatePanel()
    }
    
    if(pos_info != "") {
-      panel += StringRepeat("=", 52) + "\n";
+      panel += StringRepeat("-", 52) + "\n";
       panel += "ACTIVE POSITION: " + pos_info + "\n";
       string pnl_str = (pnl >= 0) ? "+" : "";
       panel += "   P&L: " + pnl_str + DoubleToString(pnl, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) + "\n";
-      panel += StringRepeat("=", 52) + "\n";
+      panel += StringRepeat("-", 52) + "\n";
    }
    
    Comment(panel);
