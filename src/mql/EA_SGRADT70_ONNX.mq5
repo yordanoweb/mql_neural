@@ -449,7 +449,7 @@ void RunInference()
          double sl  = (InpStopPoints > 0) ? ask - InpStopPoints * _Point : 0;
          double tp  = (InpTakePoints > 0) ? ask + InpTakePoints * _Point : 0;
 
-         if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 1) + "%"))
+         if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 2) + "%"))
            {
             Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
             g_last_trade_bar = current_bar;
@@ -465,7 +465,7 @@ void RunInference()
 
          if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class) && VolumeGateAllows())
            {
-            if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70 SELL @" + DoubleToString(max_prob, 1) + "%"))
+            if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70 SELL @" + DoubleToString(max_prob, 2) + "%"))
               {
                Print("[SELL] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
                g_last_trade_bar = current_bar;
