@@ -312,10 +312,10 @@ void RunInference()
    
    //--- Run inference
    float output_proba[];
-   long  output_label[];
+   long output_label[];
    
    ArrayResize(output_proba, 3);
-   ArrayResize(output_label, 1);
+   // NO pre-dimensionar output_label - dejar que ONNX lo haga
    
    if(!OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_proba, output_label)) {
       Print("[ERROR] ONNX inference failed");
@@ -330,20 +330,31 @@ void RunInference()
       return;
    }
    
-   if(ArraySize(output_label) != 1) {
-      Print("[ERROR] Invalid output label: expected 1, got ", ArraySize(output_label));
-      return;
-   }
-   
    //--- Store results
    for(int i = 0; i < 3; i++)
       g_last_probas[i] = output_proba[i];
    
-   g_last_prediction = (int)output_label[0];
+   //--- Get predicted class from output
+   int predicted_class = 0;
+   if(ArraySize(output_label) > 0) {
+      predicted_class = (int)output_label[0];
+   } else {
+      // Fallback: calculate from probabilities
+      double max_prob = g_last_probas[0];
+      predicted_class = 0;
+      for(int i = 1; i < 3; i++) {
+         if(g_last_probas[i] > max_prob) {
+            max_prob = g_last_probas[i];
+            predicted_class = i;
+         }
+      }
+   }
+   
+   g_last_prediction = predicted_class;
    
    //--- Get max probability
    double max_prob = g_last_probas[0];
-   int predicted_class = 0;
+   predicted_class = 0;
    
    for(int i = 1; i < 3; i++) {
       if(g_last_probas[i] > max_prob) {

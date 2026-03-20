@@ -297,7 +297,12 @@ def main():
         model_search.best_estimator_,
         initial_types=initial_type,
         target_opset=12,
-        options={type(model_search.best_estimator_): {'zipmap': False}}
+        options={
+            type(model_search.best_estimator_): {
+                'zipmap': False,
+                'nocl': False
+            }
+        }
     )
     
     output_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.onnx"
