@@ -1,9 +1,9 @@
 //+------------------------------------------------------------------+
-//|                                           EA_SGRADT60_ONNX.mq5   |
-//|                                      SGRADT 6.0 - 10 Features    |
+//|                                           EA_SGRADT70_ONNX.mq5   |
+//|                          SGRADT 7.0 - EMA 9 Strategy (5 Features)|
 //+------------------------------------------------------------------+
-#property copyright "SGRADT 6.0"
-#property version   "6.00"
+#property copyright "SGRADT 7.0"
+#property version   "7.00"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -12,15 +12,15 @@
 
 //=== AI Model Configuration ===
 input group "======== AI MODEL ========"
-input string InpModelName = "EUR_USD_H1_SGRADT60_combined.onnx";  // Model filename
-input string InpMetaFile  = "EUR_USD_H1_SGRADT60_combined.meta.json"; // Metadata file (optional)
+input string InpModelName = "USTEC_M5_SGRADT70_ema9.onnx";  // Model filename
+input string InpMetaFile  = "USTEC_M5_SGRADT70_ema9.meta.json"; // Metadata file (optional)
 input double InpMinConf   = 0.55;      // Minimum confidence (0.0-1.0)
 input int    InpWindowSize = 20;       // Window size (must match training)
-input int    InpFeaturesPerBar = 10;   // Features per bar (ALWAYS 10 for SGRADT 6.0)
+input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 7.0)
 
 //=== Inference Timing ===
 input group "======== INFERENCE ========"
-input int  InpInferSeconds = 15;       // Inference frequency (0 = new bar only)
+input int  InpInferSeconds = 0;        // Inference frequency (0 = new bar only)
 input bool InpOneTradePerBar = true;   // Limit to 1 trade per bar
 
 //=== Trading Session ===
@@ -28,33 +28,24 @@ input group "======== SESSION ========"
 input int InpStartHour = 0;            // Session start hour (0-23)
 input int InpEndHour   = 24;           // Session end hour (0-24)
 
-//=== Indicator Parameters (SGRADT 6.0 Defaults) ===
+//=== Indicator Parameters (SGRADT 7.0 Defaults) ===
+input group "======== EMA ========"
+input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
+
 input group "======== STOCHASTIC ========"
-input int    InpStochK          = 7;      // Stochastic %K period
-input int    InpStochD          = 3;      // Stochastic %D smoothing
-input int    InpStochSlowing    = 3;      // Stochastic slowing
+input int    InpStochK          = 7;      // Stochastic K period
+input int    InpStochD          = 3;      // Stochastic D smoothing
 input double InpStochOversold   = 20.0;   // Oversold level
 input double InpStochOverbought = 80.0;   // Overbought level
 
 input group "======== ADX ========"
 input int    InpADXPeriod = 8;      // ADX period
-input double InpADXLimit  = 32.0;   // ADX trend threshold
-
-input group "======== RSI ========"
-input int InpRSIPeriod = 14;        // RSI period
-
-input group "======== MACD ========"
-input int InpMACDFast   = 12;       // MACD fast period
-input int InpMACDSlow   = 26;       // MACD slow period
-input int InpMACDSignal = 9;        // MACD signal period
-
-input group "======== ATR (NEW) ========"
-input int InpATRPeriod = 14;        // ATR period
+input double InpADXLimit  = 25.0;   // ADX trend threshold
 
 //=== Risk Management ===
 input group "======== RISK ========"
 input double InpLot        = 1.0;   // Lot size
-input int    InpMagic      = 6060;  // Magic number
+input int    InpMagic      = 7070;  // Magic number
 input double InpStopPoints = 50.0;  // Stop Loss in POINTS
 input double InpTakePoints = 100.0; // Take Profit in POINTS
 
@@ -65,11 +56,9 @@ input bool InpShowPanel = true;     // Show information panel
 //--- Global Variables
 CTrade trade;
 long   g_onnx_handle = INVALID_HANDLE;
+int    g_ema_handle  = INVALID_HANDLE;
 int    g_adx_handle  = INVALID_HANDLE;
 int    g_stoch_handle = INVALID_HANDLE;
-int    g_rsi_handle   = INVALID_HANDLE;
-int    g_macd_handle  = INVALID_HANDLE;
-int    g_atr_handle   = INVALID_HANDLE;
 
 datetime g_last_bar_time = 0;
 datetime g_last_trade_bar = 0;
@@ -85,7 +74,7 @@ int      g_last_prediction = -1;
 int OnInit()
 {
    Print("\n", StringRepeat("=", 70));
-   Print("    SGRADT 6.0 - AI TRADING SYSTEM (10 Features)");
+   Print("    SGRADT 7.0 - EMA 9 STRATEGY (5 Features)");
    Print(StringRepeat("=", 70), "\n");
    
    //--- Load ONNX model
@@ -95,7 +84,7 @@ int OnInit()
    g_onnx_handle = OnnxCreate(InpModelName, ONNX_DEFAULT);
    
    if(g_onnx_handle == INVALID_HANDLE) {
-      Print("[ERROR] Cannot load ONNX model from resource");
+      Print("[ERROR] Cannot load ONNX model");
       Print("        Make sure the model is in MQL5/Files/ folder");
       return INIT_FAILED;
    }
@@ -116,6 +105,12 @@ int OnInit()
    //--- Create indicator handles
    Print("\nInitializing indicators...");
    
+   g_ema_handle = iMA(_Symbol, _Period, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(g_ema_handle == INVALID_HANDLE) {
+      Print("[ERROR] Cannot create EMA indicator");
+      return INIT_FAILED;
+   }
+   
    g_adx_handle = iADX(_Symbol, _Period, InpADXPeriod);
    if(g_adx_handle == INVALID_HANDLE) {
       Print("[ERROR] Cannot create ADX indicator");
@@ -123,37 +118,49 @@ int OnInit()
    }
    
    g_stoch_handle = iStochastic(_Symbol, _Period,
-                                InpStochK, InpStochD, InpStochSlowing,
+                                InpStochK, InpStochD, 3,
                                 MODE_SMA, STO_LOWHIGH);
    if(g_stoch_handle == INVALID_HANDLE) {
       Print("[ERROR] Cannot create Stochastic indicator");
       return INIT_FAILED;
    }
    
-   g_rsi_handle = iRSI(_Symbol, _Period, InpRSIPeriod, PRICE_CLOSE);
-   if(g_rsi_handle == INVALID_HANDLE) {
-      Print("[ERROR] Cannot create RSI indicator");
-      return INIT_FAILED;
-   }
-   
-   g_macd_handle = iMACD(_Symbol, _Period, InpMACDFast, InpMACDSlow, InpMACDSignal, PRICE_CLOSE);
-   if(g_macd_handle == INVALID_HANDLE) {
-      Print("[ERROR] Cannot create MACD indicator");
-      return INIT_FAILED;
-   }
-   
-   g_atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
-   if(g_atr_handle == INVALID_HANDLE) {
-      Print("[ERROR] Cannot create ATR indicator");
-      return INIT_FAILED;
-   }
-   
    Print("[OK] Indicators created:");
+   Print("     - EMA(", InpEMAPeriod, ")");
    Print("     - ADX(", InpADXPeriod, ")");
-   Print("     - Stochastic(", InpStochK, ",", InpStochD, ",", InpStochSlowing, ")");
-   Print("     - RSI(", InpRSIPeriod, ") [NEW]");
-   Print("     - MACD(", InpMACDFast, ",", InpMACDSlow, ",", InpMACDSignal, ") [NEW]");
-   Print("     - ATR(", InpATRPeriod, ") [NEW]");
+   Print("     - Stochastic(", InpStochK, ",", InpStochD, ")");
+   
+   //--- Wait for indicators to calculate
+   Print("\nWaiting for indicators to calculate data...");
+   int attempts = 0;
+   int max_attempts = 50;
+   int required_bars = InpWindowSize + 30;
+   bool indicators_ready = false;
+   
+   while(attempts < max_attempts) {
+      double test_buf[];
+      
+      int ema_count = CopyBuffer(g_ema_handle, 0, 0, required_bars, test_buf);
+      int adx_count = CopyBuffer(g_adx_handle, 0, 0, required_bars, test_buf);
+      int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, required_bars, test_buf);
+      
+      if(ema_count == required_bars && 
+         adx_count == required_bars && 
+         stoch_count == required_bars) {
+         Print("[OK] All indicators ready with ", required_bars, " bars");
+         indicators_ready = true;
+         break;
+      }
+      
+      Sleep(100);
+      attempts++;
+   }
+   
+   if(!indicators_ready) {
+      Print("[WARNING] Indicators may not have enough data yet");
+      Print("          This is normal on first run");
+      Print("          EA will skip inference until data is ready");
+   }
    
    //--- Initialize trade
    trade.SetExpertMagicNumber(InpMagic);
@@ -181,20 +188,14 @@ void OnDeinit(const int reason)
    if(g_onnx_handle != INVALID_HANDLE)
       OnnxRelease(g_onnx_handle);
    
+   if(g_ema_handle != INVALID_HANDLE)
+      IndicatorRelease(g_ema_handle);
+   
    if(g_adx_handle != INVALID_HANDLE)
       IndicatorRelease(g_adx_handle);
    
    if(g_stoch_handle != INVALID_HANDLE)
       IndicatorRelease(g_stoch_handle);
-   
-   if(g_rsi_handle != INVALID_HANDLE)
-      IndicatorRelease(g_rsi_handle);
-   
-   if(g_macd_handle != INVALID_HANDLE)
-      IndicatorRelease(g_macd_handle);
-   
-   if(g_atr_handle != INVALID_HANDLE)
-      IndicatorRelease(g_atr_handle);
    
    Comment("");
    
@@ -214,6 +215,9 @@ void OnTick()
          UpdatePanel();
       return;
    }
+   
+   //--- Check for exit based on EMA cross
+   CheckEMAExit();
    
    //--- Determine if should run inference
    bool should_infer = false;
@@ -246,6 +250,42 @@ void OnTick()
 }
 
 //+------------------------------------------------------------------+
+//| Check for EMA cross exit                                          |
+//+------------------------------------------------------------------+
+void CheckEMAExit()
+{
+   double ema[];
+   if(CopyBuffer(g_ema_handle, 0, 0, 2, ema) != 2) return;
+   ArraySetAsSeries(ema, true);
+   
+   double open_current = iOpen(_Symbol, _Period, 0);
+   double ema_current = ema[0];
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--) {
+      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagic) {
+         
+         ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+         
+         // BUY exit: open crosses below EMA
+         if(type == POSITION_TYPE_BUY && open_current < ema_current) {
+            ulong ticket = PositionGetInteger(POSITION_TICKET);
+            if(trade.PositionClose(ticket)) {
+               Print("[EXIT BUY] Open crossed below EMA 9");
+            }
+         }
+         
+         // SELL exit: open crosses above EMA
+         else if(type == POSITION_TYPE_SELL && open_current > ema_current) {
+            ulong ticket = PositionGetInteger(POSITION_TICKET);
+            if(trade.PositionClose(ticket)) {
+               Print("[EXIT SELL] Open crossed above EMA 9");
+            }
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Run ONNX inference                                                |
 //+------------------------------------------------------------------+
 void RunInference()
@@ -274,9 +314,8 @@ void RunInference()
    float output_proba[];
    long  output_label[];
    
-   // Resize output arrays before ONNX call
-   ArrayResize(output_proba, 3);  // 3 classes: HOLD, BUY, SELL
-   ArrayResize(output_label, 1);  // 1 predicted class
+   ArrayResize(output_proba, 3);
+   ArrayResize(output_label, 1);
    
    if(!OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_proba, output_label)) {
       Print("[ERROR] ONNX inference failed");
@@ -324,7 +363,7 @@ void RunInference()
          double sl = SymbolInfoDouble(_Symbol, SYMBOL_BID) - InpStopPoints * _Point;
          double tp = SymbolInfoDouble(_Symbol, SYMBOL_BID) + InpTakePoints * _Point;
          
-         if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT60_BUY")) {
+         if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70_BUY")) {
             Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
             g_last_trade_bar = current_bar;
          }
@@ -335,7 +374,7 @@ void RunInference()
          double sl = SymbolInfoDouble(_Symbol, SYMBOL_ASK) + InpStopPoints * _Point;
          double tp = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - InpTakePoints * _Point;
          
-         if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT60_SELL")) {
+         if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70_SELL")) {
             Print("[SELL] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
             g_last_trade_bar = current_bar;
          }
@@ -351,7 +390,6 @@ bool PrepareInput(float &input_buffer[])
    int window = InpWindowSize;
    int total_size = window * InpFeaturesPerBar;
    
-   // Clear and resize buffer
    ArrayFree(input_buffer);
    if(ArrayResize(input_buffer, total_size) != total_size) {
       Print("[ERROR] Cannot resize input buffer to ", total_size);
@@ -392,37 +430,16 @@ bool PrepareInput(float &input_buffer[])
    }
    
    //--- Get indicator data
-   double adx_b[], pdi_b[], mdi_b[];
+   double adx_b[];
    double stoch_k_b[], stoch_d_b[];
-   double rsi_b[];
-   double macd_main[], macd_signal[];
-   double atr_b[];
    
    ArraySetAsSeries(adx_b, true);
-   ArraySetAsSeries(pdi_b, true);
-   ArraySetAsSeries(mdi_b, true);
    ArraySetAsSeries(stoch_k_b, true);
    ArraySetAsSeries(stoch_d_b, true);
-   ArraySetAsSeries(rsi_b, true);
-   ArraySetAsSeries(macd_main, true);
-   ArraySetAsSeries(macd_signal, true);
-   ArraySetAsSeries(atr_b, true);
    
    copied = CopyBuffer(g_adx_handle, 0, 0, window, adx_b);
    if(copied != window) {
       Print("[ERROR] CopyBuffer ADX failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   copied = CopyBuffer(g_adx_handle, 1, 0, window, pdi_b);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer +DI failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   copied = CopyBuffer(g_adx_handle, 2, 0, window, mdi_b);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer -DI failed: expected ", window, ", got ", copied);
       return false;
    }
    
@@ -438,51 +455,17 @@ bool PrepareInput(float &input_buffer[])
       return false;
    }
    
-   copied = CopyBuffer(g_rsi_handle, 0, 0, window, rsi_b);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer RSI failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   copied = CopyBuffer(g_macd_handle, 0, 0, window, macd_main);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer MACD Main failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   copied = CopyBuffer(g_macd_handle, 1, 0, window, macd_signal);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer MACD Signal failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   copied = CopyBuffer(g_atr_handle, 0, 0, window, atr_b);
-   if(copied != window) {
-      Print("[ERROR] CopyBuffer ATR failed: expected ", window, ", got ", copied);
-      return false;
-   }
-   
-   //--- Fill buffer (CRITICAL: Order must match training script)
+   //--- Fill buffer (Order: body, range, stoch_k, stoch_d, adx)
    for(int i = 0; i < window; i++) {
       int offset = i * InpFeaturesPerBar;
       
-      // Feature order MUST match training script:
-      // 0: body, 1: range, 2: stoch_k, 3: stoch_d, 4: rsi
-      // 5: adx, 6: pdi, 7: mdi, 8: macd_hist, 9: atr_pct
-      
-      input_buffer[offset + 0] = (float)(close[i] - open[i]);           // body
-      input_buffer[offset + 1] = (float)(high[i] - low[i]);             // range
-      input_buffer[offset + 2] = (float)stoch_k_b[i];                   // stoch_main
-      input_buffer[offset + 3] = (float)stoch_d_b[i];                   // stoch_signal
-      input_buffer[offset + 4] = (float)rsi_b[i];                       // rsi [NEW]
-      input_buffer[offset + 5] = (float)adx_b[i];                       // adx
-      input_buffer[offset + 6] = (float)pdi_b[i];                       // pdi
-      input_buffer[offset + 7] = (float)mdi_b[i];                       // mdi
-      input_buffer[offset + 8] = (float)(macd_main[i] - macd_signal[i]); // macd_hist [NEW]
-      input_buffer[offset + 9] = (float)((atr_b[i] / close[i]) * 100);  // atr_pct [NEW]
+      input_buffer[offset + 0] = (float)(close[i] - open[i]);     // body
+      input_buffer[offset + 1] = (float)(high[i] - low[i]);       // range
+      input_buffer[offset + 2] = (float)stoch_k_b[i];             // stoch_main
+      input_buffer[offset + 3] = (float)stoch_d_b[i];             // stoch_signal
+      input_buffer[offset + 4] = (float)adx_b[i];                 // adx
    }
    
-   // Validate buffer is not empty
    if(ArraySize(input_buffer) != total_size) {
       Print("[ERROR] Buffer size mismatch: expected ", total_size, ", got ", ArraySize(input_buffer));
       return false;
@@ -527,87 +510,60 @@ bool HasPosition(ENUM_POSITION_TYPE type)
 //+------------------------------------------------------------------+
 void UpdatePanel()
 {
-   string panel = "\n\n";
+   string panel = "";
+   panel += StringRepeat("=", 52) + "\n";
+   panel += "  SGRADT 7.0 - EMA 9 STRATEGY (5 FEATURES)\n";
+   panel += StringRepeat("=", 52) + "\n\n";
    
-   //--- Symbol & Session
    panel += "SYMBOL: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
    panel += "SESSION: " + IntegerToString(InpStartHour, 2, '0') + ":00-" + 
             IntegerToString(InpEndHour, 2, '0') + ":00";
    panel += IsWithinSession() ? " [ACTIVE]\n" : " [CLOSED]\n";
    
    string mode = (InpInferSeconds == 0) ? "NEW BAR" : IntegerToString(InpInferSeconds) + "s";
-   panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n";
-   
-   MqlDateTime dt;
-   TimeToStruct(g_last_inference_time, dt);
-   panel += StringFormat("Last Run: %02d:%02d:%02d\n", dt.hour, dt.min, dt.sec);
+   panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n\n";
    
    //--- Indicators
-   double adx[], pdi[], mdi[], stoch_k[], stoch_d[], rsi[], macd_main[], macd_signal[], atr[];
+   double ema[], adx[], stoch_k[], stoch_d[];
    
+   CopyBuffer(g_ema_handle, 0, 0, 1, ema);
    CopyBuffer(g_adx_handle, 0, 0, 1, adx);
-   CopyBuffer(g_adx_handle, 1, 0, 1, pdi);
-   CopyBuffer(g_adx_handle, 2, 0, 1, mdi);
    CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_k);
    CopyBuffer(g_stoch_handle, 1, 0, 1, stoch_d);
-   CopyBuffer(g_rsi_handle, 0, 0, 1, rsi);
-   CopyBuffer(g_macd_handle, 0, 0, 1, macd_main);
-   CopyBuffer(g_macd_handle, 1, 0, 1, macd_signal);
-   CopyBuffer(g_atr_handle, 0, 0, 1, atr);
+   
+   double open_current = iOpen(_Symbol, _Period, 0);
+   double close_current = iClose(_Symbol, _Period, 0);
    
    panel += StringRepeat("-", 52) + "\n";
-   panel += "ADX INDICATOR (Period: " + IntegerToString(InpADXPeriod) + ")\n";
+   panel += "EMA (Period: " + IntegerToString(InpEMAPeriod) + ")\n";
+   panel += StringRepeat("-", 52) + "\n";
+   panel += "   EMA: " + DoubleToString(ema[0], _Digits) + "\n";
+   panel += "   Open: " + DoubleToString(open_current, _Digits);
+   panel += (open_current > ema[0]) ? " [ABOVE]\n" : " [BELOW]\n";
+   panel += "   Close: " + DoubleToString(close_current, _Digits) + "\n\n";
+   
+   panel += StringRepeat("-", 52) + "\n";
+   panel += "ADX (Period: " + IntegerToString(InpADXPeriod) + ")\n";
    panel += StringRepeat("-", 52) + "\n";
    panel += "   ADX: " + DoubleToString(adx[0], 2);
-   panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n" : " [RANGING]\n";
-   panel += "   +DI: " + DoubleToString(pdi[0], 2) + " | " + " -DI: " + DoubleToString(mdi[0], 2) + "\n";
+   panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n\n" : " [RANGING]\n\n";
    
    panel += StringRepeat("-", 52) + "\n";
-   panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + 
-            IntegerToString(InpStochD) + "," + IntegerToString(InpStochSlowing) + ")\n";
+   panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
    panel += StringRepeat("-", 52) + "\n";
-   panel += "   %K: " + DoubleToString(stoch_k[0], 2) + " | " + " %D: " + DoubleToString(stoch_d[0], 2) + "\n";
+   panel += "   K: " + DoubleToString(stoch_k[0], 2) + "\n";
+   panel += "   D: " + DoubleToString(stoch_d[0], 2) + "\n";
    
    string zone = "";
    if(stoch_k[0] <= InpStochOversold) zone = "OVERSOLD";
    else if(stoch_k[0] >= InpStochOverbought) zone = "OVERBOUGHT";
    else zone = "NEUTRAL";
-   panel += "   Zone: " + zone + "\n";
-   
-   string cross = (stoch_k[0] > stoch_d[0]) ? "%K ABOVE %D" : "%K BELOW %D";
-   panel += "   Cross: " + cross + "\n";
-   
-   // RSI
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "RSI (Period: " + IntegerToString(InpRSIPeriod) + ") [NEW]\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "   RSI: " + DoubleToString(rsi[0], 2);
-   if(rsi[0] < 30) panel += " [OVERSOLD]\n";
-   else if(rsi[0] > 70) panel += " [OVERBOUGHT]\n";
-   else panel += " [NEUTRAL]\n";
-   
-   // MACD
-   double macd_hist = macd_main[0] - macd_signal[0];
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "MACD (" + IntegerToString(InpMACDFast) + "," + 
-            IntegerToString(InpMACDSlow) + "," + IntegerToString(InpMACDSignal) + ") [NEW]\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "   Histogram: " + DoubleToString(macd_hist, 5);
-   panel += (macd_hist > 0) ? " [BULLISH]\n" : " [BEARISH]\n";
-   
-   // ATR
-   double close_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double atr_pct = (atr[0] / close_price) * 100;
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "ATR (Period: " + IntegerToString(InpATRPeriod) + ") [NEW]\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "   ATR: " + DoubleToString(atr[0], _Digits) + "\n";
-   panel += "   ATR%: " + DoubleToString(atr_pct, 2) + "%\n";
+   panel += "   Zone: " + zone + "\n\n";
    
    //--- AI Prediction
-   panel += StringRepeat("=", 22) + "\n";
+   panel += StringRepeat("=", 52) + "\n";
    panel += "AI PREDICTION\n";
-   panel += StringRepeat("=", 22) + "\n";
+   panel += StringRepeat("=", 52) + "\n";
    
    if(g_last_prediction >= 0) {
       string signal_text = "";
@@ -615,28 +571,27 @@ void UpdatePanel()
       else if(g_last_prediction == 1) signal_text = "BUY";
       else signal_text = "SELL";
       
-      panel += "   Signal: " + signal_text + "\n";
+      panel += "   Signal: " + signal_text + "\n\n";
       
-      panel += "   Confidence Levels:\n";
+      panel += "   Confidence:\n";
       panel += "   - HOLD:  " + DoubleToString(g_last_probas[0] * 100, 2) + "%\n";
       panel += "   - BUY:   " + DoubleToString(g_last_probas[1] * 100, 2) + "%\n";
-      panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n";
+      panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n\n";
       
-      panel += "   Minimum Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
+      panel += "   Min Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n\n";
    }
    else {
-      panel += "   Waiting for first inference...\n";
+      panel += "   Waiting for first inference...\n\n";
    }
    
    //--- Risk Settings
    panel += StringRepeat("-", 52) + "\n";
    panel += "RISK SETTINGS\n";
    panel += StringRepeat("-", 52) + "\n";
-   panel += "   Lot Size: " + DoubleToString(InpLot, 2) + "\n";
-   panel += "   Stop Loss:   " + DoubleToString(InpStopPoints, 0) + " pts (" + 
-            DoubleToString(InpStopPoints * _Point, _Digits) + ")\n";
-   panel += "   Take Profit: " + DoubleToString(InpTakePoints, 0) + " pts (" + 
-            DoubleToString(InpTakePoints * _Point, _Digits) + ")\n";
+   panel += "   Lot: " + DoubleToString(InpLot, 2) + "\n";
+   panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts\n";
+   panel += "   TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
+   panel += "   Exit: EMA 9 Cross\n\n";
    
    //--- Position Info
    double pnl = 0;
@@ -672,15 +627,15 @@ void PrintConfiguration()
    Print("Timeframe: ", EnumToString(_Period));
    Print("Digits: ", _Digits);
    Print("Point: ", DoubleToString(_Point, _Digits));
-   Print("SL: ", InpStopPoints, " points = ", DoubleToString(InpStopPoints * _Point, _Digits), " price");
-   Print("TP: ", InpTakePoints, " points = ", DoubleToString(InpTakePoints * _Point, _Digits), " price");
    
    Print("\n=== INDICATOR PARAMETERS ===");
-   Print("Stochastic: (", InpStochK, ",", InpStochD, ",", InpStochSlowing, ") [", InpStochOversold, "/", InpStochOverbought, "]");
+   Print("EMA: ", InpEMAPeriod);
+   Print("Stochastic: (", InpStochK, ",", InpStochD, ") [", InpStochOversold, "/", InpStochOverbought, "]");
    Print("ADX: Period=", InpADXPeriod, ", Limit=", InpADXLimit);
-   Print("RSI: Period=", InpRSIPeriod, " [NEW]");
-   Print("MACD: (", InpMACDFast, ",", InpMACDSlow, ",", InpMACDSignal, ") [NEW]");
-   Print("ATR: Period=", InpATRPeriod, " [NEW]");
+   
+   Print("\n=== STRATEGY ===");
+   Print("Entry: Open vs EMA + ADX + Stochastic");
+   Print("Exit: Open crosses EMA in opposite direction");
    
    string mode = (InpInferSeconds == 0) ? "New bar only" : StringFormat("Every %d seconds", InpInferSeconds);
    Print("\nInference mode: ", mode);
@@ -695,18 +650,6 @@ string StringRepeat(string str, int count)
    for(int i = 0; i < count; i++)
       result += str;
    return result;
-}
-
-//+------------------------------------------------------------------+
-//| Helper: Center string                                             |
-//+------------------------------------------------------------------+
-string StringCenter(string text, int width)
-{
-   int len = StringLen(text);
-   if(len >= width) return text;
-   
-   int padding = (width - len) / 2;
-   return StringRepeat(" ", padding) + text + StringRepeat(" ", width - len - padding);
 }
 
 //+------------------------------------------------------------------+
