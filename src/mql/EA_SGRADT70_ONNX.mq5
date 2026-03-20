@@ -346,7 +346,21 @@ void RunInference()
          predicted_class = i;
       }
    }
-   
+
+   if(max_prob > 0)
+   {
+      double adx_buf[], stoch_buf[], stochd_buf[];
+      int adx_count = CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
+      int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
+      int stochd_count = CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
+      PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
+                  max_prob,
+                  (max_prob == 1 ? "BUY" : "SELL"),
+                  adx_buf[0],
+                  stoch_buf[0],
+                  stochd_buf[0]);
+   }
+
    //--- Check confidence
    if(max_prob < InpMinConf) {
       return;
