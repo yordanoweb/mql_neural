@@ -213,6 +213,24 @@ void OnDeinit(const int reason)
   }
 
 //+------------------------------------------------------------------+
+//| Check if price position agrees with predicted direction           |
+//+------------------------------------------------------------------+
+bool EMAGateAllows(int predicted_class)
+  {
+   double ema_gate[];
+   if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
+      return false;
+   double open_current = iOpen(_Symbol, _Period, 0);
+
+   if(predicted_class == 1)
+      return open_current > ema_gate[0];  // BUY: price must be above EMA
+   if(predicted_class == 2)
+      return open_current < ema_gate[0];  // SELL: price must be below EMA
+
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 //| Expert tick function                                              |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -399,7 +417,7 @@ void RunInference()
 //--- Execute trade
    if(predicted_class == 1)    // BUY
      {
-      if(!HasPosition(POSITION_TYPE_BUY))
+      if(!HasPosition(POSITION_TYPE_BUY) && EMAGateAllows(predicted_class))
         {
          double sl = (InpStopPoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) - InpStopPoints * _Point : 0;
          double tp = (InpTakePoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) + InpTakePoints * _Point : 0;
@@ -414,7 +432,7 @@ void RunInference()
    else
       if(predicted_class == 2)    // SELL
         {
-         if(!HasPosition(POSITION_TYPE_SELL))
+         if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class))
            {
             double sl = (InpStopPoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) + InpStopPoints * _Point : 0;
             double tp = (InpTakePoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) - InpTakePoints * _Point : 0;
