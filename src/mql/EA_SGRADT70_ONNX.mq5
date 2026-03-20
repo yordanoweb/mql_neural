@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿//+------------------------------------------------------------------+
 //|                                           EA_SGRADT70_ONNX.mq5   |
 //|                          SGRADT 7.0 - EMA 9 Strategy (5 Features)|
 //+------------------------------------------------------------------+
@@ -311,39 +311,41 @@ void OnTick()
 void CheckEMAExit()
   {
    double ema[];
-   if(CopyBuffer(g_ema_handle, 0, 0, 2, ema) != 2)
+   if(CopyBuffer(g_ema_handle, 0, 0, 3, ema) != 3)
       return;
    ArraySetAsSeries(ema, true);
 
-   double open_current = iOpen(_Symbol, _Period, 0);
-   double ema_current = ema[0];
+   // Use confirmed bar [1] for cross detection — never the live bar [0]
+   double open_prev = iOpen(_Symbol, _Period, 1);
+   double open_curr = iOpen(_Symbol, _Period, 0);
+   double ema_prev  = ema[1];
+   double ema_curr  = ema[0];
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagic)
         {
-
          ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
 
-         // BUY exit: open crosses below EMA
-         if(type == POSITION_TYPE_BUY && open_current < ema_current)
+         // BUY exit: open crossed below EMA on the last CLOSED bar
+         if(type == POSITION_TYPE_BUY &&
+            open_prev >= ema_prev &&   // previous bar was above
+            open_curr < ema_curr)      // current bar opened below
            {
             ulong ticket = PositionGetInteger(POSITION_TICKET);
             if(trade.PositionClose(ticket))
-              {
                Print("[EXIT BUY] Open crossed below EMA 9");
-              }
            }
 
-         // SELL exit: open crosses above EMA
+         // SELL exit: open crossed above EMA on the last CLOSED bar
          else
-            if(type == POSITION_TYPE_SELL && open_current > ema_current)
+            if(type == POSITION_TYPE_SELL &&
+               open_prev <= ema_prev &&  // previous bar was below
+               open_curr > ema_curr)     // current bar opened above
               {
                ulong ticket = PositionGetInteger(POSITION_TICKET);
                if(trade.PositionClose(ticket))
-                 {
                   Print("[EXIT SELL] Open crossed above EMA 9");
-                 }
               }
         }
      }
