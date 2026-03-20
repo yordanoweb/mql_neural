@@ -32,6 +32,9 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 input group "======== EMA ========"
 input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
 
+input group "======== VOLUME GATE ========"
+input double InpVolumeGateFactor = 0.8;  // Min volume vs 10-bar avg (e.g. 0.8 = 80%)
+
 input group "======== STOCHASTIC ========"
 input int    InpStochK          = 7;      // Stochastic K period
 input int    InpStochD          = 3;      // Stochastic D smoothing
@@ -210,6 +213,27 @@ void OnDeinit(const int reason)
    Print("\n", StringRepeat("-", 70));
    Print("    EA DEINITIALIZED");
    Print(StringRepeat("-", 70), "\n");
+  }
+
+//+------------------------------------------------------------------+
+//| Check if current volume is above average (relative volume gate)  |
+//+------------------------------------------------------------------+
+bool VolumeGateAllows()
+  {
+   long vol_buf[];
+   if(CopyTickVolume(_Symbol, _Period, 0, 11, vol_buf) != 11)
+      return false;
+
+   ArraySetAsSeries(vol_buf, true);
+
+   long vol_current = vol_buf[0];
+
+   double vol_avg = 0;
+   for(int i = 1; i <= 10; i++)
+      vol_avg += (double)vol_buf[i];
+   vol_avg /= 10.0;
+
+   return vol_current >= vol_avg * InpVolumeGateFactor;
   }
 
 //+------------------------------------------------------------------+
@@ -417,7 +441,7 @@ void RunInference()
 //--- Execute trade
    if(predicted_class == 1)    // BUY
      {
-      if(!HasPosition(POSITION_TYPE_BUY) && EMAGateAllows(predicted_class))
+      if(!HasPosition(POSITION_TYPE_BUY) && EMAGateAllows(predicted_class) && VolumeGateAllows())
         {
          double sl = (InpStopPoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) - InpStopPoints * _Point : 0;
          double tp = (InpTakePoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_BID) + InpTakePoints * _Point : 0;
@@ -432,7 +456,7 @@ void RunInference()
    else
       if(predicted_class == 2)    // SELL
         {
-         if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class))
+         if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class) && VolumeGateAllows())
            {
             double sl = (InpStopPoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) + InpStopPoints * _Point : 0;
             double tp = (InpTakePoints > 0) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) - InpTakePoints * _Point : 0;
