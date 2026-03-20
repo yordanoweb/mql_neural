@@ -311,13 +311,13 @@ void RunInference()
    }
    
    //--- Run inference
-   float output_proba[];
    long output_label[];
+   float output_proba[];
    
+   ArrayResize(output_label, 1);
    ArrayResize(output_proba, 3);
-   // NO pre-dimensionar output_label - dejar que ONNX lo haga
    
-   if(!OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_proba, output_label)) {
+   if(!OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_proba)) {
       Print("[ERROR] ONNX inference failed");
       Print("        Input buffer size: ", ArraySize(input_buffer));
       Print("        Expected: ", expected_size);
@@ -334,27 +334,11 @@ void RunInference()
    for(int i = 0; i < 3; i++)
       g_last_probas[i] = output_proba[i];
    
-   //--- Get predicted class from output
-   int predicted_class = 0;
-   if(ArraySize(output_label) > 0) {
-      predicted_class = (int)output_label[0];
-   } else {
-      // Fallback: calculate from probabilities
-      double max_prob = g_last_probas[0];
-      predicted_class = 0;
-      for(int i = 1; i < 3; i++) {
-         if(g_last_probas[i] > max_prob) {
-            max_prob = g_last_probas[i];
-            predicted_class = i;
-         }
-      }
-   }
-   
-   g_last_prediction = predicted_class;
+   g_last_prediction = (int)output_label[0];
    
    //--- Get max probability
    double max_prob = g_last_probas[0];
-   predicted_class = 0;
+   int predicted_class = 0;
    
    for(int i = 1; i < 3; i++) {
       if(g_last_probas[i] > max_prob) {
@@ -521,7 +505,10 @@ bool HasPosition(ENUM_POSITION_TYPE type)
 //+------------------------------------------------------------------+
 void UpdatePanel()
 {
-   string panel = "\n";
+   string panel = "\n\n";
+   panel += StringRepeat("-", 52) + "\n";
+   panel += "  SGRADT 7.0 - EMA 9 STRATEGY (5 FEATURES)\n";
+   panel += StringRepeat("-", 52) + "\n";
    
    panel += "SYMBOL: " + _Symbol + " [" + EnumToString(_Period) + "]\n";
    panel += "SESSION: " + IntegerToString(InpStartHour, 2, '0') + ":00-" + 
