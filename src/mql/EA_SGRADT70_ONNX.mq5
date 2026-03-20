@@ -213,6 +213,52 @@ void OnDeinit(const int reason)
   }
 
 //+------------------------------------------------------------------+
+//| Check if ADX confirms trend strength                             |
+//+------------------------------------------------------------------+
+bool ADXGateAllows()
+  {
+   double adx_gate[];
+   if(CopyBuffer(g_adx_handle, 0, 0, 1, adx_gate) != 1)
+      return false;
+
+   return adx_gate[0] > InpADXLimit;
+  }
+
+//+------------------------------------------------------------------+
+//| Check if Stochastic agrees with predicted direction              |
+//+------------------------------------------------------------------+
+bool StochGateAllows(int predicted_class)
+  {
+   double stoch_k[], stoch_k_prev[];
+   double stoch_d[], stoch_d_prev[];
+
+   if(CopyBuffer(g_stoch_handle, 0, 0, 2, stoch_k) != 2) return false;
+   if(CopyBuffer(g_stoch_handle, 1, 0, 2, stoch_d) != 2) return false;
+
+   ArraySetAsSeries(stoch_k, true);
+   ArraySetAsSeries(stoch_d, true);
+
+   double k0 = stoch_k[0], k1 = stoch_k[1];
+   double d0 = stoch_d[0], d1 = stoch_d[1];
+
+   if(predicted_class == 1)  // BUY: oversold crossover OR strong upward momentum
+     {
+      bool oversold_cross = (k1 < d1) && (k0 > d0) && (k0 <= InpStochOversold);
+      bool momentum_up    = (k0 > k1 + 7);
+      return oversold_cross || momentum_up;
+     }
+
+   if(predicted_class == 2)  // SELL: overbought crossover OR strong downward momentum
+     {
+      bool overbought_cross = (k1 > d1) && (k0 < d0) && (k0 >= InpStochOverbought);
+      bool momentum_down    = (k0 < k1 - 7);
+      return overbought_cross || momentum_down;
+     }
+
+   return false;
+  }
+
+//+------------------------------------------------------------------+
 //| Check if price position agrees with predicted direction           |
 //+------------------------------------------------------------------+
 bool EMAGateAllows(int predicted_class)
