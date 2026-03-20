@@ -164,8 +164,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='SGRADT 7.0 - Estrategia EMA 9 con 5 features'
     )
-    parser.add_argument('--csv', type=str, required=True, 
-                       help='Archivo CSV con datos OHLC')
+    parser.add_argument('--csv', type=str, nargs='+', required=True,
+                       help='Uno o más archivos CSV con datos OHLC')
     parser.add_argument('--output', type=str, default='./onnx',
                        help='Directorio de salida')
     parser.add_argument('--window', type=int, default=20,
@@ -203,55 +203,90 @@ def main():
     
     args = parser.parse_args()
     
-    csv_path = Path(args.csv)
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    csv_paths = [Path(p) for p in args.csv]
+
     print(f"\n{'='*70}")
     print(f"SGRADT 7.0 - EMA 9 Strategy (5 Features)")
     print(f"{'='*70}")
-    print(f"Archivo: {csv_path.name}")
+    print(f"Archivos recibidos: {len(csv_paths)}")
+    for p in csv_paths:
+        print(f"  - {p.name}")
     print(f"{'='*70}\n")
-    
-    # Cargar datos
-    df = pd.read_csv(csv_path)
-    print(f"Datos cargados: {len(df)} barras")
-    
-    # Calcular señales y labels
-    df, labels, features_list = calculate_signals_and_labels(df, args)
-    
-    count_buy = int(np.sum(labels == 1))
-    count_sell = int(np.sum(labels == 2))
-    count_hold = int(np.sum(labels == 0))
-    
+
+    # Acumular datos de todos los CSVs
+    X_all, y_all = [], []
+    features_list = None
+    total_buy, total_sell, total_hold = 0, 0, 0
+
+    for csv_path in csv_paths:
+        if not csv_path.exists():
+            print(f"[WARNING] Archivo no encontrado, omitiendo: {csv_path}")
+            continue
+
+        print(f"\n{'='*70}")
+        print(f"Procesando: {csv_path.name}")
+        print(f"{'='*70}")
+
+        df = pd.read_csv(csv_path)
+        print(f"Datos cargados: {len(df)} barras")
+
+        df, labels, features_list = calculate_signals_and_labels(df, args)
+
+        count_buy  = int(np.sum(labels == 1))
+        count_sell = int(np.sum(labels == 2))
+        count_hold = int(np.sum(labels == 0))
+
+        total_buy  += count_buy
+        total_sell += count_sell
+        total_hold += count_hold
+
+        print(f"  BUY  (1): {count_buy:6d} señales ({count_buy/len(df)*100:5.2f}%)")
+        print(f"  SELL (2): {count_sell:6d} señales ({count_sell/len(df)*100:5.2f}%)")
+        print(f"  HOLD (0): {count_hold:6d} señales ({count_hold/len(df)*100:5.2f}%)")
+
+        if count_buy < 5 or count_sell < 5:
+            print(f"  [WARNING] Muy pocas señales en {csv_path.name}, omitiendo del dataset")
+            continue
+
+        # Preparar ventanas para este CSV
+        X_vals = df[features_list].values
+        for i in range(args.window, len(df)):
+            X_all.append(X_vals[i - args.window:i].flatten())
+            y_all.append(labels[i])
+
+    # Resumen consolidado
     print(f"\n{'='*70}")
-    print(f"SEÑALES DETECTADAS:")
+    print(f"SEÑALES TOTALES CONSOLIDADAS:")
     print(f"{'='*70}")
-    print(f"  BUY  (1): {count_buy:6d} señales ({count_buy/len(df)*100:5.2f}%)")
-    print(f"  SELL (2): {count_sell:6d} señales ({count_sell/len(df)*100:5.2f}%)")
-    print(f"  HOLD (0): {count_hold:6d} señales ({count_hold/len(df)*100:5.2f}%)")
+    print(f"  BUY  (1): {total_buy:6d} señales")
+    print(f"  SELL (2): {total_sell:6d} señales")
+    print(f"  HOLD (0): {total_hold:6d} señales")
     print(f"{'='*70}\n")
-    
-    if count_buy < 10 or count_sell < 10:
-        print("ERROR: Muy pocas señales encontradas.")
+
+    if total_buy < 10 or total_sell < 10:
+        print("ERROR: Muy pocas señales encontradas en el conjunto total.")
         print("\nSugerencias:")
         print(f"  - Reduce --min_profit_points (actual: {args.min_profit_points})")
         print(f"  - Aumenta --future (actual: {args.future})")
         print(f"  - Reduce --adx_limit (actual: {args.adx_limit})")
         sys.exit(1)
-    
-    # Preparar ventanas
-    print(f"Preparando ventanas de {args.window} barras...")
-    X_vals = df[features_list].values
-    X, y = [], []
-    
-    for i in range(args.window, len(df)):
-        X.append(X_vals[i - args.window:i].flatten())
-        y.append(labels[i])
-    
-    X = np.array(X, dtype=np.float32)
-    y = np.array(y)
-    
+
+    X = np.array(X_all, dtype=np.float32)
+    y = np.array(y_all)
+
+    # Use a combined name for the output when multiple CSVs are provided
+    if len(csv_paths) > 1:
+        combined_stem = "_".join(p.stem for p in csv_paths[:3])
+        if len(csv_paths) > 3:
+            combined_stem += f"_and_{len(csv_paths)-3}_more"
+    else:
+        combined_stem = csv_paths[0].stem
+
+    csv_path = type('obj', (object,), {'stem': combined_stem})()  # lightweight stub for reuse below
+
     print(f"Dataset final: X shape = {X.shape}, y shape = {y.shape}")
     
     # Entrenamiento
@@ -312,6 +347,7 @@ def main():
     # Metadata
     meta = {
         "model_file": output_path.name,
+        "source_files": [str(p.name) for p in csv_paths],
         "version": "SGRADT 7.0",
         "strategy": "EMA 9 Cross",
         "timestamp": pd.Timestamp.now().isoformat(),
@@ -339,9 +375,9 @@ def main():
         "balanced_accuracy": float(model_search.best_score_),
         "best_params": model_search.best_params_,
         "signal_counts": {
-            "buy": count_buy,
-            "sell": count_sell,
-            "hold": count_hold
+            "buy": total_buy,
+            "sell": total_sell,
+            "hold": total_hold
         },
         
         "classes": {
