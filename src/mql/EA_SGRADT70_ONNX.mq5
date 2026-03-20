@@ -578,9 +578,9 @@ void UpdatePanel()
       panel += "   Signal: " + signal_text + "\n";
       
       panel += "   Confidence (Min: " + DoubleToString(InpMinConf * 100, 1) + ")\n";
-      panel += "   - HOLD:  " + DoubleToString(g_last_probas[0] * 100, 2) + "%\n";
-      panel += "   - BUY:   " + DoubleToString(g_last_probas[1] * 100, 2) + "%\n";
-      panel += "   - SELL:  " + DoubleToString(g_last_probas[2] * 100, 2) + "%\n";
+      panel += "   - H: " + DoubleToString(g_last_probas[0] * 100, 1) + "% | " + 
+               "B: " + DoubleToString(g_last_probas[1] * 100, 1) + "% | " + 
+               "S: " + DoubleToString(g_last_probas[2] * 100, 1) + "%\n";
       
    }
    else {
