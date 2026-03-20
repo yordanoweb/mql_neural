@@ -556,9 +556,9 @@ void ShowStatus()
    info += "--------------------------------\n";
    info += "RISK SETTINGS\n";
    info += "   Lot Size: " + DoubleToString(InpLot, 2) + "\n";
-   info += "   Stop Loss:   " + DoubleToString(InpStopPoints, 0) + " pts";
+   info += "   SL:   " + DoubleToString(InpStopPoints, 0);
    info += " (" + DoubleToString(InpStopPoints * pt, 5) + ")\n";
-   info += "   Take Profit: " + DoubleToString(InpTakePoints, 0) + " pts";
+   info += "   TP: " + DoubleToString(InpTakePoints, 0);
    info += " (" + DoubleToString(InpTakePoints * pt, 5) + ")\n";
    
    info += "--------------------------------\n";
