@@ -121,34 +121,34 @@ def calculate_features_and_labels(df, args):
         
         entry_price = df['close'].iloc[i]
         
-        # Buscar el mejor profit Y el peor loss en la ventana futura
-        max_profit = 0
-        max_loss = 0
+        # Buscar el MEJOR movimiento alcista y bajista en la ventana
+        max_up_move = 0    # Máximo que sube desde entry
+        max_down_move = 0  # Máximo que baja desde entry
         
         for j in range(i+1, min(i+args.future+1, len(df))):
             future_price = df['close'].iloc[j]
             
-            # Calcular profit/loss en puntos
-            profit = (future_price - entry_price) / entry_price * 10000
-            loss = (entry_price - future_price) / entry_price * 10000
+            # Calcular movimiento desde precio de entrada (en puntos)
+            price_change = (future_price - entry_price) / entry_price * 10000
             
-            if profit > max_profit:
-                max_profit = profit
-            if loss > max_loss:
-                max_loss = loss
+            # Trackear el mejor movimiento en cada dirección
+            if price_change > 0:  # Movimiento alcista
+                max_up_move = max(max_up_move, price_change)
+            else:  # Movimiento bajista
+                max_down_move = max(max_down_move, abs(price_change))
         
-        # Asignar label con validación de ratio profit/loss
-        # BUY: Si el máximo profit supera el threshold Y es mayor que el máximo loss
-        if (max_profit >= args.min_profit_points and 
-            max_profit > max_loss * args.min_profit_ratio):
+        # Asignar label solo si hay DIRECCIÓN DOMINANTE clara
+        # BUY: Si sube >= threshold Y sube mucho más de lo que baja
+        if (max_up_move >= args.min_profit_points and 
+            max_up_move >= max_down_move * args.min_profit_ratio):
             labels[i] = 1  # BUY signal
             
-        # SELL: Si el máximo loss supera el threshold Y es mayor que el máximo profit  
-        elif (max_loss >= args.min_profit_points and
-              max_loss > max_profit * args.min_profit_ratio):
+        # SELL: Si baja >= threshold Y baja mucho más de lo que sube  
+        elif (max_down_move >= args.min_profit_points and
+              max_down_move >= max_up_move * args.min_profit_ratio):
             labels[i] = 2  # SELL signal
             
-        # else: stays 0 (HOLD) - cuando no hay dirección clara o ambos lados son similares
+        # else: HOLD - movimiento bidireccional sin dirección clara
     
     return df, labels, features_list
 

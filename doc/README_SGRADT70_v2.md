@@ -416,39 +416,89 @@ El algoritmo dice: *"Si en las próximas 8 barras el precio se mueve 5 puntos en
 
 En mercados volátiles, esto pasa **casi siempre**, resultando en señales en el 80-90% de las barras.
 
-### ❌ Consecuencias
+### ❌ Consecuencias del Over-Labeling
 
 1. **Overtrading extremo** - El EA abrirá posición tras posición
 2. **Modelo sesgado** - Aprende que "siempre hay que estar en el mercado"
 3. **Costos de spread** - Con 1 pip de spread, harás ~83 trades por cada 100 barras
 4. **Pérdida garantizada** - Los costos de transacción destruyen la cuenta
 
-### ✅ Solución: Validación Balanceada
+### ⚠️ ERROR COMÚN: Calcular profit Y loss simultáneamente
 
-La **v2 corregida** usa esta lógica:
-
+**LÓGICA INCORRECTA (produce demasiadas señales):**
 ```python
-# Buscar el MEJOR profit y el PEOR loss en la ventana futura
+# ❌ MALO - Ambos pueden ser altos al mismo tiempo en mercados volátiles
 for j in range(i+1, i+future+1):
     profit = (future_price - entry_price) / entry_price * 10000
-    loss = (entry_price - future_price) / entry_price * 10000
+    loss = (entry_price - future_price) / entry_price * 10000  # ← Siempre inverso!
     
     max_profit = max(max_profit, profit)
     max_loss = max(max_loss, loss)
 
-# Validar dirección dominante
-if (max_profit >= min_profit_points and 
-    max_profit > max_loss * min_profit_ratio):  # Profit debe ser mayor que loss
-    labels[i] = 1  # BUY - dirección alcista clara
-    
-elif (max_loss >= min_profit_points and
-      max_loss > max_profit * min_profit_ratio):  # Loss debe ser mayor que profit
-    labels[i] = 2  # SELL - dirección bajista clara
-    
-# else: HOLD - no hay dirección clara o movimiento bidireccional
+# El problema: Si el precio sube 30 pts y luego baja 30 pts:
+# max_profit = 30, max_loss = 30 → Ambos cumplen threshold!
 ```
 
-**Clave:** Solo etiquetamos cuando hay **dirección dominante**, no cuando el precio oscila en ambas direcciones.
+**LÓGICA CORRECTA (direccional):**
+```python
+# ✅ BUENO - Trackear movimiento neto en cada dirección
+for j in range(i+1, i+future+1):
+    price_change = (future_price - entry_price) / entry_price * 10000
+    
+    if price_change > 0:  # Subió desde entry
+        max_up_move = max(max_up_move, price_change)
+    else:  # Bajó desde entry
+        max_down_move = max(max_down_move, abs(price_change))
+
+# Ahora validamos dirección dominante:
+# Solo BUY si max_up_move >> max_down_move (no ambos altos)
+```
+
+### ✅ Solución: Validación Direccional Correcta
+
+La **v2 corregida** usa esta lógica:
+
+```python
+# Trackear el MEJOR movimiento en CADA dirección (desde precio de entrada)
+max_up_move = 0     # Cuánto sube como máximo
+max_down_move = 0   # Cuánto baja como máximo
+
+for j in range(i+1, i+future+1):
+    price_change = (future_price - entry_price) / entry_price * 10000
+    
+    if price_change > 0:  # Precio subió
+        max_up_move = max(max_up_move, price_change)
+    else:  # Precio bajó
+        max_down_move = max(max_down_move, abs(price_change))
+
+# Validar que haya DIRECCIÓN DOMINANTE
+if (max_up_move >= min_profit_points and 
+    max_up_move >= max_down_move * min_profit_ratio):
+    labels[i] = 1  # BUY - Movimiento alcista claro
+    
+elif (max_down_move >= min_profit_points and
+      max_down_move >= max_up_move * min_profit_ratio):
+    labels[i] = 2  # SELL - Movimiento bajista claro
+    
+# else: HOLD - Sin dirección clara (oscilante)
+```
+
+**Ejemplo con ratio 2.0:**
+```
+Escenario 1: Sube 40 pts, baja 15 pts
+→ max_up_move = 40, max_down_move = 15
+→ 40 >= 15 * 2.0 (40 >= 30) ✅ → BUY
+
+Escenario 2: Sube 25 pts, baja 20 pts  
+→ max_up_move = 25, max_down_move = 20
+→ 25 >= 20 * 2.0 (25 >= 40) ❌ → HOLD (oscilante)
+
+Escenario 3: Sube 10 pts, baja 30 pts
+→ max_up_move = 10, max_down_move = 30  
+→ 30 >= 10 * 2.0 (30 >= 20) ✅ → SELL
+```
+
+**Clave:** Solo etiquetamos cuando la dirección dominante es **significativamente mayor** que la dirección opuesta.
 
 ### 🎯 Parámetros Recomendados para Balance Saludable
 
