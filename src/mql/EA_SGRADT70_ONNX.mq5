@@ -422,14 +422,18 @@ void RunInference()
 
    if(max_prob > 0)
      {
-      double adx_buf[], stoch_buf[], stochd_buf[];
-      int adx_count = CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
-      int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
-      int stochd_count = CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
-      PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
+      double adx_buf[], di_plus_buf[], di_minus_buf[], stoch_buf[], stochd_buf[];
+      CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
+      CopyBuffer(g_adx_handle, 1, 0, 1, di_plus_buf);
+      CopyBuffer(g_adx_handle, 2, 0, 1, di_minus_buf);
+      CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
+      CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
+      PrintFormat("Inference: %.2f (%s) | ADX: %.1f | DI+: %.1f | DI-: %.1f | Stoch: %.1f/%.1f",
                   max_prob,
-                  (max_prob == 1 ? "BUY" : "SELL"),
+                  (predicted_class == 1 ? "BUY" : predicted_class == 2 ? "SELL" : "HOLD"),
                   adx_buf[0],
+                  di_plus_buf[0],
+                  di_minus_buf[0],
                   stoch_buf[0],
                   stochd_buf[0]);
      }
@@ -490,54 +494,35 @@ bool PrepareInput(float &input_buffer[])
      }
    ArrayInitialize(input_buffer, 0.0);
 
-//--- Get price data
-   double open[], high[], low[], close[];
-   ArraySetAsSeries(open, true);
-   ArraySetAsSeries(high, true);
-   ArraySetAsSeries(low, true);
-   ArraySetAsSeries(close, true);
-
-   int copied;
-   copied = CopyOpen(_Symbol, _Period, 0, window, open);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyOpen failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyHigh(_Symbol, _Period, 0, window, high);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyHigh failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyLow(_Symbol, _Period, 0, window, low);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyLow failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyClose(_Symbol, _Period, 0, window, close);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyClose failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
 //--- Get indicator data
-   double adx_b[];
+   double adx_b[], di_plus_b[], di_minus_b[];
    double stoch_k_b[], stoch_d_b[];
 
    ArraySetAsSeries(adx_b, true);
+   ArraySetAsSeries(di_plus_b, true);
+   ArraySetAsSeries(di_minus_b, true);
    ArraySetAsSeries(stoch_k_b, true);
    ArraySetAsSeries(stoch_d_b, true);
 
+   int copied;
    copied = CopyBuffer(g_adx_handle, 0, 0, window, adx_b);
    if(copied != window)
      {
       Print("[ERROR] CopyBuffer ADX failed: expected ", window, ", got ", copied);
+      return false;
+     }
+
+   copied = CopyBuffer(g_adx_handle, 1, 0, window, di_plus_b);
+   if(copied != window)
+     {
+      Print("[ERROR] CopyBuffer DI+ failed: expected ", window, ", got ", copied);
+      return false;
+     }
+
+   copied = CopyBuffer(g_adx_handle, 2, 0, window, di_minus_b);
+   if(copied != window)
+     {
+      Print("[ERROR] CopyBuffer DI- failed: expected ", window, ", got ", copied);
       return false;
      }
 
@@ -555,16 +540,16 @@ bool PrepareInput(float &input_buffer[])
       return false;
      }
 
-//--- Fill buffer (Order: body, range, stoch_k, stoch_d, adx)
+//--- Fill buffer (Order: stoch_k, stoch_d, adx, di_plus, di_minus)
    for(int i = 0; i < window; i++)
      {
       int offset = i * InpFeaturesPerBar;
 
-      input_buffer[offset + 0] = (float)(close[i] - open[i]);     // body
-      input_buffer[offset + 1] = (float)(high[i] - low[i]);       // range
-      input_buffer[offset + 2] = (float)stoch_k_b[i];             // stoch_main
-      input_buffer[offset + 3] = (float)stoch_d_b[i];             // stoch_signal
-      input_buffer[offset + 4] = (float)adx_b[i];                 // adx
+      input_buffer[offset + 0] = (float)stoch_k_b[i];             // stoch_main
+      input_buffer[offset + 1] = (float)stoch_d_b[i];             // stoch_signal
+      input_buffer[offset + 2] = (float)adx_b[i];                 // adx
+      input_buffer[offset + 3] = (float)di_plus_b[i];             // di_plus
+      input_buffer[offset + 4] = (float)di_minus_b[i];            // di_minus
      }
 
    if(ArraySize(input_buffer) != total_size)
@@ -626,10 +611,12 @@ void UpdatePanel()
    panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n";
 
 //--- Indicators
-   double ema[], adx[], stoch_k[], stoch_d[];
+   double ema[], adx[], di_plus[], di_minus[], stoch_k[], stoch_d[];
 
    CopyBuffer(g_ema_handle, 0, 0, 1, ema);
    CopyBuffer(g_adx_handle, 0, 0, 1, adx);
+   CopyBuffer(g_adx_handle, 1, 0, 1, di_plus);
+   CopyBuffer(g_adx_handle, 2, 0, 1, di_minus);
    CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_k);
    CopyBuffer(g_stoch_handle, 1, 0, 1, stoch_d);
 
@@ -649,6 +636,10 @@ void UpdatePanel()
    panel += StringRepeat("-", 52) + "\n";
    panel += "   ADX: " + DoubleToString(adx[0], 2);
    panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n" : " [RANGING]\n";
+   panel += "   DI+: " + DoubleToString(di_plus[0], 2);
+   panel += (di_plus[0] > di_minus[0]) ? " [DOMINANT]\n" : "\n";
+   panel += "   DI-: " + DoubleToString(di_minus[0], 2);
+   panel += (di_minus[0] > di_plus[0]) ? " [DOMINANT]\n" : "\n";
 
    panel += StringRepeat("-", 52) + "\n";
    panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
@@ -746,7 +737,8 @@ void PrintConfiguration()
    Print("ADX: Period=", InpADXPeriod, ", Limit=", InpADXLimit);
 
    Print("\n=== STRATEGY ===");
-   Print("Entry: Open vs EMA + ADX + Stochastic");
+   Print("Entry: Open vs EMA + ADX/DI+/DI- + Stochastic");
+   Print("Features: stoch_k, stoch_d, adx, di_plus, di_minus");
    Print("Exit: Open crosses EMA in opposite direction");
 
    string mode = (InpInferSeconds == 0) ? "New bar only" : StringFormat("Every %d seconds", InpInferSeconds);

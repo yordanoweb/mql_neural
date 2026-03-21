@@ -1,7 +1,7 @@
 """
 SGRADT 7.0 - Training Script
 Estrategia simplificada con EMA 9 como pivote
-5 features: body, range, stoch_k, stoch_d, adx
+5 features: stoch_k, stoch_d, adx, di_plus, di_minus
 
 Entrada: Vela abre por encima/debajo de EMA 9 + confirmación ADX/Stoch
 Salida: Vela abre cruzando EMA 9 en dirección opuesta
@@ -73,14 +73,14 @@ def calculate_signals_and_labels(df, args):
     df['stoch_d'] = stoch.stoch_signal()
     
     # Crear features
-    df['feat_body'] = df['close'] - df['open']
-    df['feat_range'] = df['high'] - df['low']
     df['feat_stoch_main'] = df['stoch_k']
     df['feat_stoch_signal'] = df['stoch_d']
     df['feat_adx'] = df['adx']
+    df['feat_di_plus'] = df['pdi']
+    df['feat_di_minus'] = df['mdi']
     
     # Dropna
-    features_list = ['feat_body', 'feat_range', 'feat_stoch_main', 'feat_stoch_signal', 'feat_adx']
+    features_list = ['feat_stoch_main', 'feat_stoch_signal', 'feat_adx', 'feat_di_plus', 'feat_di_minus']
     df = df.dropna(subset=features_list + ['ema9']).reset_index(drop=True)
     
     print(f"Datos válidos después de NaN: {len(df)} barras")
@@ -403,7 +403,7 @@ def main():
     print(f"\n  Estrategia:")
     print(f"    - Entry: Open vs EMA 9 + ADX + Stochastic")
     print(f"    - Exit: Open cruza EMA 9 en direccion opuesta")
-    print(f"    - Features: 5 (body, range, stoch_k, stoch_d, adx)")
+    print(f"    - Features: 5 (stoch_k, stoch_d, adx, di_plus, di_minus)")
     print(f"{'='*70}\n")
     print("PROCESO COMPLETADO CON EXITO\n")
 
