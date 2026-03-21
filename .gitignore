@@ -98,3 +98,4 @@ passwords.txt
 
 data/
 onnx/
+csv/**

@@ -10,7 +10,6 @@ Salida: Vela abre cruzando EMA 9 en dirección opuesta
 import pandas as pd
 import numpy as np
 import argparse
-import sys
 import json
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
@@ -249,7 +248,7 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
 
     output_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.onnx"
     with open(output_path, "wb") as f:
-        f.write(onx.SerializeToString())
+        f.write(onx.SerializeToString()) # pyright: ignore
 
     # Metadata
     meta = {
@@ -305,12 +304,12 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
     print(f"{'='*70}")
     print(f"  Input shape: [1, {num_inputs}]")
     print(f"  Features: {num_features_per_bar} x {args.window} barras")
-    print(f"  Output: 3 clases (HOLD=0, BUY=1, SELL=2)")
+    print("  Output: 3 clases (HOLD=0, BUY=1, SELL=2)")
     print(f"  Accuracy: {model_search.best_score_:.4f}")
-    print(f"\n  Estrategia:")
-    print(f"    - Entry: Open vs EMA 9 + ADX + Stochastic")
-    print(f"    - Exit: Open cruza EMA 9 en direccion opuesta")
-    print(f"    - Features: 5 (stoch_k, stoch_d, adx, di_plus, di_minus)")
+    print("\n  Estrategia:")
+    print("    - Entry: Open vs EMA 9 + ADX + Stochastic")
+    print("    - Exit: Open cruza EMA 9 en direccion opuesta")
+    print("    - Features: 5 (stoch_k, stoch_d, adx, di_plus, di_minus)")
     print(f"{'='*70}\n")
 
 
@@ -321,15 +320,15 @@ def main():
     parser.add_argument('--csv', type=str, nargs='+', required=True,
                        help='Uno o más archivos CSV con datos OHLC')
     parser.add_argument('--output', type=str, default='./onnx',
-                       help='Directorio de salida')
+                       help='Directorio de salida (default: ./onnx)')
     parser.add_argument('--window', type=int, default=20,
-                       help='Ventana de lookback para features')
+                       help='Ventana de lookback para features (default: 20)')
 
     # Parametros de validacion
     parser.add_argument('--min_profit_points', type=float, default=20.0,
-                       help='Puntos minimos de ganancia para validar señal')
+                       help='Puntos minimos de ganancia para validar señal (default: 20)')
     parser.add_argument('--future', type=int, default=50,
-                       help='Barras futuras maximas para buscar exit')
+                       help='Barras futuras maximas para buscar exit (default: 50)')
 
     # EMA parameters
     parser.add_argument('--ema_period', type=int, default=9,
@@ -337,23 +336,23 @@ def main():
 
     # Stochastic parameters
     parser.add_argument('--stoch_k', type=int, default=7,
-                       help='Stochastic K period')
+                       help='Stochastic K period (default: 7)')
     parser.add_argument('--stoch_d', type=int, default=3,
-                       help='Stochastic D period')
+                       help='Stochastic D period (default: 3)')
     parser.add_argument('--stoch_oversold', type=float, default=20.0,
-                       help='Nivel de sobreventa')
+                       help='Nivel de sobreventa (default: 20)')
     parser.add_argument('--stoch_overbought', type=float, default=80.0,
-                       help='Nivel de sobrecompra')
+                       help='Nivel de sobrecompra (default: 80)')
 
     # ADX parameters
     parser.add_argument('--adx_period', type=int, default=8,
-                       help='ADX period')
+                       help='ADX period (default: 8)')
     parser.add_argument('--adx_limit', type=float, default=25.0,
-                       help='ADX threshold para confirmar tendencia')
+                       help='ADX threshold para confirmar tendencia (default: 25)')
 
     # Training parameters
     parser.add_argument('--n_iter', type=int, default=7,
-                       help='Iteraciones para RandomizedSearchCV')
+                       help='Iteraciones para RandomizedSearchCV (default: 7)')
 
     args = parser.parse_args()
 
@@ -363,7 +362,7 @@ def main():
     csv_paths = [Path(p) for p in args.csv]
 
     print(f"\n{'='*70}")
-    print(f"SGRADT 7.0 - EMA 9 Strategy (5 Features)")
+    print("SGRADT 7.0 - EMA 9 Strategy (5 Features)")
     print(f"{'='*70}")
     print(f"Archivos a procesar: {len(csv_paths)}")
     for p in csv_paths:
@@ -399,7 +398,7 @@ def main():
 
     # Resumen global
     print(f"\n{'='*70}")
-    print(f"PROCESO COMPLETADO")
+    print("PROCESO COMPLETADO")
     print(f"{'='*70}")
     print(f"  Completados ({len(completed)}): {', '.join(completed) if completed else 'ninguno'}")
     print(f"  Omitidos    ({len(skipped)}):   {', '.join(skipped) if skipped else 'ninguno'}")
