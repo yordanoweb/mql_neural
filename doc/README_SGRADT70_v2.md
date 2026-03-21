@@ -423,24 +423,32 @@ En mercados volátiles, esto pasa **casi siempre**, resultando en señales en el
 3. **Costos de spread** - Con 1 pip de spread, harás ~83 trades por cada 100 barras
 4. **Pérdida garantizada** - Los costos de transacción destruyen la cuenta
 
-### ✅ Solución: Validación Estricta
+### ✅ Solución: Validación Balanceada
 
-La **v2 corregida** ahora incluye 3 validaciones:
+La **v2 corregida** usa esta lógica:
 
 ```python
-# 1. Profit/Loss al FINAL del periodo (no máximo intraperiodo)
-exit_price = df['close'].iloc[i + args.future]
-profit_points = (exit_price - entry_price) / entry_price * 10000
+# Buscar el MEJOR profit y el PEOR loss en la ventana futura
+for j in range(i+1, i+future+1):
+    profit = (future_price - entry_price) / entry_price * 10000
+    loss = (entry_price - future_price) / entry_price * 10000
+    
+    max_profit = max(max_profit, profit)
+    max_loss = max(max_loss, loss)
 
-# 2. Verificar movimiento adverso máximo
-max_adverse = max(drawdown durante el periodo)
-
-# 3. Profit debe superar AMBOS:
-if (profit_points >= args.min_profit_points and      # Umbral mínimo
-    profit_points > max_adverse and                  # Mayor que drawdown
-    profit_points > loss_points * args.min_profit_ratio):  # Mayor que movimiento opuesto
-    labels[i] = 1  # BUY
+# Validar dirección dominante
+if (max_profit >= min_profit_points and 
+    max_profit > max_loss * min_profit_ratio):  # Profit debe ser mayor que loss
+    labels[i] = 1  # BUY - dirección alcista clara
+    
+elif (max_loss >= min_profit_points and
+      max_loss > max_profit * min_profit_ratio):  # Loss debe ser mayor que profit
+    labels[i] = 2  # SELL - dirección bajista clara
+    
+# else: HOLD - no hay dirección clara o movimiento bidireccional
 ```
+
+**Clave:** Solo etiquetamos cuando hay **dirección dominante**, no cuando el precio oscila en ambas direcciones.
 
 ### 🎯 Parámetros Recomendados para Balance Saludable
 
@@ -448,61 +456,75 @@ if (profit_points >= args.min_profit_points and      # Umbral mínimo
 ```bash
 python train_sgradt70_strategy_v2.py \
     --csv data.csv \
-    --min_profit_points 15 \      # Mínimo 15 puntos de profit
-    --future 30 \                  # Ventana de 2.5 horas
-    --min_profit_ratio 2.0 \       # Profit debe ser 2x el loss potencial
+    --min_profit_points 10 \       # Mínimo 10 puntos de profit
+    --future 20 \                  # Ventana de ~2 horas
+    --min_profit_ratio 1.3 \       # Profit debe ser 1.3x el loss
     --window 20
 ```
 
 **Resultado esperado:** 
 ```
-BUY  (1):  2,500 señales (10-15%)
-SELL (2):  2,300 señales (10-15%)  
-HOLD (0): 50,000 señales (70-80%)  ← ¡Esto es SALUDABLE!
+BUY  (1):  5,000-8,000 señales (15-25%)
+SELL (2):  4,800-7,500 señales (15-25%)  
+HOLD (0): 50,000-55,000 señales (50-70%)  ← Balance saludable
 ```
 
 **Para M15 (15 minutos):**
 ```bash
---min_profit_points 25 \
---future 40 \
---min_profit_ratio 2.0
+--min_profit_points 15 \
+--future 30 \
+--min_profit_ratio 1.4
 ```
 
 **Para H1 (1 hora):**
 ```bash
---min_profit_points 50 \
---future 50 \
---min_profit_ratio 2.5
+--min_profit_points 30 \
+--future 40 \
+--min_profit_ratio 1.5
+```
+
+### 📊 Ajuste Dinámico Según Resultados
+
+**Si obtienes 0% señales o muy pocas (< 5%):**
+```bash
+# Opción 1: Reducir threshold de profit
+--min_profit_points 8  # Reducir de 10 a 8
+
+# Opción 2: Reducir ratio requerido
+--min_profit_ratio 1.1  # Reducir de 1.3 a 1.1
+
+# Opción 3: Aumentar ventana de búsqueda
+--future 30  # Aumentar de 20 a 30
+```
+
+**Si obtienes > 40% señales (demasiadas):**
+```bash
+# Opción 1: Aumentar threshold
+--min_profit_points 15  # Aumentar de 10 a 15
+
+# Opción 2: Aumentar ratio
+--min_profit_ratio 1.5  # Aumentar de 1.3 a 1.5
+
+# Opción 3: Reducir ventana
+--future 15  # Reducir de 20 a 15
 ```
 
 ### 📊 Guía de Distribución de Señales
 
 | % HOLD | % BUY+SELL | Diagnóstico | Acción |
 |--------|------------|-------------|--------|
-| 70-85% | 15-30% | ✅ **SALUDABLE** | Perfecto, continuar |
-| 50-70% | 30-50% | ⚠️ **PERMISIVO** | Aumentar min_profit_points o min_profit_ratio |
-| 30-50% | 50-70% | 🚨 **OVER-LABELING** | Aumentar drásticamente validaciones |
-| < 30% | > 70% | 💀 **CRÍTICO** | Modelo inútil, reconfigurar completamente |
-
-### 🔧 Ajuste Fino
-
-Si tienes muy pocas señales (< 10 BUY o < 10 SELL):
-
-1. **Reduce `--min_profit_points`** (de 20 a 15)
-2. **Reduce `--min_profit_ratio`** (de 2.0 a 1.5)
-3. **Aumenta `--future`** (de 30 a 50)
-
-Si tienes demasiadas señales (> 30% total):
-
-1. **Aumenta `--min_profit_points`** (de 15 a 25)
-2. **Aumenta `--min_profit_ratio`** (de 1.5 a 2.5)
-3. **Reduce `--future`** (valida en ventana más corta pero con profit mayor)
+| 50-70% | 30-50% | ✅ **ÓPTIMO** | Balance perfecto para trading activo |
+| 70-85% | 15-30% | ✅ **CONSERVADOR** | Bueno para trading selectivo |
+| 40-50% | 50-60% | ⚠️ **ACTIVO** | Verificar que no sea overtrading |
+| 85-95% | 5-15% | ⚠️ **MUY SELECTIVO** | Pocas oportunidades, pero alta calidad |
+| < 40% | > 60% | 🚨 **OVER-LABELING** | Aumentar min_profit_ratio |
+| > 95% | < 5% | 🚨 **SUB-LABELING** | Reducir thresholds |
 
 ### 💡 Regla de Oro
 
-> **"Si tu modelo predice señal en más del 30% de las barras, NO es un buen modelo de trading, es un generador de ruido"**
+> **"Un buen modelo de trading encuentra dirección clara en 20-40% de las barras. Si predice señal en > 60% o < 5%, algo está mal"**
 
-Un buen sistema de trading debería estar **la mayoría del tiempo en HOLD**, esperando las mejores oportunidades.
+El objetivo es capturar movimientos direccionales genuinos, no ruido del mercado.
 
 ---
 
