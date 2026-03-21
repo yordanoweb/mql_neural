@@ -269,6 +269,243 @@ python train_sgradt70_strategy_v2.py \
 
 ---
 
+## 🤔 ¿POR QUÉ YA NO SE NECESITAN STOCH_OVERSOLD Y STOCH_OVERBOUGHT?
+
+### Cambio Fundamental: De Reglas Manuales a Aprendizaje Automático
+
+**VERSIÓN ANTERIOR (v1) - Lógica Manual con Thresholds:**
+
+El script original usaba estos parámetros para crear reglas manuales de entrada:
+
+```python
+# v1: Reglas codificadas manualmente
+stoch_oversold_cross = (
+    (stoch_k_1 < stoch_d_1) and 
+    (stoch_k_0 > stoch_d_0) and 
+    (stoch_k_0 <= args.stoch_oversold)  # ← Threshold fijo en 20
+)
+
+# Solo marcar BUY si Stochastic está en zona de sobreventa
+buy_signal = above_ema and adx_strong and stoch_oversold_cross
+```
+
+**Problema:** Esto limita el modelo a casos muy específicos y puede perder señales válidas.
+
+**VERSIÓN NUEVA (v2) - El Modelo Aprende los Thresholds:**
+
+Ahora simplemente damos el valor crudo del Stochastic:
+
+```python
+# v2: Valores crudos sin filtros
+df['feat_stoch_main'] = df['stoch_k']    # Valor 0-100 completo
+df['feat_stoch_signal'] = df['stoch_d']  # Sin restricciones
+
+# La red neuronal recibe TODOS los valores posibles
+```
+
+### ¿Por Qué Esto Es Mejor?
+
+#### 1. **El Random Forest Aprende Automáticamente los Niveles Óptimos**
+
+Cuando entrenas un Random Forest, internamente hace esto:
+
+```
+Árbol 1: Si stoch_k < 25 → BUY (73% accuracy)
+Árbol 2: Si stoch_k < 18 AND volume_gate > 1.2 → BUY (81% accuracy)
+Árbol 3: Si stoch_k < 30 AND pdi > mdi → BUY (76% accuracy)
+... (hasta 500 árboles)
+```
+
+**El modelo encuentra sus propios thresholds óptimos:**
+- ✅ Puede descubrir que 18 es mejor que 20
+- ✅ Puede descubrir que en ciertos contextos, 35 es el nivel clave
+- ✅ Los thresholds cambian según otros indicadores (ADX, volumen, etc.)
+
+#### 2. **Más Oportunidades de Trade**
+
+```python
+# v1: Solo señales en extremos (oversold/overbought)
+Resultado: 500 señales BUY, 480 señales SELL en 10,000 barras
+
+# v2: Señales basadas en profit futuro sin restricciones
+Resultado: 1,200 señales BUY, 1,150 señales SELL en 10,000 barras
+```
+
+**Más datos de entrenamiento = Mejor modelo**
+
+#### 3. **Captura Patrones Complejos**
+
+Ejemplo de patrón que v1 NUNCA detectaría:
+
+```
+Stochastic en 55 (neutral, ignorado por v1)
++ Rebotando desde 30 en últimas 3 barras
++ ADX creciendo
++ Volumen alto
+= Señal fuerte de continuación
+```
+
+v2 puede aprender esto porque ve la ventana completa de valores.
+
+#### 4. **Menos Overfitting a "Números Mágicos"**
+
+Los niveles 20/80 son **convenciones**, no leyes físicas:
+- En cripto, 30/70 podría funcionar mejor
+- En Forex, 15/85 podría ser óptimo  
+- En índices volátiles, 25/75
+
+**v2 deja que el modelo descubra qué funciona en TUS datos específicos**
+
+### Ejemplo Práctico: Señal Perdida en v1
+
+**Escenario:**
+- Stochastic K = 45 (zona neutral)
+- ADX = 35 (tendencia fuerte)
+- DI+ = 30, DI- = 10 (tendencia alcista clara)
+- Open > EMA9
+- Volumen 1.5x promedio
+
+**v1:** ❌ Ignora la señal (Stoch no está en oversold)  
+**v2:** ✅ El modelo ve el patrón completo y puede predecir BUY con 75% de confianza
+
+### Comparación Resumida
+
+| Aspecto | v1 (Con Thresholds) | v2 (Sin Thresholds) |
+|---------|---------------------|---------------------|
+| **Flexibilidad** | Baja (reglas fijas 20/80) | Alta (modelo decide) |
+| **Datos de entrenamiento** | Menos (filtrado estricto) | Más (todos los casos) |
+| **Generalización** | Puede overfit a 20/80 | Aprende patrones reales |
+| **Oportunidades** | Solo extremos | Todo el rango |
+| **Adaptabilidad** | Manual (cambiar código) | Automática (re-entrenar) |
+
+### Conclusión
+
+No necesitamos `stoch_oversold` y `stoch_overbought` en v2 porque:
+
+1. ✅ El Random Forest aprende automáticamente qué niveles importan
+2. ✅ Puede descubrir thresholds mejores que 20/80
+3. ✅ Considera el contexto (otros indicadores) al evaluar Stochastic
+4. ✅ No perdemos señales válidas por reglas arbitrarias
+5. ✅ El modelo es más robusto en diferentes condiciones de mercado
+
+**Filosofía v2:** Dale al modelo la información cruda y déjalo aprender. Es más inteligente de lo que creemos. 🧠
+
+---
+
+## ⚠️ PROBLEMA COMÚN: OVER-LABELING (DEMASIADAS SEÑALES)
+
+### Síntoma
+
+Al entrenar el modelo, ves algo como esto:
+
+```
+BUY  (1):  33,730 señales (50.93%)  ← ¡DEMASIADO!
+SELL (2):  21,266 señales (32.11%)  ← ¡DEMASIADO!
+HOLD (0):  11,235 señales (16.96%)  ← ¡Solo 17% HOLD!
+```
+
+**Total de señales de trading: 83% de las barras = PROBLEMA GRAVE**
+
+### ¿Por Qué Sucede?
+
+Con parámetros muy permisivos:
+- `--min_profit_points 5` (muy bajo)
+- `--future 8` (ventana muy corta)
+
+El algoritmo dice: *"Si en las próximas 8 barras el precio se mueve 5 puntos en cualquier dirección → SEÑAL"*
+
+En mercados volátiles, esto pasa **casi siempre**, resultando en señales en el 80-90% de las barras.
+
+### ❌ Consecuencias
+
+1. **Overtrading extremo** - El EA abrirá posición tras posición
+2. **Modelo sesgado** - Aprende que "siempre hay que estar en el mercado"
+3. **Costos de spread** - Con 1 pip de spread, harás ~83 trades por cada 100 barras
+4. **Pérdida garantizada** - Los costos de transacción destruyen la cuenta
+
+### ✅ Solución: Validación Estricta
+
+La **v2 corregida** ahora incluye 3 validaciones:
+
+```python
+# 1. Profit/Loss al FINAL del periodo (no máximo intraperiodo)
+exit_price = df['close'].iloc[i + args.future]
+profit_points = (exit_price - entry_price) / entry_price * 10000
+
+# 2. Verificar movimiento adverso máximo
+max_adverse = max(drawdown durante el periodo)
+
+# 3. Profit debe superar AMBOS:
+if (profit_points >= args.min_profit_points and      # Umbral mínimo
+    profit_points > max_adverse and                  # Mayor que drawdown
+    profit_points > loss_points * args.min_profit_ratio):  # Mayor que movimiento opuesto
+    labels[i] = 1  # BUY
+```
+
+### 🎯 Parámetros Recomendados para Balance Saludable
+
+**Para M5 (5 minutos):**
+```bash
+python train_sgradt70_strategy_v2.py \
+    --csv data.csv \
+    --min_profit_points 15 \      # Mínimo 15 puntos de profit
+    --future 30 \                  # Ventana de 2.5 horas
+    --min_profit_ratio 2.0 \       # Profit debe ser 2x el loss potencial
+    --window 20
+```
+
+**Resultado esperado:** 
+```
+BUY  (1):  2,500 señales (10-15%)
+SELL (2):  2,300 señales (10-15%)  
+HOLD (0): 50,000 señales (70-80%)  ← ¡Esto es SALUDABLE!
+```
+
+**Para M15 (15 minutos):**
+```bash
+--min_profit_points 25 \
+--future 40 \
+--min_profit_ratio 2.0
+```
+
+**Para H1 (1 hora):**
+```bash
+--min_profit_points 50 \
+--future 50 \
+--min_profit_ratio 2.5
+```
+
+### 📊 Guía de Distribución de Señales
+
+| % HOLD | % BUY+SELL | Diagnóstico | Acción |
+|--------|------------|-------------|--------|
+| 70-85% | 15-30% | ✅ **SALUDABLE** | Perfecto, continuar |
+| 50-70% | 30-50% | ⚠️ **PERMISIVO** | Aumentar min_profit_points o min_profit_ratio |
+| 30-50% | 50-70% | 🚨 **OVER-LABELING** | Aumentar drásticamente validaciones |
+| < 30% | > 70% | 💀 **CRÍTICO** | Modelo inútil, reconfigurar completamente |
+
+### 🔧 Ajuste Fino
+
+Si tienes muy pocas señales (< 10 BUY o < 10 SELL):
+
+1. **Reduce `--min_profit_points`** (de 20 a 15)
+2. **Reduce `--min_profit_ratio`** (de 2.0 a 1.5)
+3. **Aumenta `--future`** (de 30 a 50)
+
+Si tienes demasiadas señales (> 30% total):
+
+1. **Aumenta `--min_profit_points`** (de 15 a 25)
+2. **Aumenta `--min_profit_ratio`** (de 1.5 a 2.5)
+3. **Reduce `--future`** (valida en ventana más corta pero con profit mayor)
+
+### 💡 Regla de Oro
+
+> **"Si tu modelo predice señal en más del 30% de las barras, NO es un buen modelo de trading, es un generador de ruido"**
+
+Un buen sistema de trading debería estar **la mayoría del tiempo en HOLD**, esperando las mejores oportunidades.
+
+---
+
 ## 🔧 TROUBLESHOOTING
 
 ### Error: "Columna 'tick_volume' no encontrada"

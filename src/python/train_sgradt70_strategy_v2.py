@@ -121,28 +121,41 @@ def calculate_features_and_labels(df, args):
         
         entry_price = df['close'].iloc[i]
         
-        # Buscar el mejor profit/loss en la ventana futura
-        max_profit = 0
-        max_loss = 0
+        # Buscar profit/loss al FINAL de la ventana (no el máximo intraperiodo)
+        future_idx = min(i + args.future, len(df) - 1)
+        exit_price = df['close'].iloc[future_idx]
         
-        for j in range(i+1, min(i+args.future+1, len(df))):
-            future_price = df['close'].iloc[j]
-            
-            # Calcular profit en puntos
-            profit_points = (future_price - entry_price) / entry_price * 10000
-            loss_points = (entry_price - future_price) / entry_price * 10000
-            
-            if profit_points > max_profit:
-                max_profit = profit_points
-            if loss_points > max_loss:
-                max_loss = loss_points
+        # Calcular profit neto al final del periodo
+        profit_points = (exit_price - entry_price) / entry_price * 10000
+        loss_points = (entry_price - exit_price) / entry_price * 10000
         
-        # Asignar label basado en el mejor movimiento
-        if max_profit >= args.min_profit_points:
+        # VALIDACIÓN ADICIONAL: Ratio profit/loss debe ser favorable
+        # Buscar máximo movimiento adverso (drawdown)
+        max_adverse = 0
+        for j in range(i+1, future_idx+1):
+            mid_price = df['close'].iloc[j]
+            
+            # Para BUY: cuánto bajó en el camino
+            adverse_down = (entry_price - mid_price) / entry_price * 10000
+            # Para SELL: cuánto subió en el camino  
+            adverse_up = (mid_price - entry_price) / entry_price * 10000
+            
+            max_adverse = max(max_adverse, adverse_down, adverse_up)
+        
+        # Asignar label con validaciones estrictas
+        # BUY: Profit >= threshold Y profit > adverse movement
+        if (profit_points >= args.min_profit_points and 
+            profit_points > max_adverse and
+            profit_points > loss_points * args.min_profit_ratio):  # Profit debe ser X veces mayor que posible loss
             labels[i] = 1  # BUY signal
-        elif max_loss >= args.min_profit_points:
+            
+        # SELL: Loss >= threshold Y loss > adverse movement  
+        elif (loss_points >= args.min_profit_points and
+              loss_points > max_adverse and  
+              loss_points > profit_points * args.min_profit_ratio):  # Loss debe ser X veces mayor que posible profit
             labels[i] = 2  # SELL signal
-        # else: stays 0 (HOLD)
+            
+        # else: stays 0 (HOLD) - cuando no hay dirección clara
     
     return df, labels, features_list
 
@@ -263,6 +276,8 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
         "validation": {
             "min_profit_points": args.min_profit_points,
             "future_window": args.future,
+            "min_profit_ratio": args.min_profit_ratio,
+            "validation_method": "end_of_period_with_adverse_check"
         },
 
         "ema_period": args.ema_period,
@@ -329,6 +344,8 @@ def main():
                        help='Puntos minimos de ganancia para validar señal (default: 20)')
     parser.add_argument('--future', type=int, default=50,
                        help='Barras futuras maximas para buscar profit (default: 50)')
+    parser.add_argument('--min_profit_ratio', type=float, default=1.5,
+                       help='Ratio minimo profit/adverse movement (default: 1.5)')
 
     # EMA parameters
     parser.add_argument('--ema_period', type=int, default=9,
