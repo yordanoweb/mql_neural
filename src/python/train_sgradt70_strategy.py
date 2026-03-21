@@ -1,7 +1,7 @@
 """
 SGRADT 7.0 - Training Script
 Estrategia simplificada con EMA 9 como pivote
-5 features: stoch_k, stoch_d, adx, di_plus, di_minus
+5 features: body, range, stoch_k, stoch_d, adx
 
 Entrada: Vela abre por encima/debajo de EMA 9 + confirmación ADX/Stoch
 Salida: Vela abre cruzando EMA 9 en dirección opuesta
@@ -73,14 +73,14 @@ def calculate_signals_and_labels(df, args):
     df['stoch_d'] = stoch.stoch_signal()
     
     # Crear features
+    df['feat_body'] = df['close'] - df['open']
+    df['feat_range'] = df['high'] - df['low']
     df['feat_stoch_main'] = df['stoch_k']
     df['feat_stoch_signal'] = df['stoch_d']
     df['feat_adx'] = df['adx']
-    df['feat_di_plus'] = df['pdi']
-    df['feat_di_minus'] = df['mdi']
     
     # Dropna
-    features_list = ['feat_stoch_main', 'feat_stoch_signal', 'feat_adx', 'feat_di_plus', 'feat_di_minus']
+    features_list = ['feat_body', 'feat_range', 'feat_stoch_main', 'feat_stoch_signal', 'feat_adx']
     df = df.dropna(subset=features_list + ['ema9']).reset_index(drop=True)
     
     print(f"Datos válidos después de NaN: {len(df)} barras")
@@ -160,143 +160,50 @@ def calculate_signals_and_labels(df, args):
     return df, labels, features_list
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='SGRADT 7.0 - Estrategia EMA 9 con 5 features'
-    )
-    parser.add_argument('--csv', type=str, nargs='+', required=True,
-                       help='Uno o más archivos CSV con datos OHLC')
-    parser.add_argument('--output', type=str, default='./onnx',
-                       help='Directorio de salida')
-    parser.add_argument('--window', type=int, default=20,
-                       help='Ventana de lookback para features')
-    
-    # Parametros de validacion
-    parser.add_argument('--min_profit_points', type=float, default=20.0,
-                       help='Puntos minimos de ganancia para validar señal')
-    parser.add_argument('--future', type=int, default=50,
-                       help='Barras futuras maximas para buscar exit')
-    
-    # EMA parameters
-    parser.add_argument('--ema_period', type=int, default=9,
-                       help='EMA period (default: 9)')
-    
-    # Stochastic parameters
-    parser.add_argument('--stoch_k', type=int, default=7,
-                       help='Stochastic K period')
-    parser.add_argument('--stoch_d', type=int, default=3,
-                       help='Stochastic D period')
-    parser.add_argument('--stoch_oversold', type=float, default=20.0,
-                       help='Nivel de sobreventa')
-    parser.add_argument('--stoch_overbought', type=float, default=80.0,
-                       help='Nivel de sobrecompra')
-    
-    # ADX parameters
-    parser.add_argument('--adx_period', type=int, default=8,
-                       help='ADX period')
-    parser.add_argument('--adx_limit', type=float, default=25.0,
-                       help='ADX threshold para confirmar tendencia')
-    
-    # Training parameters
-    parser.add_argument('--n_iter', type=int, default=7,
-                       help='Iteraciones para RandomizedSearchCV')
-    
-    args = parser.parse_args()
-    
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    csv_paths = [Path(p) for p in args.csv]
+def train_and_export(csv_path, df, labels, features_list, args, output_dir):
+    """
+    Trains a Random Forest on the given dataset and exports it as ONNX.
+    Called once per CSV file.
+    """
+    count_buy  = int(np.sum(labels == 1))
+    count_sell = int(np.sum(labels == 2))
+    count_hold = int(np.sum(labels == 0))
 
     print(f"\n{'='*70}")
-    print(f"SGRADT 7.0 - EMA 9 Strategy (5 Features)")
+    print(f"SEÑALES DETECTADAS: {csv_path.name}")
     print(f"{'='*70}")
-    print(f"Archivos recibidos: {len(csv_paths)}")
-    for p in csv_paths:
-        print(f"  - {p.name}")
+    print(f"  BUY  (1): {count_buy:6d} señales ({count_buy/len(df)*100:5.2f}%)")
+    print(f"  SELL (2): {count_sell:6d} señales ({count_sell/len(df)*100:5.2f}%)")
+    print(f"  HOLD (0): {count_hold:6d} señales ({count_hold/len(df)*100:5.2f}%)")
     print(f"{'='*70}\n")
 
-    # Acumular datos de todos los CSVs
-    X_all, y_all = [], []
-    features_list = None
-    total_buy, total_sell, total_hold = 0, 0, 0
+    if count_buy < 10 or count_sell < 10:
+        print(f"  [SKIPPED] Muy pocas señales en {csv_path.name} — omitiendo entrenamiento.")
+        print(f"  Sugerencias:")
+        print(f"    - Reduce --min_profit_points (actual: {args.min_profit_points})")
+        print(f"    - Aumenta --future (actual: {args.future})")
+        print(f"    - Reduce --adx_limit (actual: {args.adx_limit})")
+        return
 
-    for csv_path in csv_paths:
-        if not csv_path.exists():
-            print(f"[WARNING] Archivo no encontrado, omitiendo: {csv_path}")
-            continue
+    # Preparar ventanas
+    print(f"Preparando ventanas de {args.window} barras...")
+    X_vals = df[features_list].values
+    X, y = [], []
+    for i in range(args.window, len(df)):
+        X.append(X_vals[i - args.window:i].flatten())
+        y.append(labels[i])
 
-        print(f"\n{'='*70}")
-        print(f"Procesando: {csv_path.name}")
-        print(f"{'='*70}")
+    X = np.array(X, dtype=np.float32)
+    y = np.array(y)
+    print(f"Dataset: X shape = {X.shape}, y shape = {y.shape}")
 
-        df = pd.read_csv(csv_path)
-        print(f"Datos cargados: {len(df)} barras")
-
-        df, labels, features_list = calculate_signals_and_labels(df, args)
-
-        count_buy  = int(np.sum(labels == 1))
-        count_sell = int(np.sum(labels == 2))
-        count_hold = int(np.sum(labels == 0))
-
-        total_buy  += count_buy
-        total_sell += count_sell
-        total_hold += count_hold
-
-        print(f"  BUY  (1): {count_buy:6d} señales ({count_buy/len(df)*100:5.2f}%)")
-        print(f"  SELL (2): {count_sell:6d} señales ({count_sell/len(df)*100:5.2f}%)")
-        print(f"  HOLD (0): {count_hold:6d} señales ({count_hold/len(df)*100:5.2f}%)")
-
-        if count_buy < 5 or count_sell < 5:
-            print(f"  [WARNING] Muy pocas señales en {csv_path.name}, omitiendo del dataset")
-            continue
-
-        # Preparar ventanas para este CSV
-        X_vals = df[features_list].values
-        for i in range(args.window, len(df)):
-            X_all.append(X_vals[i - args.window:i].flatten())
-            y_all.append(labels[i])
-
-    # Resumen consolidado
-    print(f"\n{'='*70}")
-    print(f"SEÑALES TOTALES CONSOLIDADAS:")
-    print(f"{'='*70}")
-    print(f"  BUY  (1): {total_buy:6d} señales")
-    print(f"  SELL (2): {total_sell:6d} señales")
-    print(f"  HOLD (0): {total_hold:6d} señales")
-    print(f"{'='*70}\n")
-
-    if total_buy < 10 or total_sell < 10:
-        print("ERROR: Muy pocas señales encontradas en el conjunto total.")
-        print("\nSugerencias:")
-        print(f"  - Reduce --min_profit_points (actual: {args.min_profit_points})")
-        print(f"  - Aumenta --future (actual: {args.future})")
-        print(f"  - Reduce --adx_limit (actual: {args.adx_limit})")
-        sys.exit(1)
-
-    X = np.array(X_all, dtype=np.float32)
-    y = np.array(y_all)
-
-    # Use a combined name for the output when multiple CSVs are provided
-    if len(csv_paths) > 1:
-        combined_stem = "_".join(p.stem for p in csv_paths[:3])
-        if len(csv_paths) > 3:
-            combined_stem += f"_and_{len(csv_paths)-3}_more"
-    else:
-        combined_stem = csv_paths[0].stem
-
-    csv_path = type('obj', (object,), {'stem': combined_stem})()  # lightweight stub for reuse below
-
-    print(f"Dataset final: X shape = {X.shape}, y shape = {y.shape}")
-    
     # Entrenamiento
     print(f"\n{'='*70}")
-    print(f"ENTRENANDO RANDOM FOREST")
+    print(f"ENTRENANDO RANDOM FOREST — {csv_path.name}")
     print(f"{'='*70}")
-    print(f"Iteraciones: {args.n_iter}")
-    print(f"Validacion cruzada: TimeSeriesSplit (3 splits)")
+    print(f"Iteraciones: {args.n_iter} | Validacion: TimeSeriesSplit (3 splits)")
     print(f"{'='*70}\n")
-    
+
     tscv = TimeSeriesSplit(n_splits=3)
     model_search = RandomizedSearchCV(
         RandomForestClassifier(random_state=42, class_weight='balanced'),
@@ -312,21 +219,21 @@ def main():
         n_jobs=-1,
         verbose=1
     )
-    
+
     model_search.fit(X, y)
-    
+
     print(f"\nEntrenamiento completado")
     print(f"  Mejor Balanced Accuracy: {model_search.best_score_:.4f}")
     print(f"  Mejores parametros: {model_search.best_params_}")
-    
+
     # Exportacion ONNX
     print(f"\n{'='*70}")
-    print(f"EXPORTANDO MODELO ONNX")
+    print(f"EXPORTANDO MODELO ONNX — {csv_path.name}")
     print(f"{'='*70}\n")
-    
+
     num_features_per_bar = len(features_list)
     num_inputs = num_features_per_bar * args.window
-    
+
     initial_type = [('float_input', FloatTensorType([1, num_inputs]))]
     onx = convert_sklearn(
         model_search.best_estimator_,
@@ -339,62 +246,62 @@ def main():
             }
         }
     )
-    
+
     output_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.onnx"
     with open(output_path, "wb") as f:
         f.write(onx.SerializeToString())
-    
+
     # Metadata
     meta = {
         "model_file": output_path.name,
-        "source_files": [str(p.name) for p in csv_paths],
+        "source_file": csv_path.name,
         "version": "SGRADT 7.0",
         "strategy": "EMA 9 Cross",
         "timestamp": pd.Timestamp.now().isoformat(),
-        
+
         "window_size": args.window,
         "features_per_bar": num_features_per_bar,
         "num_inputs": num_inputs,
         "feature_order": features_list,
-        
+
         "validation": {
             "min_profit_points": args.min_profit_points,
             "future_window": args.future,
         },
-        
+
         "ema_period": args.ema_period,
-        
+
         "stoch_k_period": args.stoch_k,
         "stoch_d_period": args.stoch_d,
         "stoch_oversold": args.stoch_oversold,
         "stoch_overbought": args.stoch_overbought,
-        
+
         "adx_period": args.adx_period,
         "adx_limit": args.adx_limit,
-        
+
         "balanced_accuracy": float(model_search.best_score_),
         "best_params": model_search.best_params_,
         "signal_counts": {
-            "buy": total_buy,
-            "sell": total_sell,
-            "hold": total_hold
+            "buy": count_buy,
+            "sell": count_sell,
+            "hold": count_hold
         },
-        
+
         "classes": {
             "0": "HOLD",
             "1": "BUY",
             "2": "SELL"
         }
     }
-    
+
     meta_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
-    
-    print(f"Modelo guardado: {output_path}")
+
+    print(f"Modelo guardado:   {output_path}")
     print(f"Metadata guardado: {meta_path}")
     print(f"\n{'='*70}")
-    print(f"RESUMEN FINAL - SGRADT 7.0")
+    print(f"RESUMEN — {csv_path.name}")
     print(f"{'='*70}")
     print(f"  Input shape: [1, {num_inputs}]")
     print(f"  Features: {num_features_per_bar} x {args.window} barras")
@@ -405,7 +312,98 @@ def main():
     print(f"    - Exit: Open cruza EMA 9 en direccion opuesta")
     print(f"    - Features: 5 (stoch_k, stoch_d, adx, di_plus, di_minus)")
     print(f"{'='*70}\n")
-    print("PROCESO COMPLETADO CON EXITO\n")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='SGRADT 7.0 - Estrategia EMA 9 con 5 features'
+    )
+    parser.add_argument('--csv', type=str, nargs='+', required=True,
+                       help='Uno o más archivos CSV con datos OHLC')
+    parser.add_argument('--output', type=str, default='./onnx',
+                       help='Directorio de salida')
+    parser.add_argument('--window', type=int, default=20,
+                       help='Ventana de lookback para features')
+
+    # Parametros de validacion
+    parser.add_argument('--min_profit_points', type=float, default=20.0,
+                       help='Puntos minimos de ganancia para validar señal')
+    parser.add_argument('--future', type=int, default=50,
+                       help='Barras futuras maximas para buscar exit')
+
+    # EMA parameters
+    parser.add_argument('--ema_period', type=int, default=9,
+                       help='EMA period (default: 9)')
+
+    # Stochastic parameters
+    parser.add_argument('--stoch_k', type=int, default=7,
+                       help='Stochastic K period')
+    parser.add_argument('--stoch_d', type=int, default=3,
+                       help='Stochastic D period')
+    parser.add_argument('--stoch_oversold', type=float, default=20.0,
+                       help='Nivel de sobreventa')
+    parser.add_argument('--stoch_overbought', type=float, default=80.0,
+                       help='Nivel de sobrecompra')
+
+    # ADX parameters
+    parser.add_argument('--adx_period', type=int, default=8,
+                       help='ADX period')
+    parser.add_argument('--adx_limit', type=float, default=25.0,
+                       help='ADX threshold para confirmar tendencia')
+
+    # Training parameters
+    parser.add_argument('--n_iter', type=int, default=7,
+                       help='Iteraciones para RandomizedSearchCV')
+
+    args = parser.parse_args()
+
+    output_dir = Path(args.output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_paths = [Path(p) for p in args.csv]
+
+    print(f"\n{'='*70}")
+    print(f"SGRADT 7.0 - EMA 9 Strategy (5 Features)")
+    print(f"{'='*70}")
+    print(f"Archivos a procesar: {len(csv_paths)}")
+    for p in csv_paths:
+        print(f"  - {p.name}")
+    print(f"{'='*70}\n")
+
+    skipped, completed = [], []
+
+    for csv_path in csv_paths:
+        if not csv_path.exists():
+            print(f"[WARNING] Archivo no encontrado, omitiendo: {csv_path}")
+            skipped.append(csv_path.name)
+            continue
+
+        print(f"\n{'='*70}")
+        print(f"PROCESANDO: {csv_path.name}")
+        print(f"{'='*70}")
+
+        df = pd.read_csv(csv_path)
+        print(f"Datos cargados: {len(df)} barras")
+
+        df, labels, features_list = calculate_signals_and_labels(df, args)
+
+        count_buy  = int(np.sum(labels == 1))
+        count_sell = int(np.sum(labels == 2))
+
+        if count_buy < 10 or count_sell < 10:
+            skipped.append(csv_path.name)
+        else:
+            completed.append(csv_path.name)
+
+        train_and_export(csv_path, df, labels, features_list, args, output_dir)
+
+    # Resumen global
+    print(f"\n{'='*70}")
+    print(f"PROCESO COMPLETADO")
+    print(f"{'='*70}")
+    print(f"  Completados ({len(completed)}): {', '.join(completed) if completed else 'ninguno'}")
+    print(f"  Omitidos    ({len(skipped)}):   {', '.join(skipped) if skipped else 'ninguno'}")
+    print(f"{'='*70}\n")
 
 
 if __name__ == "__main__":
