@@ -530,14 +530,23 @@ bool PrepareInput(float &input_buffer[])
       input_buffer[offset + 5] = (float)ema_gate;           // feat_ema_gate
 
       // Feature 7: Volume Gate (ratio vs 10-bar average)
-      // Calculate average of last 10 volumes
+      // CRITICAL: Must match Python's rolling(window=10).mean()
+      // Python calculates: avg of [i-9, i-8, ..., i-1, i] (10 bars ending at current)
+      // Since arrays are SetAsSeries=true: volume_b[0]=newest, volume_b[19]=oldest
+      // For bar at index i, we need average of indices [i, i+1, ..., i+9]
       double vol_avg = 0.0;
-      for(int j = i; j < i + 10; j++)
+      int vol_count = 0;
+      
+      // Average the 10 bars starting from current position i
+      for(int j = i; j < MathMin(i + 10, ArraySize(volume_b)); j++)
         {
          vol_avg += (double)volume_b[j];
+         vol_count++;
         }
-      vol_avg /= 10.0;
-
+      
+      if(vol_count > 0)
+         vol_avg /= (double)vol_count;
+      
       double volume_gate = (vol_avg > 0) ? (double)volume_b[i] / vol_avg : 1.0;
       input_buffer[offset + 6] = (float)volume_gate;        // feat_volume_gate
      }
