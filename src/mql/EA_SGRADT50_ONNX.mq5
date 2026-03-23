@@ -29,11 +29,11 @@ input int        InpADXPeriod        = 8;      // ADX period
 input group "=== Risk Management ==="
 input double     InpLot              = 1.0;    // Lot size
 input int        InpMagic            = 5050;   // Magic number
-input double     InpStopPoints       = 50.0;   // Stop Loss in POINTS (used if ATR SL disabled)
-input double     InpTakePoints       = 100.0;  // Take Profit in POINTS (used if ATR TP disabled)
+input double     InpStopPoints       = 50.0;   // Stop Loss POINTS (used if ATR disabled)
+input double     InpTakePoints       = 100.0;  // Take Profit POINTS (used if ATR disabled)
 
 input group "=== ATR-Based SL/TP ==="
-input bool       InpUseATR           = false;  // Use ATR-based SL/TP instead of fixed points
+input bool       InpUseATR           = false;  // ATR-based SL/TP instead of points
 input int        InpATRPeriod        = 14;     // ATR period
 input double     InpATRSLMultiplier  = 1.5;   // SL = ATR × multiplier
 input double     InpATRTPMultiplier  = 3.0;   // TP = ATR × multiplier
@@ -326,29 +326,18 @@ void RunInference()
       return;
    }
    
-   //--- Run ONNX
-   float output_label[1];
-   float output_probs[3];
+   //--- Prepare output arrays (must be sized according to model output shapes)
+   float output_label[1];     // Output 0: label [1]
+   float output_probs[3];     // Output 1: probabilities [1, 3] for classes [HOLD, BUY, SELL]
    
-   if(!OnnxRun(onnx_handle, ONNX_DEFAULT, features, output_label))
+   //--- Run ONNX inference - outputs are populated directly in the arrays
+   if(!OnnxRun(onnx_handle, ONNX_DEFAULT, features, output_label, output_probs))
    {
       Print("ERROR: OnnxRun failed. Error: ", GetLastError());
       return;
    }
    
-   if(!OnnxRunResult(onnx_handle, 0, output_label))
-   {
-      Print("ERROR: Cannot get label output");
-      return;
-   }
-   
-   if(!OnnxRunResult(onnx_handle, 1, output_probs))
-   {
-      Print("ERROR: Cannot get probabilities output");
-      return;
-   }
-   
-   //--- Update global state
+   //--- Update global state (outputs are already populated from OnnxRun)
    g_prediction = (long)output_label[0];
    g_conf_hold = output_probs[0];
    g_conf_buy = output_probs[1];
