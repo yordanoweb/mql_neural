@@ -143,7 +143,8 @@ string FormatTradeMessage(ENUM_DEAL_TYPE deal_type, ENUM_DEAL_ENTRY deal_entry, 
          "-----------------------------\n🤖 **%s**\n" +
          "%s **ORDEM FECHADA**\n" +
          "%s %s\n" +
-         "`%s` | Vol: %.2f | Preço: %.5f\n" +
+         "Symbol: `%s`\n" +
+         "Vol: %.2f | Preço: %.5f\n" +
          "🎫 Posição: `#%llu`\n" +
          "%s **%s: %.2f %s**\n" +
          "🕐 %s",
