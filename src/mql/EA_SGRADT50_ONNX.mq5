@@ -29,8 +29,14 @@ input int        InpADXPeriod        = 8;      // ADX period
 input group "=== Risk Management ==="
 input double     InpLot              = 1.0;    // Lot size
 input int        InpMagic            = 5050;   // Magic number
-input double     InpStopPoints       = 50.0;   // Stop Loss in POINTS
-input double     InpTakePoints       = 100.0;  // Take Profit in POINTS
+input double     InpStopPoints       = 50.0;   // Stop Loss in POINTS (used if ATR SL disabled)
+input double     InpTakePoints       = 100.0;  // Take Profit in POINTS (used if ATR TP disabled)
+
+input group "=== ATR-Based SL/TP ==="
+input bool       InpUseATR           = false;  // Use ATR-based SL/TP instead of fixed points
+input int        InpATRPeriod        = 14;     // ATR period
+input double     InpATRSLMultiplier  = 1.5;   // SL = ATR × multiplier
+input double     InpATRTPMultiplier  = 3.0;   // TP = ATR × multiplier
 
 input group "=== Display Options ==="
 input bool       InpShowPanel        = true;   // Show information panel
@@ -58,6 +64,7 @@ int      g_infer_count = 0;
 //--- Indicator handles (created once in OnInit)
 int      g_adx_handle   = INVALID_HANDLE;
 int      g_stoch_handle = INVALID_HANDLE;
+int      g_atr_handle   = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -116,9 +123,17 @@ int OnInit()
       Print("ERROR: Cannot create Stochastic indicator");
       return INIT_FAILED;
    }
-   
-   Print("Indicators created: ADX(", InpADXPeriod, ") + Stochastic(", 
-         InpStochK, ",", InpStochD, ",", InpStochSlowing, ")");
+
+   //--- Initialize ATR indicator
+   g_atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
+   if(g_atr_handle == INVALID_HANDLE)
+   {
+      Print("ERROR: Cannot create ATR indicator");
+      return INIT_FAILED;
+   }
+
+   Print("Indicators created: ADX(", InpADXPeriod, ") + Stochastic(",
+         InpStochK, ",", InpStochD, ",", InpStochSlowing, ") + ATR(", InpATRPeriod, ")");
    
    //--- Print symbol information
    double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -129,8 +144,17 @@ int OnInit()
    PrintFormat("Timeframe: %s", EnumToString(_Period));
    PrintFormat("Digits: %d", digits);
    PrintFormat("Point: %.6f", pt);
-   PrintFormat("SL: %.0f points = %.6f price", InpStopPoints, InpStopPoints * pt);
-   PrintFormat("TP: %.0f points = %.6f price", InpTakePoints, InpTakePoints * pt);
+
+   if(InpUseATR)
+   {
+      PrintFormat("SL/TP mode: ATR(%d) | SL mult: %.1f | TP mult: %.1f",
+                  InpATRPeriod, InpATRSLMultiplier, InpATRTPMultiplier);
+   }
+   else
+   {
+      PrintFormat("SL/TP mode: Fixed points | SL: %.0f pts | TP: %.0f pts",
+                  InpStopPoints, InpTakePoints);
+   }
    
    //--- Setup timer if needed
    if(InpInferSeconds > 0)
@@ -167,6 +191,8 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_adx_handle);
    if(g_stoch_handle != INVALID_HANDLE)
       IndicatorRelease(g_stoch_handle);
+   if(g_atr_handle != INVALID_HANDLE)
+      IndicatorRelease(g_atr_handle);
    
    //--- Kill timer
    EventKillTimer();
@@ -256,6 +282,35 @@ bool PrepareFeatures(float &features[])
 }
 
 //+------------------------------------------------------------------+
+//| Calculate SL and TP distances based on ATR or fixed points       |
+//+------------------------------------------------------------------+
+bool GetSLTPDistance(double &sl_dist, double &tp_dist)
+{
+   double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+
+   if(InpUseATR)
+   {
+      double atr_buf[1];
+      if(CopyBuffer(g_atr_handle, 0, 1, 1, atr_buf) != 1)
+      {
+         Print("ERROR: Cannot read ATR value");
+         return false;
+      }
+      double atr = atr_buf[0];
+      sl_dist = (InpATRSLMultiplier > 0) ? atr * InpATRSLMultiplier : 0;
+      tp_dist = (InpATRTPMultiplier > 0) ? atr * InpATRTPMultiplier : 0;
+      PrintFormat("ATR: %.5f | SL dist: %.5f | TP dist: %.5f", atr, sl_dist, tp_dist);
+   }
+   else
+   {
+      sl_dist = InpStopPoints * pt;
+      tp_dist = InpTakePoints * pt;
+   }
+
+   return true;
+}
+
+//+------------------------------------------------------------------+
 //| Run ONNX inference and execute trade if conditions met           |
 //+------------------------------------------------------------------+
 void RunInference()
@@ -333,11 +388,12 @@ void RunInference()
    //--- Execute trade based EXCLUSIVELY on ONNX inference
    if(g_prediction > 0 && active_conf >= InpMinConf && time_ok && bar_ok && no_position)
    {
-      double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
       int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-      double sl_dist = InpStopPoints * pt;
-      double tp_dist = InpTakePoints * pt;
-      
+      double sl_dist, tp_dist;
+
+      if(!GetSLTPDistance(sl_dist, tp_dist))
+         return;
+
       if(g_prediction == 1)  // BUY
       {
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -480,8 +536,21 @@ void ShowStatus()
    
    info += "---\n";
    info += "LOT: " + DoubleToString(InpLot, 2);
-   info += " | SL: " + DoubleToString(InpStopPoints, 0);
-   info += " | TP: " + DoubleToString(InpTakePoints, 0) + "\n";
+   if(InpUseATR)
+   {
+      double atr_buf[1];
+      string atr_str = "N/A";
+      if(CopyBuffer(g_atr_handle, 0, 1, 1, atr_buf) == 1)
+         atr_str = DoubleToString(atr_buf[0], _Digits);
+      info += " | SL/TP: ATR(" + (string)InpATRPeriod + ")=" + atr_str;
+      info += " x" + DoubleToString(InpATRSLMultiplier, 1);
+      info += "/" + DoubleToString(InpATRTPMultiplier, 1) + "\n";
+   }
+   else
+   {
+      info += " | SL: " + DoubleToString(InpStopPoints, 0);
+      info += " | TP: " + DoubleToString(InpTakePoints, 0) + "\n";
+   }
    
    if(PositionSelect(_Symbol))
    {
