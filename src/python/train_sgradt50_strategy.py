@@ -64,22 +64,33 @@ def calculate_indicators(df, k_period=7, d_period=3, slowing=3, adx_period=8):
 def validate_signals(df, move_points=50.0, future=10):
     """
     Valida movimientos futuros para clasificar señales.
-    
+
+    Cuando ambas condiciones (sube Y baja move_points) se cumplen en la misma
+    ventana, se desempata usando el movimiento neto futuro: si el cierre neto
+    sube -> BUY, si baja -> SELL. Esto evita que SELL sobreescriba BUY en
+    barras donde el precio hace las dos cosas (mercados volátiles con tendencia).
+
     Returns:
         labels: array con 0=HOLD, 1=BUY, 2=SELL
     """
-    future_max = df['close'].shift(-1).rolling(window=future).max()
-    future_min = df['close'].shift(-1).rolling(window=future).min()
-    
-    # Identificar movimientos válidos
-    valid_buy_move = (future_max > df['close'] + move_points)
+    future_max   = df['close'].shift(-1).rolling(window=future).max()
+    future_min   = df['close'].shift(-1).rolling(window=future).min()
+    future_close = df['close'].shift(-future)
+
+    valid_buy_move  = (future_max > df['close'] + move_points)
     valid_sell_move = (future_min < df['close'] - move_points)
-    
-    # Crear labels
+    both            = valid_buy_move & valid_sell_move
+
     labels = np.zeros(len(df))
-    labels[valid_buy_move] = 1
-    labels[valid_sell_move] = 2
-    
+
+    # Casos no ambiguos
+    labels[valid_buy_move  & ~both] = 1
+    labels[valid_sell_move & ~both] = 2
+
+    # Desempate por movimiento neto cuando ambas condiciones son True
+    labels[both & (future_close >  df['close'])] = 1
+    labels[both & (future_close <= df['close'])] = 2
+
     return labels
 
 
