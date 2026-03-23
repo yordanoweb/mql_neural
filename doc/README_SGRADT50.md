@@ -34,7 +34,10 @@ pip install pandas numpy scikit-learn skl2onnx ta
 
 ### 1. Entrenamiento del Modelo
 
+El script ahora soporta procesamiento de **múltiples archivos CSV** en una sola ejecución:
+
 ```bash
+# Un solo archivo
 python train_sgradt_strategy.py \
     --csv EUR_USD_H1.csv \
     --output ./onnx \
@@ -46,19 +49,70 @@ python train_sgradt_strategy.py \
     --stoch_slowing 3 \
     --adx_period 8 \
     --n_iter 20
+
+# Múltiples archivos
+python train_sgradt_strategy.py \
+    --csv EUR_USD_H1.csv GBP_USD_H1.csv USD_JPY_H1.csv \
+    --output ./onnx \
+    --window 20 \
+    --move_points 50.0 \
+    --future 10 \
+    --n_iter 20
 ```
 
 **Parámetros clave:**
-- `--csv`: Archivo CSV con columnas: time, open, high, low, close
+- `--csv`: Uno o más archivos CSV con columnas: time, open, high, low, close
 - `--output`: Directorio de salida para archivos .onnx y .meta.json
 - `--window`: Ventana de lookback (número de barras históricas)
 - `--move_points`: Puntos mínimos de movimiento para validar señal
 - `--future`: Barras futuras para validar el movimiento
 - `--n_iter`: Iteraciones de búsqueda de hiperparámetros
 
-**Salida:**
+**Salida por cada archivo:**
 - `{symbol}_SGRADT50.onnx` - Modelo ONNX
 - `{symbol}_SGRADT50.meta.json` - Metadata del modelo
+
+**Temporizador integrado:**
+El script muestra el tiempo de procesamiento para cada archivo individual y el tiempo total al finalizar todos los archivos. Ejemplo de salida:
+
+```
+######################################################################
+# PROCESANDO ARCHIVO 1/3
+# EUR_USD_H1.csv
+######################################################################
+
+... (procesamiento) ...
+
+RESUMEN ARCHIVO
+======================================================================
+  Input shape: [1, 100]
+  Features: 5 x 20 barras
+  Accuracy: 0.7234
+  TIEMPO: 2m 34.56s
+======================================================================
+
+######################################################################
+# RESUMEN FINAL DE PROCESAMIENTO
+######################################################################
+
+Total de archivos procesados: 3
+  Exitosos: 3
+  Fallidos: 0
+
+Tiempo total: 8m 15.32s
+
+======================================================================
+MODELOS GENERADOS EXITOSAMENTE:
+======================================================================
+  EUR_USD_H1.csv                           | Acc: 0.7234 | Tiempo: 2m 34.56s
+  GBP_USD_H1.csv                           | Acc: 0.6891 | Tiempo: 3m 02.18s
+  USD_JPY_H1.csv                           | Acc: 0.7512 | Tiempo: 2m 38.58s
+
+######################################################################
+# PROCESO COMPLETADO
+# Tiempo total: 8m 15.32s
+######################################################################
+```
 
 ### 2. Configuración del EA
 
