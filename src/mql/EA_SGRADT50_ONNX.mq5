@@ -485,6 +485,8 @@ void RunInference()
             Print("Signal rejected: Already traded this bar");
          if(!no_position)
             Print("Signal rejected: Position already open");
+         if(!EMAGateAllows(g_prediction))
+            Print("Signal rejected: Trying to enter at the wrong side of EMA(", InpEMAPeriod, ")");
         }
   }
 
