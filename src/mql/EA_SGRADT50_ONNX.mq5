@@ -418,7 +418,7 @@ void RunInference()
 // Usamos el nivel de confianza de HOLD si la predicción es 0
    float display_conf = (g_prediction == 0) ? g_conf_hold : active_conf;
 
-   PrintFormat("%s Inference #%d: %s signal | Conf: %.2f%% | Time: %s | Bar: %s | Position: %s",
+   PrintFormat("%s | Inference #%d: %s signal | Conf: %.2f%% | Time: %s | Bar: %s | Position: %s",
                _Symbol,
                g_infer_count,
                signal_name,
