@@ -408,17 +408,24 @@ void RunInference()
 
    bool no_position = !PositionSelect(_Symbol);
 
-//--- Log decision
-   if(g_prediction > 0)
-     {
-      PrintFormat("Inference #%d: %s signal | Conf: %.2f%% | Time: %s | Bar: %s | Position: %s",
-                  g_infer_count,
-                  (g_prediction == 1) ? "BUY" : "SELL",
-                  active_conf * 100,
-                  time_ok ? "OK" : "CLOSED",
-                  bar_ok ? "OK" : "SKIP",
-                  no_position ? "NONE" : "OPEN");
-     }
+//--- Log decision (Ahora imprime siempre)
+   string signal_name = "HOLD";
+   if(g_prediction == 1)
+      signal_name = "BUY";
+   if(g_prediction == 2)
+      signal_name = "SELL";
+
+// Usamos el nivel de confianza de HOLD si la predicción es 0
+   float display_conf = (g_prediction == 0) ? g_conf_hold : active_conf;
+
+   PrintFormat("%s Inference #%d: %s signal | Conf: %.2f%% | Time: %s | Bar: %s | Position: %s",
+               _Symbol,
+               g_infer_count,
+               signal_name,
+               display_conf * 100,
+               time_ok ? "OK" : "CLOSED",
+               bar_ok ? "OK" : "SKIP",
+               no_position ? "NONE" : "OPEN");
 
 //--- Execute trade based EXCLUSIVELY on ONNX inference and EMA value
    if(g_prediction > 0 && active_conf >= InpMinConf && time_ok && bar_ok && no_position && EMAGateAllows(g_prediction))
