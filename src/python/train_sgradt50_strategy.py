@@ -65,20 +65,35 @@ def validate_signals(df, move_points=50.0, future=10):
     """
     Valida movimientos futuros para clasificar señales.
 
+    Para cada barra i, examina las próximas `future` barras (i+1 .. i+future)
+    y verifica si el precio sube o baja al menos `move_points` puntos.
+
     Cuando ambas condiciones (sube Y baja move_points) se cumplen en la misma
     ventana, se desempata usando el movimiento neto futuro: si el cierre neto
     sube -> BUY, si baja -> SELL. Esto evita que SELL sobreescriba BUY en
     barras donde el precio hace las dos cosas (mercados volátiles con tendencia).
 
+    NOTA: Se usa shift(-future).rolling(future).max/min para calcular el
+    máximo/mínimo FORWARD-LOOKING correcto. shift(-future) desplaza la
+    ventana hacia el futuro de modo que rolling(future) cubre exactamente
+    las barras i+1 a i+future (de más antiguo a más reciente dentro de la
+    ventana futura), alineado con el índice actual i.
+
     Returns:
         labels: array con 0=HOLD, 1=BUY, 2=SELL
     """
-    future_max   = df['close'].shift(-1).rolling(window=future).max()
-    future_min   = df['close'].shift(-1).rolling(window=future).min()
-    future_close = df['close'].shift(-future)
+    close = df['close']
 
-    valid_buy_move  = (future_max > df['close'] + move_points)
-    valid_sell_move = (future_min < df['close'] - move_points)
+    # Construir el máximo y mínimo de las próximas `future` barras
+    # shift(-future) mueve los datos future pasos hacia atrás en el índice,
+    # luego rolling(future).max() calcula el máximo de esa ventana.
+    # El resultado en el índice i representa el max/min de close[i+1..i+future].
+    future_max   = close.shift(-future).rolling(window=future).max()
+    future_min   = close.shift(-future).rolling(window=future).min()
+    future_close = close.shift(-future)
+
+    valid_buy_move  = (future_max > close + move_points)
+    valid_sell_move = (future_min < close - move_points)
     both            = valid_buy_move & valid_sell_move
 
     labels = np.zeros(len(df))
@@ -88,8 +103,8 @@ def validate_signals(df, move_points=50.0, future=10):
     labels[valid_sell_move & ~both] = 2
 
     # Desempate por movimiento neto cuando ambas condiciones son True
-    labels[both & (future_close >  df['close'])] = 1
-    labels[both & (future_close <= df['close'])] = 2
+    labels[both & (future_close >  close)] = 1
+    labels[both & (future_close <= close)] = 2
 
     return labels
 

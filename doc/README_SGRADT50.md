@@ -189,6 +189,19 @@ El sistema valida que las señales generadas durante el entrenamiento resulten e
 
 Esto asegura que el modelo aprenda de señales que históricamente produjeron movimientos significativos.
 
+### Implementación del forward-looking window
+
+El máximo y mínimo futuro se calculan con:
+
+```python
+future_max = close.shift(-future).rolling(window=future).max()
+future_min = close.shift(-future).rolling(window=future).min()
+```
+
+`shift(-future)` desplaza la serie `future` pasos hacia el futuro en el índice, de modo que `rolling(window=future).max()` cubre exactamente las barras `i+1` a `i+future` para cada barra `i`.
+
+> **⚠️ Bug conocido (corregido en v5.0.1):** Usar `shift(-1)` en lugar de `shift(-future)` antes del rolling produce una ventana incorrecta que etiqueta la barra equivocada, **invirtiendo efectivamente todas las señales BUY/SELL**: el modelo aprende que indicadores de tendencia alcista corresponden a SELL y viceversa. Síntoma observable: el EA emite señales BUY persistentes con alta confianza durante tendencias bajistas claras, todas rechazadas por el EMA gate. Los modelos entrenados con la versión anterior deben **re-entrenarse desde cero**.
+
 ## Panel de Información
 
 El EA muestra un panel reducido con:
