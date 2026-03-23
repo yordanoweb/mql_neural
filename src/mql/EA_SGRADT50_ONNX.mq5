@@ -1,16 +1,16 @@
 //+------------------------------------------------------------------+
 //|                        EA_SGRADT50_ONNX.mq5                      |
-//|                        Compatible with SGRADT 5.0 Strategy       |
+//|                        SGRADT 5.0 - 5 Features Version           |
 //+------------------------------------------------------------------+
 #property strict
 #include <Trade\Trade.mqh>
 
 input group "=== AI Model Configuration ==="
-input string     InpModelName        = "EUR_USD_H1_SGRADT50_combined.onnx";  // ONNX Model filename
-input string     InpMetaFile         = "EUR_USD_H1_SGRADT50_combined.meta.json"; // Metadata file (optional)
+input string     InpModelName        = "EUR_USD_H1_SGRADT50.onnx";  // ONNX Model filename
+input string     InpMetaFile         = "EUR_USD_H1_SGRADT50.meta.json"; // Metadata file (optional)
 input float      InpMinConf          = 0.55;   // Minimum confidence threshold
 input int        InpWindowSize       = 20;     // Window size (from training)
-input int        InpFeaturesPerBar   = 7;      // Features per bar (from training)
+input int        InpFeaturesPerBar   = 5;      // Features per bar (FIXED: 5)
 
 input group "=== Inference Timing ==="
 input int        InpInferSeconds     = 15;     // Run inference every N seconds (0 = new bar only)
@@ -24,10 +24,7 @@ input group "=== Indicator Parameters (SGRADT 5.0 Defaults) ==="
 input int        InpStochK           = 7;      // Stochastic %K period
 input int        InpStochD           = 3;      // Stochastic %D smoothing
 input int        InpStochSlowing     = 3;      // Stochastic slowing
-input double     InpStochOversold    = 20.0;   // Oversold level
-input double     InpStochOverbought  = 80.0;   // Overbought level
 input int        InpADXPeriod        = 8;      // ADX period
-input double     InpADXLimit         = 32.0;   // ADX trend threshold
 
 input group "=== Risk Management ==="
 input double     InpLot              = 1.0;    // Lot size
@@ -214,167 +211,126 @@ void UpdateIndicatorGlobals()
 }
 
 //+------------------------------------------------------------------+
-//| Main inference function                                          |
+//| Prepare feature vector from recent bars                          |
+//+------------------------------------------------------------------+
+bool PrepareFeatures(float &features[])
+{
+   int total_features = InpWindowSize * InpFeaturesPerBar;
+   ArrayResize(features, total_features);
+   
+   //--- Get historical data
+   double adx_data[], pdi_data[], mdi_data[], stoch_k[], stoch_d[];
+   
+   ArraySetAsSeries(adx_data, true);
+   ArraySetAsSeries(pdi_data, true);
+   ArraySetAsSeries(mdi_data, true);
+   ArraySetAsSeries(stoch_k, true);
+   ArraySetAsSeries(stoch_d, true);
+   
+   if(CopyBuffer(g_adx_handle, 0, 0, InpWindowSize, adx_data) != InpWindowSize)
+      return false;
+   if(CopyBuffer(g_adx_handle, 1, 0, InpWindowSize, pdi_data) != InpWindowSize)
+      return false;
+   if(CopyBuffer(g_adx_handle, 2, 0, InpWindowSize, mdi_data) != InpWindowSize)
+      return false;
+   if(CopyBuffer(g_stoch_handle, 0, 0, InpWindowSize, stoch_k) != InpWindowSize)
+      return false;
+   if(CopyBuffer(g_stoch_handle, 1, 0, InpWindowSize, stoch_d) != InpWindowSize)
+      return false;
+   
+   //--- Build feature vector: oldest to newest
+   //--- Feature order: stoch_main, stoch_signal, adx, pdi, mdi
+   for(int i = 0; i < InpWindowSize; i++)
+   {
+      int idx = i * InpFeaturesPerBar;
+      int bar = InpWindowSize - 1 - i;  // Reverse: oldest first
+      
+      features[idx + 0] = (float)stoch_k[bar];    // feat_stoch_main
+      features[idx + 1] = (float)stoch_d[bar];    // feat_stoch_signal
+      features[idx + 2] = (float)adx_data[bar];   // feat_adx
+      features[idx + 3] = (float)pdi_data[bar];   // feat_pdi
+      features[idx + 4] = (float)mdi_data[bar];   // feat_mdi
+   }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Run ONNX inference and execute trade if conditions met           |
 //+------------------------------------------------------------------+
 void RunInference()
 {
-   //--- Prepare arrays for data collection
-   double close[], open[], high[], low[];
-   double adx_b[], pdi_b[], mdi_b[];
-   double stoch_k_b[], stoch_d_b[];
-   
-   //--- Set arrays as series (index 0 = most recent)
-   ArraySetAsSeries(close, true);
-   ArraySetAsSeries(open, true);
-   ArraySetAsSeries(high, true);
-   ArraySetAsSeries(low, true);
-   ArraySetAsSeries(adx_b, true);
-   ArraySetAsSeries(pdi_b, true);
-   ArraySetAsSeries(mdi_b, true);
-   ArraySetAsSeries(stoch_k_b, true);
-   ArraySetAsSeries(stoch_d_b, true);
-   
-   //--- Copy price data
-   if(CopyClose(_Symbol, _Period, 0, InpWindowSize, close) < InpWindowSize)
-   {
-      Print("Warning: Not enough close data");
-      return;
-   }
-   if(CopyOpen(_Symbol, _Period, 0, InpWindowSize, open) < InpWindowSize)
-   {
-      Print("Warning: Not enough open data");
-      return;
-   }
-   if(CopyHigh(_Symbol, _Period, 0, InpWindowSize, high) < InpWindowSize)
-   {
-      Print("Warning: Not enough high data");
-      return;
-   }
-   if(CopyLow(_Symbol, _Period, 0, InpWindowSize, low) < InpWindowSize)
-   {
-      Print("Warning: Not enough low data");
-      return;
-   }
-   
-   //--- Copy indicator data
-   if(CopyBuffer(g_adx_handle, 0, 0, InpWindowSize, adx_b) < InpWindowSize)
-   {
-      Print("Warning: Not enough ADX data");
-      return;
-   }
-   if(CopyBuffer(g_adx_handle, 1, 0, InpWindowSize, pdi_b) < InpWindowSize)
-   {
-      Print("Warning: Not enough +DI data");
-      return;
-   }
-   if(CopyBuffer(g_adx_handle, 2, 0, InpWindowSize, mdi_b) < InpWindowSize)
-   {
-      Print("Warning: Not enough -DI data");
-      return;
-   }
-   if(CopyBuffer(g_stoch_handle, 0, 0, InpWindowSize, stoch_k_b) < InpWindowSize)
-   {
-      Print("Warning: Not enough Stochastic %K data");
-      return;
-   }
-   if(CopyBuffer(g_stoch_handle, 1, 0, InpWindowSize, stoch_d_b) < InpWindowSize)
-   {
-      Print("Warning: Not enough Stochastic %D data");
-      return;
-   }
-   
-   //--- Build input buffer
-   // Feature order MUST match training: body, range, stoch_main, stoch_signal, adx, pdi, mdi
-   // Array organized as: [bar0_feat0, bar0_feat1, ..., bar0_feat6, bar1_feat0, bar1_feat1, ...]
-   // bar0 = oldest, bar(window_size-1) = most recent
-   
-   float input_buffer[];
-   ArrayResize(input_buffer, InpWindowSize * InpFeaturesPerBar);
-   
-   for(int i = 0; i < InpWindowSize; i++)
-   {
-      // Convert array index: i=0 is most recent in series arrays
-      // But we need oldest first in input_buffer
-      int idx = InpWindowSize - 1 - i;  // idx=0 -> oldest bar
-      int offset = idx * InpFeaturesPerBar;
-      
-      // Feature 0: body (close - open)
-      input_buffer[offset + 0] = (float)(close[i] - open[i]);
-      
-      // Feature 1: range (high - low)
-      input_buffer[offset + 1] = (float)(high[i] - low[i]);
-      
-      // Feature 2: stoch_main (%K)
-      input_buffer[offset + 2] = (float)stoch_k_b[i];
-      
-      // Feature 3: stoch_signal (%D)
-      input_buffer[offset + 3] = (float)stoch_d_b[i];
-      
-      // Feature 4: ADX
-      input_buffer[offset + 4] = (float)adx_b[i];
-      
-      // Feature 5: +DI
-      input_buffer[offset + 5] = (float)pdi_b[i];
-      
-      // Feature 6: -DI
-      input_buffer[offset + 6] = (float)mdi_b[i];
-   }
-   
-   //--- Prepare output arrays
-   long out_label[];
-   float out_probs[];
-   ArrayResize(out_label, 1);
-   ArrayResize(out_probs, 3);
-   
-   //--- Run ONNX inference
-   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, out_label, out_probs))
-   {
-      Print("ERROR: ONNX inference failed. Error: ", GetLastError());
-      return;
-   }
-   
-   //--- Store results
-   g_prediction  = out_label[0];
-   g_conf_hold   = out_probs[0];  // Class 0: HOLD
-   g_conf_buy    = out_probs[1];  // Class 1: BUY
-   g_conf_sell   = out_probs[2];  // Class 2: SELL
+   g_last_infer = TimeCurrent();
    g_infer_count++;
-   g_last_infer  = TimeCurrent();
    
-   //--- Determine confidence for current prediction
+   //--- Prepare features
+   float features[];
+   if(!PrepareFeatures(features))
+   {
+      Print("ERROR: Cannot prepare features");
+      return;
+   }
+   
+   //--- Run ONNX
+   float output_label[1];
+   float output_probs[3];
+   
+   if(!OnnxRun(onnx_handle, ONNX_DEFAULT, features, output_label))
+   {
+      Print("ERROR: OnnxRun failed. Error: ", GetLastError());
+      return;
+   }
+   
+   if(!OnnxRunResult(onnx_handle, 0, output_label))
+   {
+      Print("ERROR: Cannot get label output");
+      return;
+   }
+   
+   if(!OnnxRunResult(onnx_handle, 1, output_probs))
+   {
+      Print("ERROR: Cannot get probabilities output");
+      return;
+   }
+   
+   //--- Update global state
+   g_prediction = (long)output_label[0];
+   g_conf_hold = output_probs[0];
+   g_conf_buy = output_probs[1];
+   g_conf_sell = output_probs[2];
+   
+   //--- Get active confidence
    float active_conf = 0.0;
    if(g_prediction == 1)
       active_conf = g_conf_buy;
    else if(g_prediction == 2)
       active_conf = g_conf_sell;
-   else
-      active_conf = g_conf_hold;
    
-   //--- Check session time
+   //--- Check trading conditions
    MqlDateTime dt;
    TimeCurrent(dt);
    bool time_ok = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
    
-   //--- Check if we can trade this bar
    datetime current_bar = iTime(_Symbol, _Period, 0);
-   bool bar_ok = (!InpOneTradePerBar || g_last_traded_bar != current_bar);
+   bool bar_ok = true;
+   if(InpOneTradePerBar)
+      bar_ok = (current_bar != g_last_traded_bar);
    
-   //--- Check if position already exists
    bool no_position = !PositionSelect(_Symbol);
    
-   //--- Log inference result
+   //--- Log decision
    if(g_prediction > 0)
    {
-      PrintFormat("Inference #%d: %s (conf: %.2f%%) | ADX: %.1f | Stoch: %.1f/%.1f",
+      PrintFormat("Inference #%d: %s signal | Conf: %.2f%% | Time: %s | Bar: %s | Position: %s",
                   g_infer_count,
-                  (g_prediction == 1 ? "BUY" : "SELL"),
+                  (g_prediction == 1) ? "BUY" : "SELL",
                   active_conf * 100,
-                  g_curr_adx,
-                  g_stoch_k,
-                  g_stoch_d);
+                  time_ok ? "OK" : "CLOSED",
+                  bar_ok ? "OK" : "SKIP",
+                  no_position ? "NONE" : "OPEN");
    }
    
-   //--- Execute trade if all conditions met
+   //--- Execute trade based EXCLUSIVELY on ONNX inference
    if(g_prediction > 0 && active_conf >= InpMinConf && time_ok && bar_ok && no_position)
    {
       double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -427,16 +383,16 @@ void RunInference()
    }
    else if(g_prediction > 0)
    {
-      // Log why we didn't trade
+      // Log why trade was rejected
       if(active_conf < InpMinConf)
-         PrintFormat("⚠ Signal ignored: Confidence %.2f%% < threshold %.1f%%",
+         PrintFormat("Signal rejected: Confidence %.2f%% < threshold %.1f%%",
                      active_conf * 100, InpMinConf * 100);
       if(!time_ok)
-         Print("Signal ignored: Outside trading hours");
+         Print("Signal rejected: Outside trading hours");
       if(!bar_ok)
-         Print("Signal ignored: Already traded this bar");
+         Print("Signal rejected: Already traded this bar");
       if(!no_position)
-         Print("Signal ignored: Position already open");
+         Print("Signal rejected: Position already open");
    }
 }
 
@@ -483,7 +439,7 @@ void OnTimer()
 }
 
 //+------------------------------------------------------------------+
-//| Display status panel                                             |
+//| Display status panel (REDUCED VERSION)                           |
 //+------------------------------------------------------------------+
 void ShowStatus()
 {
@@ -491,77 +447,41 @@ void ShowStatus()
    TimeCurrent(dt);
    bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
    
-   string signal_text = "NO SIGNAL";
-   color signal_color = clrGray;
-   
+   string signal_text = "HOLD";
    if(g_prediction == 1)
-   {
       signal_text = "BUY";
-      signal_color = clrLime;
-   }
    else if(g_prediction == 2)
-   {
       signal_text = "SELL";
-      signal_color = clrRed;
-   }
    
-   string trend_status = (g_curr_adx >= InpADXLimit) ? "TRENDING" : "RANGING";
-   
-   string stoch_zone;
-   if(g_stoch_k < InpStochOversold)
-      stoch_zone = "OVERSOLD";
-   else if(g_stoch_k > InpStochOverbought)
-      stoch_zone = "OVERBOUGHT";
-   else
-      stoch_zone = "NEUTRAL";
-   
-   string stoch_cross = (g_stoch_k > g_stoch_d) ? "%K ABOVE %D" : "%K BELOW %D";
-   
-   double pt = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-   
-   string mode_str = (InpInferSeconds > 0)
-                     ? "TIMER (" + (string)InpInferSeconds + "s)"
-                     : "NEW BAR";
-   
-   //--- Build panel
    string info = "\n";
-
+   
    info += "SESSION: " + StringFormat("%02d:00-%02d:00", InpStartHour, InpEndHour);
    info += " [" + (valid_time ? "ACTIVE" : "CLOSED") + "]\n";
-   info += "MODE: " + mode_str + " | Inferences: " + (string)g_infer_count + "\n";
+   info += "MODE: " + ((InpInferSeconds > 0) ? "TIMER " + (string)InpInferSeconds + "s" : "NEW BAR");
+   info += " | Runs: " + (string)g_infer_count + "\n";
    
    if(g_last_infer > 0)
-      info += "Last Run: " + TimeToString(g_last_infer, TIME_SECONDS) + "\n";
+      info += "Last: " + TimeToString(g_last_infer, TIME_SECONDS) + "\n";
    
-   info += "--------------------------------\n";
-   info += "ADX INDICATOR (Period: " + (string)InpADXPeriod + ")\n";
-   info += "   ADX: " + DoubleToString(g_curr_adx, 2) + " [" + trend_status + "]\n";
-   info += "   +DI: " + DoubleToString(g_curr_pdi, 2) + " | -DI: " + DoubleToString(g_curr_mdi, 2) + "\n";
+   info += "---\n";
+   info += "INDICATORS\n";
+   info += "ADX: " + DoubleToString(g_curr_adx, 1);
+   info += " | +DI: " + DoubleToString(g_curr_pdi, 1);
+   info += " | -DI: " + DoubleToString(g_curr_mdi, 1) + "\n";
+   info += "Stoch K: " + DoubleToString(g_stoch_k, 1);
+   info += " | D: " + DoubleToString(g_stoch_d, 1) + "\n";
    
-   info += "--------------------------------\n";
-   info += "STOCHASTIC (" + (string)InpStochK + "," + (string)InpStochD + "," + (string)InpStochSlowing + ")\n";
-   info += "   %K: " + DoubleToString(g_stoch_k, 2) + " | %D: " + DoubleToString(g_stoch_d, 2) + "\n";
-   info += "   Zone: " + stoch_zone + "\n";
-   info += "   Cross: " + stoch_cross + "\n";
+   info += "---\n";
+   info += "AI SIGNAL: " + signal_text + "\n";
+   info += "HOLD: " + DoubleToString(g_conf_hold * 100, 1) + "%";
+   info += " | BUY: " + DoubleToString(g_conf_buy * 100, 1) + "%";
+   info += " | SELL: " + DoubleToString(g_conf_sell * 100, 1) + "%\n";
+   info += "Min Conf: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
    
-   info += "--------------------------------\n";
-   info += "AI PREDICTION\n";
-   info += "   Signal: " + signal_text + "\n";
-   info += "   Confidence Levels:\n";
-   info += "   - HOLD:  " + DoubleToString(g_conf_hold * 100, 2) + "%\n";
-   info += "   - BUY:   " + DoubleToString(g_conf_buy  * 100, 2) + "%\n";
-   info += "   - SELL:  " + DoubleToString(g_conf_sell * 100, 2) + "%\n";
-   info += "\n   Minimum Required: " + DoubleToString(InpMinConf * 100, 1) + "%\n";
-   
-   info += "--------------------------------\n";
-   info += "RISK SETTINGS\n";
-   info += "   Lot Size: " + DoubleToString(InpLot, 2) + "\n";
-   info += "   SL:   " + DoubleToString(InpStopPoints, 0);
-   info += " (" + DoubleToString(InpStopPoints * pt, 5) + ")\n";
-   info += "   TP: " + DoubleToString(InpTakePoints, 0);
-   info += " (" + DoubleToString(InpTakePoints * pt, 5) + ")\n";
-   
-   info += "--------------------------------\n";
+   info += "---\n";
+   info += "LOT: " + DoubleToString(InpLot, 2);
+   info += " | SL: " + DoubleToString(InpStopPoints, 0);
+   info += " | TP: " + DoubleToString(InpTakePoints, 0) + "\n";
    
    if(PositionSelect(_Symbol))
    {
@@ -570,15 +490,14 @@ void ShowStatus()
       string type_str = (pos_type == POSITION_TYPE_BUY) ? "BUY" : "SELL";
       string profit_str = (profit >= 0) ? "+" + DoubleToString(profit, 2) : DoubleToString(profit, 2);
       
-      info += "ACTIVE POSITION: " + type_str + "\n";
-      info += "   P&L: " + profit_str + " " + AccountInfoString(ACCOUNT_CURRENCY) + "\n";
+      info += "---\n";
+      info += "POSITION: " + type_str + " | PL: " + profit_str + " " + AccountInfoString(ACCOUNT_CURRENCY) + "\n";
    }
    else
    {
-      info += "Status: Waiting for signal...\n";
+      info += "---\n";
+      info += "Waiting for signal\n";
    }
-   
-   info += "--------------------------------\n";
    
    Comment(info);
 }
