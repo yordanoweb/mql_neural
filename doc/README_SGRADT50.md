@@ -5,7 +5,7 @@ Sistema de trading algorítmico basado en Machine Learning que utiliza 5 feature
 ## Características Principales
 
 - **5 Features exclusivas**: Stochastic %K, %D, ADX, +DI, -DI
-- **Decisiones basadas 100% en inferencia ONNX**: El modelo decide todas las operaciones
+- **Decisiones basadas en inferencia ONNX + filtro EMA**: El modelo decide la dirección; el EMA gate filtra entradas contra tendencia
 - **Validación de movimiento futuro**: Las señales de entrenamiento se validan con movimientos reales
 - **Panel de información reducido**: Información esencial sin decoraciones
 
@@ -138,6 +138,9 @@ InpOneTradePerBar   = true    // Limitar a 1 operación por barra
 InpStartHour        = 0       // Hora de inicio (0-23)
 InpEndHour          = 24      // Hora de fin (0-24)
 
+// EMA Gate
+InpEMAPeriod        = 9       // BUY: Ask > EMA | SELL: Bid < EMA
+
 // Indicator Parameters
 InpStochK           = 7
 InpStochD           = 3
@@ -173,6 +176,7 @@ InpTakePoints       = 100.0   // Take Profit en POINTS
    - Dentro del horario de trading
    - No hay posición abierta
    - No se ha operado esta barra (si activado)
+   - **EMA gate**: Ask > EMA para BUY, Bid < EMA para SELL
 6. **Ejecución**: Abre posición BUY o SELL según predicción
 
 ## Validación de Señales
@@ -235,7 +239,7 @@ BUY order executed successfully
 1. **InpFeaturesPerBar debe ser 5**: Este valor es fijo y debe coincidir con el número de features del modelo
 2. **InpWindowSize debe coincidir**: Usar el mismo valor que en el entrenamiento
 3. **Parámetros de indicadores**: Deben ser idénticos entre entrenamiento y trading
-4. **Decisiones exclusivas ONNX**: El EA no aplica reglas adicionales; toda la lógica está en el modelo
+4. **EMA gate activo en el EA**: El EA aplica un filtro de tendencia vía EMA sobre el precio ejecutable (Ask para BUY, Bid para SELL). Ajustar `InpEMAPeriod` según el timeframe usado
 5. **Testing recomendado**: Probar primero en cuenta demo para validar el comportamiento
 
 ## Troubleshooting
@@ -256,6 +260,11 @@ BUY order executed successfully
 **Señales rechazadas por baja confianza**
 - Reducir `InpMinConf` (ej. de 0.55 a 0.50)
 - Verificar que el modelo se entrenó con datos similares al mercado actual
+
+**Señales rechazadas por EMA gate**
+- El precio ejecutable (Ask/Bid) está al lado equivocado de la EMA
+- Ajustar `InpEMAPeriod` a un período más largo para un filtro más permisivo, o más corto para uno más reactivo
+- Es el comportamiento esperado: el gate evita entradas contra tendencia
 
 ## Licencia
 

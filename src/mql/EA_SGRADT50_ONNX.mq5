@@ -206,6 +206,8 @@ void OnDeinit(const int reason)
       IndicatorRelease(g_stoch_handle);
    if(g_atr_handle != INVALID_HANDLE)
       IndicatorRelease(g_atr_handle);
+   if(g_ema_handle != INVALID_HANDLE)
+      IndicatorRelease(g_ema_handle);
 
 //--- Kill timer
    EventKillTimer();
@@ -224,12 +226,11 @@ bool EMAGateAllows(int predicted_class)
    double ema_gate[];
    if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
       return false;
-   double open_current = iOpen(_Symbol, _Period, 0);
 
    if(predicted_class == 1)
-      return open_current > ema_gate[0];  // BUY: price must be above EMA
+      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
    if(predicted_class == 2)
-      return open_current < ema_gate[0];  // SELL: price must be below EMA
+      return SymbolInfoDouble(_Symbol, SYMBOL_BID) < ema_gate[0];  // SELL: bid must be below EMA
 
    return false;
   }
