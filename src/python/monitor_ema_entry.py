@@ -236,10 +236,17 @@ def send_order(order_type, volume, price, sl=0, tp=0, comment=""):
     return True
 
 def close_position(position):
-    """Close the given position."""
-    order_type = mt5.ORDER_TYPE_BUY if position.type == 1 else mt5.ORDER_TYPE_SELL
-    close_type = mt5.ORDER_TYPE_SELL if order_type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
-    price = mt5.symbol_info_tick(SYMBOL).bid if close_type == mt5.ORDER_TYPE_SELL else mt5.symbol_info_tick(SYMBOL).ask
+    """
+    Close an open position.
+    position: a position object returned by mt5.positions_get()
+    """
+    if position.type == 0:  # Buy position
+        close_type = mt5.ORDER_TYPE_SELL
+        price = mt5.symbol_info_tick(SYMBOL).bid
+    else:  # Sell position
+        close_type = mt5.ORDER_TYPE_BUY
+        price = mt5.symbol_info_tick(SYMBOL).ask
+
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
@@ -253,13 +260,12 @@ def close_position(position):
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
+
     result = mt5.order_send(request)
-    # Check if the request failed entirely
     if result is None:
         error_code = mt5.last_error()
         print(colorize(f"Close order failed: mt5.last_error() = {error_code}", Colors.RED))
         return False
-    # Check if the order was accepted
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(colorize(f"Failed to close position: retcode={result.retcode}, comment={result.comment}", Colors.RED))
         return False
