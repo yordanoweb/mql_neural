@@ -1,19 +1,45 @@
+#!/usr/bin/env python3
 """
-MT5 Trading Script with EMA-based Entry and Exit
-
-- Sell: previous candle opened above EMA and closed below EMA,
-       and current price is N points below EMA.
-- Buy:  previous candle opened below EMA and closed above EMA,
-       and current price is N points above EMA.
-- Close: when price crosses the EMA (exit).
-- Only one order at a time.
+MT5 Trading Script with EMA-based Entry and Exit – Colorful Output
 """
 
+import os
 import time
 import argparse
+import sys
 import MetaTrader5 as mt5
 import pandas as pd
 import ta
+
+# Try to import colorama for Windows ANSI support; if not available, fallback to plain text
+try:
+    import colorama
+    colorama.init(autoreset=True)
+    COLORS_SUPPORTED = True
+except ImportError:
+    COLORS_SUPPORTED = False
+
+# ----------------------------------------------------------------------
+# ANSI color codes (if supported)
+# ----------------------------------------------------------------------
+class Colors:
+    if COLORS_SUPPORTED:
+        RESET   = '\033[0m'
+        RED     = '\033[91m'
+        GREEN   = '\033[92m'
+        YELLOW  = '\033[93m'
+        BLUE    = '\033[94m'
+        MAGENTA = '\033[95m'
+        CYAN    = '\033[96m'
+        WHITE   = '\033[97m'
+    else:
+        RESET = RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = ""
+
+def colorize(text, color):
+    """Wrap text with ANSI color codes if supported."""
+    if COLORS_SUPPORTED:
+        return f"{color}{text}{Colors.RESET}"
+    return text
 
 # ----------------------------------------------------------------------
 # Argument parsing
@@ -42,7 +68,7 @@ parser.add_argument(
     help="Number of points (pips) away from EMA to trigger entry (default: 10)"
 )
 parser.add_argument(
-    "--interval", type=float, default=15.0,
+    "--interval", type=float, default=5.0,
     help="Seconds between processing steps (default: 5)"
 )
 args = parser.parse_args()
@@ -61,20 +87,20 @@ INTERVAL = args.interval
 # MT5 Initialization
 # ----------------------------------------------------------------------
 if not mt5.initialize():
-    print("Failed to initialize MT5, error code =", mt5.last_error())
+    print(colorize("Failed to initialize MT5, error code = " + str(mt5.last_error()), Colors.RED))
     quit()
 
 # Get symbol info
 symbol_info = mt5.symbol_info(SYMBOL)
 if symbol_info is None:
-    print(f"Symbol {SYMBOL} not found, error = {mt5.last_error()}")
+    print(colorize(f"Symbol {SYMBOL} not found, error = {mt5.last_error()}", Colors.RED))
     mt5.shutdown()
     quit()
 
 # Ensure symbol is visible in MarketWatch
 if not symbol_info.visible:
     if not mt5.symbol_select(SYMBOL, True):
-        print(f"Failed to select {SYMBOL}")
+        print(colorize(f"Failed to select {SYMBOL}", Colors.RED))
         mt5.shutdown()
         quit()
 
@@ -82,7 +108,7 @@ if not symbol_info.visible:
 point = symbol_info.point
 entry_threshold = ENTRY_POINTS * point
 
-print(f"MT5 initialized – trading {SYMBOL} with EMA{EMA_PERIOD}")
+print(colorize("MT5 initialized", Colors.GREEN) + f" – trading {SYMBOL} with EMA{EMA_PERIOD}")
 print(f"Magic: {MAGIC}, Volume: {VOLUME}, Entry threshold: {ENTRY_POINTS} points ({entry_threshold:.5f})")
 print(f"Checking every {INTERVAL} seconds\n")
 
@@ -136,7 +162,6 @@ def send_order(order_type, volume, price, sl=0, tp=0, comment=""):
     Send a market order.
     order_type: mt5.ORDER_TYPE_BUY or mt5.ORDER_TYPE_SELL
     """
-    # For buy, price is ask; for sell, price is bid
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
@@ -153,17 +178,17 @@ def send_order(order_type, volume, price, sl=0, tp=0, comment=""):
     }
     result = mt5.order_send(request)
     if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"Order failed: {result.comment} (retcode={result.retcode})")
+        print(colorize(f"Order failed: {result.comment} (retcode={result.retcode})", Colors.RED))
         return False
-    print(f"Order executed: {'BUY' if order_type == mt5.ORDER_TYPE_BUY else 'SELL'} {volume} at {price}")
+    print(colorize(f"Order executed: {'BUY' if order_type == mt5.ORDER_TYPE_BUY else 'SELL'} {volume} at {price}", Colors.GREEN))
     return True
 
 def close_position(position):
     """Close the given position."""
     order_type = mt5.ORDER_TYPE_BUY if position.type == 1 else mt5.ORDER_TYPE_SELL
-    # Close with opposite order type
     close_type = mt5.ORDER_TYPE_SELL if order_type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
     price = mt5.symbol_info_tick(SYMBOL).bid if close_type == mt5.ORDER_TYPE_SELL else mt5.symbol_info_tick(SYMBOL).ask
+    
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
@@ -177,11 +202,21 @@ def close_position(position):
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
+    
     result = mt5.order_send(request)
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(f"Failed to close position: {result.comment} (retcode={result.retcode})")
+    
+    # Check if the request failed entirely
+    if result is None:
+        error_code = mt5.last_error()
+        print(colorize(f"Close order failed: mt5.last_error() = {error_code}", Colors.RED))
         return False
-    print(f"Position closed: {position.ticket}")
+    
+    # Check if the order was accepted
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print(colorize(f"Failed to close position: retcode={result.retcode}, comment={result.comment}", Colors.RED))
+        return False
+    
+    print(colorize(f"Position closed: {position.ticket}", Colors.GREEN))
     return True
 
 # ----------------------------------------------------------------------
@@ -201,7 +236,7 @@ try:
         # Get current prices
         bid, ask = get_current_prices()
         if bid is None or ask is None:
-            print("No tick data, waiting...")
+            print(colorize("No tick data, waiting...", Colors.YELLOW))
             continue
         current_price = (bid + ask) / 2.0
 
@@ -209,74 +244,71 @@ try:
         candles_needed = EMA_PERIOD + 2
         df = get_candles(candles_needed)
         if df is None or len(df) < candles_needed:
-            print("Not enough candles yet, waiting...")
+            print(colorize("Not enough candles yet, waiting...", Colors.YELLOW))
             continue
 
         # Compute EMA series
         ema_series = compute_ema(df, EMA_PERIOD)
         if ema_series is None:
-            print("Could not compute EMA, waiting...")
+            print(colorize("Could not compute EMA, waiting...", Colors.YELLOW))
             continue
 
-        # Get the latest two candles (index -1 is current forming, -2 is previous completed)
-        # We need the previous completed candle (index -2) for open/close condition
+        # Get the latest two candles
         prev_candle = df.iloc[-2]   # previous completed candle
-        current_ema = ema_series.iloc[-1]      # EMA after the last completed candle (based on close)
+        current_ema = ema_series.iloc[-1]      # EMA after the last completed candle
         prev_ema = ema_series.iloc[-2]         # EMA after the previous candle
 
-        # Check if a new candle has formed (comparing timestamps)
+        # Check if a new candle has formed
         current_candle_time = prev_candle['time']
         if last_candle_time != current_candle_time:
-            # New candle detected – good time to log and evaluate entry
-            print(f"\n--- New candle: {current_candle_time} ---")
+            print(colorize(f"\n--- New candle: {current_candle_time} ---", Colors.CYAN))
             last_candle_time = current_candle_time
 
-        # ------------------------------------------------------------------
         # Check for open position
-        # ------------------------------------------------------------------
         position = get_open_position()
         if position:
             # Exit condition: price crosses the EMA
             if (position.type == 0 and current_price < current_ema) or \
                (position.type == 1 and current_price > current_ema):
-                print(f"Exit signal: price {current_price:.5f} crossed EMA {current_ema:.5f}")
+                print(colorize(f"Exit signal: price {current_price:.5f} crossed EMA {current_ema:.5f}", Colors.YELLOW))
                 close_position(position)
-                position = None  # just closed
+                position = None
         else:
             # No open position – check entry conditions
-            # Sell condition:
-            # previous candle opened above prev_ema AND closed below current_ema
-            # AND current price is below current_ema by entry_threshold
+            # Sell condition
             if (prev_candle['open'] > prev_ema and prev_candle['close'] < current_ema and
                 current_price < current_ema - entry_threshold):
-                print("Sell signal detected.")
+                print(colorize("Sell signal detected.", Colors.YELLOW))
                 send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid)
-            # Buy condition:
-            # previous candle opened below prev_ema AND closed above current_ema
-            # AND current price is above current_ema by entry_threshold
+            # Buy condition
             elif (prev_candle['open'] < prev_ema and prev_candle['close'] > current_ema and
                   current_price > current_ema + entry_threshold):
-                print("Buy signal detected.")
+                print(colorize("Buy signal detected.", Colors.YELLOW))
                 send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask)
-            else:
-                # No signal – just log status
-                pass
+            # else: no signal
 
         # ------------------------------------------------------------------
         # Logging – status every interval
         # ------------------------------------------------------------------
         pos_status = "No position" if position is None else f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f}"
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {SYMBOL} price={current_price:.5f} EMA{EMA_PERIOD}={current_ema:.5f} | {pos_status}")
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        # Color the timestamp and price/EMA
+        msg = (f"[{colorize(timestamp, Colors.BLUE)}] "
+               f"{colorize(SYMBOL, Colors.WHITE)} price={colorize(f'{current_price:.5f}', Colors.CYAN)} "
+               f"EMA{EMA_PERIOD}={colorize(f'{current_ema:.5f}', Colors.MAGENTA)} | "
+               f"{colorize(pos_status, Colors.GREEN if position else Colors.WHITE)}")
+        print(msg)
 
         # If we have a position, log also the distance to EMA
         if position:
             dist = current_price - current_ema
             dist_text = f"above" if dist > 0 else "below"
-            print(f"  Price is {abs(dist):.5f} {dist_text} EMA")
+            color_dist = Colors.GREEN if (position.type == 0 and dist > 0) or (position.type == 1 and dist < 0) else Colors.RED
+            print(f"  Price is {colorize(f'{abs(dist):.5f}', color_dist)} {dist_text} EMA")
 
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("\nScript stopped by user.")
+    print(colorize("\nScript stopped by user.", Colors.YELLOW))
 
 mt5.shutdown()
