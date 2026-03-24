@@ -181,7 +181,12 @@ def main():
         num_inputs = len(features_list) * args.window
         log_info(f"ONNX model input shape: [1, {num_inputs}] ({len(features_list)} features × {args.window} window)")
         
-        onx = convert_sklearn(model.best_estimator_, initial_types=[('float_input', FloatTensorType([1, num_inputs]))], target_opset=12)
+        onx = convert_sklearn(
+            model.best_estimator_,
+            initial_types=[('float_input', FloatTensorType([1, num_inputs]))],
+            target_opset=12,
+            options={type(model.best_estimator_): {'zipmap': False}}
+        )
         
         # Handle the return value from convert_sklearn (it returns a tuple)
         if isinstance(onx, tuple):
