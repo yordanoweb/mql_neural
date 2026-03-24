@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 MT5 Trading Script with EMA-based Entry and Exit – Colorful Output
 """
@@ -42,6 +41,40 @@ def colorize(text, color):
     return text
 
 # ----------------------------------------------------------------------
+# Timeframe mapping
+# ----------------------------------------------------------------------
+TIMEFRAME_MAP = {
+    "M1":  mt5.TIMEFRAME_M1,
+    "M2":  mt5.TIMEFRAME_M2,
+    "M3":  mt5.TIMEFRAME_M3,
+    "M4":  mt5.TIMEFRAME_M4,
+    "M5":  mt5.TIMEFRAME_M5,
+    "M6":  mt5.TIMEFRAME_M6,
+    "M10": mt5.TIMEFRAME_M10,
+    "M12": mt5.TIMEFRAME_M12,
+    "M15": mt5.TIMEFRAME_M15,
+    "M20": mt5.TIMEFRAME_M20,
+    "M30": mt5.TIMEFRAME_M30,
+    "H1":  mt5.TIMEFRAME_H1,
+    "H2":  mt5.TIMEFRAME_H2,
+    "H3":  mt5.TIMEFRAME_H3,
+    "H4":  mt5.TIMEFRAME_H4,
+    "H6":  mt5.TIMEFRAME_H6,
+    "H8":  mt5.TIMEFRAME_H8,
+    "H12": mt5.TIMEFRAME_H12,
+    "D1":  mt5.TIMEFRAME_D1,
+    "W1":  mt5.TIMEFRAME_W1,
+    "MN1": mt5.TIMEFRAME_MN1,
+}
+
+def parse_timeframe(tf_str):
+    """Convert timeframe string to MT5 timeframe constant."""
+    tf_str = tf_str.upper()
+    if tf_str not in TIMEFRAME_MAP:
+        raise ValueError(f"Unsupported timeframe: {tf_str}. Use one of: {', '.join(TIMEFRAME_MAP.keys())}")
+    return TIMEFRAME_MAP[tf_str]
+
+# ----------------------------------------------------------------------
 # Argument parsing
 # ----------------------------------------------------------------------
 parser = argparse.ArgumentParser(
@@ -52,12 +85,16 @@ parser.add_argument(
     help="Trading symbol (default: EURUSD)"
 )
 parser.add_argument(
+    "--timeframe", type=str, default="M1",
+    help="Candle timeframe (e.g., M1, M5, H1, D1) (default: M1)"
+)
+parser.add_argument(
     "--ema_period", type=int, default=9,
     help="EMA period (default: 9)"
 )
 parser.add_argument(
-    "--magic", type=int, default=123456,
-    help="Magic number to identify orders (default: 123456)"
+    "--magic", type=int, default=91234569,
+    help="Magic number to identify orders (default: 91234569)"
 )
 parser.add_argument(
     "--volume", type=float, default=0.1,
@@ -77,6 +114,7 @@ args = parser.parse_args()
 # Constants
 # ----------------------------------------------------------------------
 SYMBOL = args.symbol
+TIMEFRAME = parse_timeframe(args.timeframe)
 EMA_PERIOD = args.ema_period
 MAGIC = args.magic
 VOLUME = args.volume
@@ -108,7 +146,7 @@ if not symbol_info.visible:
 point = symbol_info.point
 entry_threshold = ENTRY_POINTS * point
 
-print(colorize("MT5 initialized", Colors.GREEN) + f" – trading {SYMBOL} with EMA{EMA_PERIOD}")
+print(colorize("MT5 initialized", Colors.GREEN) + f" – trading {SYMBOL} on {args.timeframe} timeframe with EMA{EMA_PERIOD}")
 print(f"Magic: {MAGIC}, Volume: {VOLUME}, Entry threshold: {ENTRY_POINTS} points ({entry_threshold:.5f})")
 print(f"Checking every {INTERVAL} seconds\n")
 
@@ -123,8 +161,8 @@ def get_current_prices():
     return tick.bid, tick.ask
 
 def get_candles(count):
-    """Fetch last 'count' candles (OHLC) for the symbol."""
-    rates = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M1, 0, count)
+    """Fetch last 'count' candles (OHLC) for the symbol using selected timeframe."""
+    rates = mt5.copy_rates_from_pos(SYMBOL, TIMEFRAME, 0, count)
     if rates is None or len(rates) < count:
         return None
     df = pd.DataFrame(rates)
@@ -162,24 +200,38 @@ def send_order(order_type, volume, price, sl=0, tp=0, comment=""):
     Send a market order.
     order_type: mt5.ORDER_TYPE_BUY or mt5.ORDER_TYPE_SELL
     """
+    # Build the base request without sl/tp if they are 0
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
         "volume": volume,
         "type": order_type,
         "price": price,
-        "sl": sl,
-        "tp": tp,
         "deviation": 10,
         "magic": MAGIC,
         "comment": comment,
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
+    # Only add sl and tp if they are set (greater than 0)
+    if sl > 0:
+        request["sl"] = sl
+    if tp > 0:
+        request["tp"] = tp
+
     result = mt5.order_send(request)
-    if result.retcode != mt5.TRADE_RETCODE_DONE:
-        print(colorize(f"Order failed: {result.comment} (retcode={result.retcode})", Colors.RED))
+
+    # Check if the request failed entirely
+    if result is None:
+        error_code = mt5.last_error()
+        print(colorize(f"Order send failed: mt5.last_error() = {error_code}", Colors.RED))
         return False
+
+    # Check if the order was accepted by the server
+    if result.retcode != mt5.TRADE_RETCODE_DONE:
+        print(colorize(f"Order failed: retcode={result.retcode}, comment={result.comment}", Colors.RED))
+        return False
+
     print(colorize(f"Order executed: {'BUY' if order_type == mt5.ORDER_TYPE_BUY else 'SELL'} {volume} at {price}", Colors.GREEN))
     return True
 
@@ -188,7 +240,6 @@ def close_position(position):
     order_type = mt5.ORDER_TYPE_BUY if position.type == 1 else mt5.ORDER_TYPE_SELL
     close_type = mt5.ORDER_TYPE_SELL if order_type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
     price = mt5.symbol_info_tick(SYMBOL).bid if close_type == mt5.ORDER_TYPE_SELL else mt5.symbol_info_tick(SYMBOL).ask
-    
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": SYMBOL,
@@ -202,20 +253,16 @@ def close_position(position):
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
-    
     result = mt5.order_send(request)
-    
     # Check if the request failed entirely
     if result is None:
         error_code = mt5.last_error()
         print(colorize(f"Close order failed: mt5.last_error() = {error_code}", Colors.RED))
         return False
-    
     # Check if the order was accepted
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(colorize(f"Failed to close position: retcode={result.retcode}, comment={result.comment}", Colors.RED))
         return False
-    
     print(colorize(f"Position closed: {position.ticket}", Colors.GREEN))
     return True
 
