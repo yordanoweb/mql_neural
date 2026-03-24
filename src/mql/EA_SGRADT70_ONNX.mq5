@@ -230,12 +230,11 @@ bool EMAGateAllows(int predicted_class)
    double ema_gate[];
    if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
       return false;
-   double open_current = iOpen(_Symbol, _Period, 0);
 
    if(predicted_class == 1)
-      return open_current > ema_gate[0];  // BUY: price must be above EMA
+      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
    if(predicted_class == 2)
-      return open_current < ema_gate[0];  // SELL: price must be below EMA
+      return SymbolInfoDouble(_Symbol, SYMBOL_BID) < ema_gate[0];  // SELL: bid must be below EMA
 
    return false;
   }
@@ -410,9 +409,13 @@ void RunInference()
       int adx_count = CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
       int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
       int stochd_count = CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
+      string class_name = "HOLD";
+      if(predicted_class == 1) class_name = "BUY";
+      else if(predicted_class == 2) class_name = "SELL";
+      
       PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
                   max_prob,
-                  (max_prob == 1 ? "BUY" : "SELL"),
+                  class_name,
                   adx_buf[0],
                   stoch_buf[0],
                   stochd_buf[0]);
@@ -427,12 +430,28 @@ void RunInference()
 //--- Execute trade
    if(predicted_class == 1)    // BUY
      {
-      if(!HasPosition(POSITION_TYPE_BUY) && EMAGateAllows(predicted_class))
+      // Check blocking conditions with debug info
+      bool has_buy_pos = HasPosition(POSITION_TYPE_BUY);
+      bool ema_allows = EMAGateAllows(predicted_class);
+      
+      Print("[DEBUG BUY] HasPosition: ", has_buy_pos, " | EMAGate: ", ema_allows);
+      
+      if(has_buy_pos)
+        {
+         Print("[SKIP BUY] Already have BUY position");
+        }
+      else if(!ema_allows)
+        {
+         double ema_val[], ask_val = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
+         Print("[SKIP BUY] EMA gate blocks: Ask=", DoubleToString(ask_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Ask > EMA)");
+        }
+      else
         {
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          double sl  = (InpStopPoints > 0) ? ask - InpStopPoints * _Point : 0;
          double tp  = (InpTakePoints > 0) ? ask + InpTakePoints * _Point : 0;
-
+         
          if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 2) + "%"))
            {
             Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
@@ -447,7 +466,23 @@ void RunInference()
          double sl  = (InpStopPoints > 0) ? bid + InpStopPoints * _Point : 0;
          double tp  = (InpTakePoints > 0) ? bid - InpTakePoints * _Point : 0;
 
-         if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class))
+         bool has_sell_pos = HasPosition(POSITION_TYPE_SELL);
+         bool ema_allows = EMAGateAllows(predicted_class);
+         
+         Print("[DEBUG SELL] HasPosition: ", has_sell_pos, " | EMAGate: ", ema_allows);
+         
+         if(has_sell_pos)
+           {
+            Print("[SKIP SELL] Already have SELL position");
+           }
+         else if(!ema_allows)
+           {
+            double ema_val[], open_val = iOpen(_Symbol, _Period, 0);
+            CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
+            double bid_val = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            Print("[SKIP SELL] EMA gate blocks: Bid=", DoubleToString(bid_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Bid < EMA)");
+           }
+         else
            {
             if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70 SELL @" + DoubleToString(max_prob, 2) + "%"))
               {
