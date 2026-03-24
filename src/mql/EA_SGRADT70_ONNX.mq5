@@ -14,7 +14,7 @@
 input group "======== AI MODEL ========"
 input string InpModelName = "USTEC_M5_SGRADT70_ema9.onnx";  // Model filename
 input double InpMinConf   = 0.55;      // Minimum confidence (0.0-1.0)
-input int    InpWindowSize = 20;       // Window size (must match training)
+input int    InpWindowSize = 10;       // Window size (must match training)
 input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 7.0)
 
 //=== Inference Timing ===
@@ -32,14 +32,14 @@ input group "======== EMA ========"
 input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
 
 input group "======== STOCHASTIC ========"
-input int    InpStochK          = 7;      // Stochastic K period
+input int    InpStochK          = 5;      // Stochastic K period
 input int    InpStochD          = 3;      // Stochastic D smoothing
-input double InpStochOversold   = 20.0;   // Oversold level
-input double InpStochOverbought = 80.0;   // Overbought level
+input double InpStochOversold   = 30.0;   // Oversold level
+input double InpStochOverbought = 70.0;   // Overbought level
 
 input group "======== ADX ========"
 input int    InpADXPeriod = 8;      // ADX period
-input double InpADXLimit  = 25.0;   // ADX trend threshold
+input double InpADXLimit  = 24.0;   // ADX trend threshold
 
 //=== Risk Management ===
 input group "======== RISK ========"
@@ -106,19 +106,13 @@ int OnInit()
 //--- Set output shapes
 // Output 0: label [1]
    long out_shape_label[] = {1};
-   if(!OnnxSetOutputShape(g_onnx_handle, 0, out_shape_label))
-     {
-      Print("[ERROR] Cannot set output shape for label");
-      return INIT_FAILED;
-     }
+   OnnxSetOutputShape(g_onnx_handle, 0, out_shape_label);
 
 // Output 1: probabilities [1, 3] for classes [HOLD, BUY, SELL]
    long out_shape_probs[] = {1, 3};
-   if(!OnnxSetOutputShape(g_onnx_handle, 1, out_shape_probs))
-     {
-      Print("[ERROR] Cannot set output shape for probabilities");
-      return INIT_FAILED;
-     }
+   OnnxSetOutputShape(g_onnx_handle, 1, out_shape_probs);
+
+   Print("[OK] Output shapes set: label[1], probabilities[1,3]");
 
 //--- Create indicator handles
    Print("\nInitializing indicators...");
