@@ -10,6 +10,7 @@ import numpy as np
 import argparse
 import sys
 import json
+import time
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
@@ -20,6 +21,22 @@ from ta.momentum import StochasticOscillator
 import warnings
 
 warnings.filterwarnings('ignore')
+
+def log_info(message):
+    """Print formatted log message with timestamp"""
+    print(f"[INFO] {message}")
+
+def log_debug(message):
+    """Print debug log message"""
+    print(f"[DEBUG] {message}")
+
+def log_warning(message):
+    """Print warning log message"""
+    print(f"[WARNING] {message}")
+
+def log_error(message):
+    """Print error log message"""
+    print(f"[ERROR] {message}")
 
 def calculate_signals_and_labels(df, args):
     """
@@ -100,46 +117,89 @@ def main():
     args = parser.parse_args()
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    
+    log_info(f"Starting SGRADT 7.0 training")
+    log_info(f"Arguments: {vars(args)}")
+    log_info(f"Output directory: {output_dir}")
+    
+    start_time = time.time()
+    processed_count = 0
+    skipped_count = 0
+    
     for csv_path in [Path(p) for p in args.csv]:
-        if not csv_path.exists(): continue
-
-        print(f"\nProcessing: {csv_path.name}")
+        if not csv_path.exists():
+            log_warning(f"File does not exist: {csv_path}")
+            continue
+        
+        log_info(f"Processing: {csv_path.name}")
+        file_start_time = time.time()
         df = pd.read_csv(csv_path)
+        log_info(f"Loaded {len(df)} rows from {csv_path.name}")
+        
         df, labels, features_list = calculate_signals_and_labels(df, args)
-
+        
         count_buy = int(np.sum(labels == 1))
         count_sell = int(np.sum(labels == 2))
-
+        total_signals = count_buy + count_sell
+        
+        log_info(f"Signal counts - BUY: {count_buy}, SELL: {count_sell}, TOTAL: {total_signals}")
+        
         if count_buy < 5 or count_sell < 5:
-            print(f"Skipping {csv_path.name}: Insufficient signals (B:{count_buy}, S:{count_sell})")
+            log_warning(f"Skipping {csv_path.name}: Insufficient signals (B:{count_buy}, S:{count_sell})")
+            skipped_count += 1
             continue
-
+        
+        log_info(f"Preparing features with window size: {args.window}")
         X_list, y_list = [], []
         X_vals = df[features_list].values
         for i in range(args.window, len(df)):
             X_list.append(X_vals[i - args.window:i].flatten())
             y_list.append(labels[i])
-
+        
         X = np.array(X_list, dtype=np.float32)
-        y = np.array(y_current := y_list)
-
+        y = np.array(y_list)  # Fixed the walrus operator usage
+        
+        log_info(f"Prepared training data: X.shape={X.shape}, y.shape={y.shape}")
+        log_info(f"Label distribution in training data: {np.bincount(y.astype(int))}")
+        
         # Training
+        log_info("Starting model training with RandomizedSearchCV")
+        log_info(f"Parameters: n_iter={args.n_iter}, cv=TimeSeriesSplit(n_splits=3)")
+        
         model = RandomizedSearchCV(
             RandomForestClassifier(random_state=42, class_weight='balanced'),
             param_distributions={'n_estimators': [100, 200], 'max_depth': [10, 20, None]},
             n_iter=args.n_iter, cv=TimeSeriesSplit(n_splits=3), scoring='balanced_accuracy', n_jobs=-1
         )
         model.fit(X, y)
-
+        
+        log_info(f"Training completed. Best score: {model.best_score_:.4f}")
+        log_info(f"Best parameters: {model.best_params_}")
+        
         # Export ONNX
+        log_info("Exporting model to ONNX format")
         num_inputs = len(features_list) * args.window
+        log_info(f"ONNX model input shape: [1, {num_inputs}] ({len(features_list)} features × {args.window} window)")
+        
         onx = convert_sklearn(model.best_estimator_, initial_types=[('float_input', FloatTensorType([1, num_inputs]))], target_opset=12)
         
+        # Handle the return value from convert_sklearn (it returns a tuple)
+        if isinstance(onx, tuple):
+            onx_model = onx[0]  # First element is the model proto
+        else:
+            onx_model = onx
+            
         out_name = output_dir / f"{csv_path.stem}_SGRADT70.onnx"
-        with open(out_name, "wb") as f: f.write(onx.SerializeToString())
+        log_info(f"Writing ONNX model to {out_name}")
+        with open(out_name, "wb") as f: 
+            f.write(onx_model.SerializeToString())
         
-        print(f"Model saved: {out_name.name} | Accuracy: {model.best_score_:.4f}")
+        file_elapsed = time.time() - file_start_time
+        log_info(f"Model saved: {out_name.name} | Accuracy: {model.best_score_:.4f} | Processing time: {file_elapsed:.2f}s")
+        processed_count += 1
+    
+    total_elapsed = time.time() - start_time
+    log_info(f"Training session completed. Processed: {processed_count}, Skipped: {skipped_count}, Total time: {total_elapsed:.2f}s")
 
 if __name__ == "__main__":
     main()
