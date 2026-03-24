@@ -66,7 +66,6 @@ int      g_inference_count = 0;
 
 double   g_last_probas[3];
 int      g_last_prediction = -1;
-bool     g_onnx_outputs_compatible = true;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                    |
@@ -103,6 +102,23 @@ int OnInit()
      }
 
    Print("[OK] Input shape set: [1, ", num_inputs, "] (", InpWindowSize, " bars x ", InpFeaturesPerBar, " features)");
+
+//--- Set output shapes
+// Output 0: label [1]
+   long out_shape_label[] = {1};
+   if(!OnnxSetOutputShape(g_onnx_handle, 0, out_shape_label))
+     {
+      Print("[ERROR] Cannot set output shape for label");
+      return INIT_FAILED;
+     }
+
+// Output 1: probabilities [1, 3] for classes [HOLD, BUY, SELL]
+   long out_shape_probs[] = {1, 3};
+   if(!OnnxSetOutputShape(g_onnx_handle, 1, out_shape_probs))
+     {
+      Print("[ERROR] Cannot set output shape for probabilities");
+      return INIT_FAILED;
+     }
 
 //--- Create indicator handles
    Print("\nInitializing indicators...");
@@ -332,10 +348,6 @@ void CheckEMAExit()
 //+------------------------------------------------------------------+
 void RunInference()
   {
-   if(!g_onnx_outputs_compatible)
-     {
-      return;
-     }
 //--- Check if already traded this bar
    datetime current_bar = iTime(_Symbol, _Period, 0);
    if(InpOneTradePerBar && current_bar == g_last_trade_bar)
@@ -360,34 +372,16 @@ void RunInference()
      }
 
 //--- Run inference
-   long output_label[];
-   float output_proba[];
+   float output_label[1];
+   float output_proba[3];
 
-   ArrayResize(output_label, 1);
-   ArrayResize(output_proba, 3);
-   ResetLastError();
-   bool inference_ok = OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_proba);
-
-   if(!inference_ok)
+   if(!OnnxRun(g_onnx_handle, ONNX_DEFAULT, input_buffer, output_label, output_proba))
      {
-      int err_label_then_proba = GetLastError();
-      ResetLastError();
-
-      // Some sklearn ONNX exports use [probabilities, label] output order.
-      inference_ok = OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_proba, output_label);
-
-      if(!inference_ok)
-        {
-         int err_proba_then_label = GetLastError();
-         Print("[ERROR] ONNX inference failed");
-         Print("        Input buffer size: ", ArraySize(input_buffer));
-         Print("        Expected: ", expected_size);
-         Print("        Tried output order: [label, probabilities] and [probabilities, label]");
-         Print("        Errors: ", err_label_then_proba, " / ", err_proba_then_label);
-         Print("        If model output is map/sequence (ZipMap), re-export with zipmap=False.");
-         g_onnx_outputs_compatible = false;
-         return;
-        }
+      Print("[ERROR] ONNX inference failed");
+      Print("        Input buffer size: ", ArraySize(input_buffer));
+      Print("        Expected: ", expected_size);
+      Print("        GetLastError: ", GetLastError());
+      return;
      }
 
 //--- Validate output
