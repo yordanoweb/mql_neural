@@ -1,6 +1,6 @@
-#!/usr/bin/env python3
 """
-MT5 Trading Script with EMA-based Entry/Exit and ATR-based Stop Loss / Take Profit
+MT5 Trading Script with EMA-based Entry and ATR-based Stop Loss / Take Profit
+(Exit only via SL/TP, not EMA cross)
 """
 
 import time
@@ -54,7 +54,7 @@ def parse_timeframe(tf_str):
     return TIMEFRAME_MAP[tf_str]
 
 # ---------- Argument parsing ----------
-parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA Cross with ATR SL/TP")
+parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA Entry with ATR SL/TP")
 parser.add_argument("--symbol", type=str, default="EURUSD", help="Trading symbol (default: EURUSD)")
 parser.add_argument("--timeframe", type=str, default="M1", help="Candle timeframe (e.g., M1, M5, H1, D1) (default: M1)")
 parser.add_argument("--ema_period", type=int, default=9, help="EMA period (default: 9)")
@@ -248,12 +248,8 @@ try:
 
         position = get_open_position()
         if position:
-            # Exit when price crosses EMA
-            if (position.type == 0 and current_price < current_ema) or \
-               (position.type == 1 and current_price > current_ema):
-                print(colorize(f"Exit signal: price {current_price:.5f} crossed EMA {current_ema:.5f}", Colors.YELLOW))
-                close_position(position)
-                position = None
+            # No automatic exit based on EMA – only SL/TP will close
+            pass
         else:
             # Check entry signals
             atr_value = compute_atr(df, ATR_PERIOD)
