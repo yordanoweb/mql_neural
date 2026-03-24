@@ -1,10 +1,13 @@
 """
-SGRADT 7.0 - Training Script
-Estrategia simplificada con EMA 9 como pivote
-5 features: body, range, stoch_k, stoch_d, adx
+SGRADT 7.0 v3 - Training Script
+Estrategia simplificada con 6 features (sin EMA gate)
+6 features: stoch_k, stoch_d, adx, pdi, mdi, volume_gate
 
-Entrada: Vela abre por encima/debajo de EMA 9 + confirmación ADX/Stoch
-Salida: Vela abre cruzando EMA 9 en dirección opuesta
+La red neuronal toma TODAS las decisiones basándose en:
+- 5 features técnicas (stoch_k, stoch_d, adx, pdi, mdi)
+- 1 feature de contexto (volume_gate)
+
+No hay lógica manual de entry/exit - el modelo aprende los patrones completos.
 """
 
 import pandas as pd
@@ -16,36 +19,31 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
-from ta.trend import ADXIndicator, EMAIndicator
+from ta.trend import ADXIndicator
 from ta.momentum import StochasticOscillator
 import warnings
 
 warnings.filterwarnings('ignore')
 
 
-def calculate_signals_and_labels(df, args):
+def calculate_features_and_labels(df, args):
     """
-    Calcula señales de entrada y labels basados en EMA 9 cross.
+    Calcula las 6 features y labels basados en ganancia futura.
     
-    Entry BUY:
-    - Open[0] > EMA9[0] (vela abre por encima)
-    - ADX > adx_limit (tendencia fuerte)
-    - Stochastic oversold crossover O strong momentum
+    Features:
+    1. stoch_k (Stochastic %K)
+    2. stoch_d (Stochastic %D signal)
+    3. adx (Average Directional Index)
+    4. pdi (Positive Directional Indicator)
+    5. mdi (Minus Directional Indicator)
+    6. volume_gate (ratio del volumen actual vs promedio de 10 barras)
     
-    Entry SELL:
-    - Open[0] < EMA9[0] (vela abre por debajo)
-    - ADX > adx_limit (tendencia fuerte)
-    - Stochastic overbought crossover O strong momentum
-    
-    Exit:
-    - BUY: Cuando open cruza por debajo de EMA 9
-    - SELL: Cuando open cruza por encima de EMA 9
+    Labels:
+    - Se calculan mirando hacia adelante (args.future barras)
+    - BUY (1): Si precio sube >= min_profit_points
+    - SELL (2): Si precio baja >= min_profit_points
+    - HOLD (0): En otro caso
     """
-    
-    # Calcular EMA 9
-    print("Calculando EMA 9...")
-    ema_inst = EMAIndicator(close=df['close'], window=args.ema_period)
-    df['ema9'] = ema_inst.ema_indicator()
     
     # Calcular ADX
     print("Calculando ADX...")
@@ -71,90 +69,71 @@ def calculate_signals_and_labels(df, args):
     df['stoch_k'] = stoch.stoch()
     df['stoch_d'] = stoch.stoch_signal()
     
-    # Crear features
-    df['feat_body'] = df['close'] - df['open']
-    df['feat_range'] = df['high'] - df['low']
+    # Calcular Volume Gate (ratio vs promedio de 10 barras)
+    print("Calculando Volume Gate...")
+    df['volume_avg_10'] = df['tick_volume'].rolling(window=10).mean()
+    df['volume_gate'] = df['tick_volume'] / df['volume_avg_10']
+    df['volume_gate'] = df['volume_gate'].fillna(1.0)  # Default to 1.0 if NaN
+    
+    # Crear features finales
     df['feat_stoch_main'] = df['stoch_k']
     df['feat_stoch_signal'] = df['stoch_d']
     df['feat_adx'] = df['adx']
+    df['feat_pdi'] = df['pdi']
+    df['feat_mdi'] = df['mdi']
+    df['feat_volume_gate'] = df['volume_gate']
+    
+    # Lista de features (ahora son 6)
+    features_list = [
+        'feat_stoch_main',
+        'feat_stoch_signal',
+        'feat_adx',
+        'feat_pdi',
+        'feat_mdi',
+        'feat_volume_gate'
+    ]
     
     # Dropna
-    features_list = ['feat_body', 'feat_range', 'feat_stoch_main', 'feat_stoch_signal', 'feat_adx']
-    df = df.dropna(subset=features_list + ['ema9']).reset_index(drop=True)
+    df = df.dropna(subset=features_list).reset_index(drop=True)
     
     print(f"Datos válidos después de NaN: {len(df)} barras")
     
-    # ========== CALCULAR LABELS ==========
+    # ========== CALCULAR LABELS (FORWARD-LOOKING) ==========
     
     labels = np.zeros(len(df))
     
-    for i in range(1, len(df) - args.future):
+    for i in range(len(df) - args.future):
         
-        # Referencias
-        open_0 = df['open'].iloc[i]
-        ema9_0 = df['ema9'].iloc[i]
-        adx_0 = df['adx'].iloc[i]
-        stoch_k_0 = df['stoch_k'].iloc[i]
-        stoch_k_1 = df['stoch_k'].iloc[i-1] if i > 0 else 0
-        stoch_d_0 = df['stoch_d'].iloc[i]
-        stoch_d_1 = df['stoch_d'].iloc[i-1] if i > 0 else 0
+        entry_price = df['close'].iloc[i]
         
-        # ========== BUY SIGNAL ==========
+        # Buscar el MEJOR movimiento alcista y bajista en la ventana
+        max_up_move = 0    # Máximo que sube desde entry
+        max_down_move = 0  # Máximo que baja desde entry
         
-        # Condición: Vela abre por encima de EMA 9
-        above_ema = open_0 > ema9_0
+        for j in range(i+1, min(i+args.future+1, len(df))):
+            future_price = df['close'].iloc[j]
+            
+            # Calcular movimiento desde precio de entrada (en puntos)
+            price_change = (future_price - entry_price) / entry_price * 10000
+            
+            # Trackear el mejor movimiento en cada dirección
+            if price_change > 0:  # Movimiento alcista
+                max_up_move = max(max_up_move, price_change)
+            else:  # Movimiento bajista
+                max_down_move = max(max_down_move, abs(price_change))
         
-        # ADX confirma tendencia
-        adx_strong = adx_0 > args.adx_limit
-        
-        # Stochastic oversold crossover O strong momentum
-        stoch_oversold_cross = (stoch_k_1 < stoch_d_1) and (stoch_k_0 > stoch_d_0) and (stoch_k_0 <= args.stoch_oversold)
-        stoch_momentum_up = (stoch_k_0 > stoch_k_1 + 7)
-        
-        stoch_buy = stoch_oversold_cross or stoch_momentum_up
-        
-        buy_signal = above_ema and adx_strong and stoch_buy
-        
-        # ========== SELL SIGNAL ==========
-        
-        # Condición: Vela abre por debajo de EMA 9
-        below_ema = open_0 < ema9_0
-        
-        # Stochastic overbought crossover O strong momentum
-        stoch_overbought_cross = (stoch_k_1 > stoch_d_1) and (stoch_k_0 < stoch_d_0) and (stoch_k_0 >= args.stoch_overbought)
-        stoch_momentum_down = (stoch_k_0 < stoch_k_1 - 7)
-        
-        stoch_sell = stoch_overbought_cross or stoch_momentum_down
-        
-        sell_signal = below_ema and adx_strong and stoch_sell
-        
-        # ========== VALIDAR EXIT EN EL FUTURO ==========
-        
-        if buy_signal:
-            # Buscar exit: cuando open cruza por debajo de EMA 9
-            for j in range(i+1, min(i+args.future+1, len(df))):
-                if df['open'].iloc[j] < df['ema9'].iloc[j]:
-                    # Calcular ganancia
-                    entry_price = df['open'].iloc[i]
-                    exit_price = df['open'].iloc[j]
-                    profit_points = (exit_price - entry_price) / df['close'].iloc[i] * 10000  # En puntos
-                    
-                    if profit_points >= args.min_profit_points:
-                        labels[i] = 1  # BUY
-                    break
-        
-        elif sell_signal:
-            # Buscar exit: cuando open cruza por encima de EMA 9
-            for j in range(i+1, min(i+args.future+1, len(df))):
-                if df['open'].iloc[j] > df['ema9'].iloc[j]:
-                    # Calcular ganancia
-                    entry_price = df['open'].iloc[i]
-                    exit_price = df['open'].iloc[j]
-                    profit_points = (entry_price - exit_price) / df['close'].iloc[i] * 10000  # En puntos
-                    
-                    if profit_points >= args.min_profit_points:
-                        labels[i] = 2  # SELL
-                    break
+        # Asignar label solo si hay DIRECCIÓN DOMINANTE clara
+        # BUY: Si sube >= threshold Y sube mucho más de lo que baja
+        if (max_up_move >= args.min_profit_points and 
+            max_up_move >= max_down_move * args.min_profit_ratio):
+            labels[i] = 1  # BUY signal
+            
+        # SELL: Si baja >= threshold Y baja mucho más de lo que sube  
+        elif (max_down_move >= args.min_profit_points and
+              max_down_move >= max_up_move * args.min_profit_ratio):
+            labels[i] = 2  # SELL signal
+            
+        # else: HOLD - movimiento bidireccional sin dirección clara
     
     return df, labels, features_list
 
@@ -181,7 +160,6 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
         print(f"  Sugerencias:")
         print(f"    - Reduce --min_profit_points (actual: {args.min_profit_points})")
         print(f"    - Aumenta --future (actual: {args.future})")
-        print(f"    - Reduce --adx_limit (actual: {args.adx_limit})")
         return
 
     # Preparar ventanas
@@ -246,37 +224,43 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
         }
     )
 
-    output_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.onnx"
+    output_path = output_dir / f"{csv_path.stem}_SGRADT70_v3.onnx"
     with open(output_path, "wb") as f:
-        f.write(onx.SerializeToString()) # pyright: ignore
+        f.write(onx.SerializeToString())
 
     # Metadata
     meta = {
         "model_file": output_path.name,
         "source_file": csv_path.name,
-        "version": "SGRADT 7.0",
-        "strategy": "EMA 9 Cross",
+        "version": "SGRADT 7.0 v3",
+        "strategy": "Neural Network Driven (6 Features - No EMA Gate)",
         "timestamp": pd.Timestamp.now().isoformat(),
 
         "window_size": args.window,
         "features_per_bar": num_features_per_bar,
         "num_inputs": num_inputs,
         "feature_order": features_list,
+        
+        "feature_descriptions": {
+            "feat_stoch_main": "Stochastic %K",
+            "feat_stoch_signal": "Stochastic %D",
+            "feat_adx": "Average Directional Index",
+            "feat_pdi": "Positive Directional Indicator",
+            "feat_mdi": "Minus Directional Indicator",
+            "feat_volume_gate": "Volume ratio vs 10-bar average"
+        },
 
         "validation": {
             "min_profit_points": args.min_profit_points,
             "future_window": args.future,
+            "min_profit_ratio": args.min_profit_ratio,
+            "validation_method": "max_profit_vs_max_loss_with_ratio"
         },
-
-        "ema_period": args.ema_period,
 
         "stoch_k_period": args.stoch_k,
         "stoch_d_period": args.stoch_d,
-        "stoch_oversold": args.stoch_oversold,
-        "stoch_overbought": args.stoch_overbought,
 
         "adx_period": args.adx_period,
-        "adx_limit": args.adx_limit,
 
         "balanced_accuracy": float(model_search.best_score_),
         "best_params": model_search.best_params_,
@@ -290,10 +274,17 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
             "0": "HOLD",
             "1": "BUY",
             "2": "SELL"
-        }
+        },
+        
+        "notes": [
+            "NN-driven strategy: model makes ALL decisions",
+            "6 features (no EMA gate - removed in v3)",
+            "Volume gate is the only context feature",
+            "ATR-based SL/TP in MT5 code"
+        ]
     }
 
-    meta_path = output_dir / f"{csv_path.stem}_SGRADT70_ema9.meta.json"
+    meta_path = output_dir / f"{csv_path.stem}_SGRADT70_v3.meta.json"
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
@@ -307,48 +298,41 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
     print("  Output: 3 clases (HOLD=0, BUY=1, SELL=2)")
     print(f"  Accuracy: {model_search.best_score_:.4f}")
     print("\n  Estrategia:")
-    print("    - Entry: Open vs EMA 9 + ADX + Stochastic")
-    print("    - Exit: Open cruza EMA 9 en direccion opuesta")
-    print("    - Features: 5 (stoch_k, stoch_d, adx, di_plus, di_minus)")
+    print("    - NN-driven: modelo decide basándose en 6 features")
+    print("    - Features: stoch_k, stoch_d, adx, pdi, mdi, volume_gate")
+    print("    - No EMA gate (removido en v3)")
+    print("    - Exit: ATR-based SL/TP (configurado en MT5)")
     print(f"{'='*70}\n")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='SGRADT 7.0 - Estrategia EMA 9 con 5 features'
+        description='SGRADT 7.0 v3 - NN-driven Strategy with 6 features (no EMA gate)'
     )
     parser.add_argument('--csv', type=str, nargs='+', required=True,
-                       help='Uno o más archivos CSV con datos OHLC')
+                       help='Uno o más archivos CSV con datos OHLC (debe incluir columna tick_volume)')
     parser.add_argument('--output', type=str, default='./onnx',
                        help='Directorio de salida (default: ./onnx)')
     parser.add_argument('--window', type=int, default=20,
                        help='Ventana de lookback para features (default: 20)')
 
     # Parametros de validacion
-    parser.add_argument('--min_profit_points', type=float, default=20.0,
-                       help='Puntos minimos de ganancia para validar señal (default: 20)')
-    parser.add_argument('--future', type=int, default=50,
-                       help='Barras futuras maximas para buscar exit (default: 50)')
-
-    # EMA parameters
-    parser.add_argument('--ema_period', type=int, default=9,
-                       help='EMA period (default: 9)')
+    parser.add_argument('--min_profit_points', type=float, default=15.0,
+                       help='Puntos minimos de ganancia para validar señal (default: 15)')
+    parser.add_argument('--future', type=int, default=30,
+                       help='Barras futuras maximas para buscar profit (default: 30)')
+    parser.add_argument('--min_profit_ratio', type=float, default=1.2,
+                       help='Ratio minimo profit/loss para validar dirección (default: 1.2)')
 
     # Stochastic parameters
     parser.add_argument('--stoch_k', type=int, default=7,
                        help='Stochastic K period (default: 7)')
     parser.add_argument('--stoch_d', type=int, default=3,
                        help='Stochastic D period (default: 3)')
-    parser.add_argument('--stoch_oversold', type=float, default=20.0,
-                       help='Nivel de sobreventa (default: 20)')
-    parser.add_argument('--stoch_overbought', type=float, default=80.0,
-                       help='Nivel de sobrecompra (default: 80)')
 
     # ADX parameters
     parser.add_argument('--adx_period', type=int, default=8,
                        help='ADX period (default: 8)')
-    parser.add_argument('--adx_limit', type=float, default=25.0,
-                       help='ADX threshold para confirmar tendencia (default: 25)')
 
     # Training parameters
     parser.add_argument('--n_iter', type=int, default=7,
@@ -362,11 +346,13 @@ def main():
     csv_paths = [Path(p) for p in args.csv]
 
     print(f"\n{'='*70}")
-    print("SGRADT 7.0 - EMA 9 Strategy (5 Features)")
+    print("SGRADT 7.0 v3 - NN-Driven Strategy (6 Features - No EMA Gate)")
     print(f"{'='*70}")
     print(f"Archivos a procesar: {len(csv_paths)}")
     for p in csv_paths:
         print(f"  - {p.name}")
+    print(f"{'='*70}\n")
+    print("IMPORTANTE: Los CSV deben incluir la columna 'tick_volume'")
     print(f"{'='*70}\n")
 
     skipped, completed = [], []
@@ -383,8 +369,15 @@ def main():
 
         df = pd.read_csv(csv_path)
         print(f"Datos cargados: {len(df)} barras")
+        
+        # Verificar que existe la columna tick_volume
+        if 'tick_volume' not in df.columns:
+            print(f"[ERROR] Columna 'tick_volume' no encontrada en {csv_path.name}")
+            print(f"        Columnas disponibles: {list(df.columns)}")
+            skipped.append(csv_path.name)
+            continue
 
-        df, labels, features_list = calculate_signals_and_labels(df, args)
+        df, labels, features_list = calculate_features_and_labels(df, args)
 
         count_buy  = int(np.sum(labels == 1))
         count_sell = int(np.sum(labels == 2))

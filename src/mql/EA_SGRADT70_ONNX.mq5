@@ -1,9 +1,10 @@
-﻿//+------------------------------------------------------------------+
-//|                                           EA_SGRADT70_ONNX.mq5   |
-//|                          SGRADT 7.0 - EMA 9 Strategy (5 Features)|
 //+------------------------------------------------------------------+
-#property copyright "SGRADT 7.0"
-#property version   "7.00"
+//|                                      EA_SGRADT70_ONNX_v3.mq5     |
+//|                   SGRADT 7.0 v3 - NN-Driven Strategy (6 Features)|
+//|              Neural Network Makes ALL Decisions (No EMA Gate)    |
+//+------------------------------------------------------------------+
+#property copyright "SGRADT 7.0 v3"
+#property version   "7.03"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -12,11 +13,11 @@
 
 //=== AI Model Configuration ===
 input group "======== AI MODEL ========"
-input string InpModelName = "USTEC_M5_SGRADT70_ema9.onnx";  // Model filename
-input string InpMetaFile  = "USTEC_M5_SGRADT70_ema9.meta.json"; // Metadata file (optional)
+input string InpModelName = "USTEC_M5_SGRADT70_v3.onnx";  // Model filename
+input string InpMetaFile  = "USTEC_M5_SGRADT70_v3.meta.json"; // Metadata file (optional)
 input double InpMinConf   = 0.55;      // Minimum confidence (0.0-1.0)
 input int    InpWindowSize = 20;       // Window size (must match training)
-input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 7.0)
+input int    InpFeaturesPerBar = 6;    // Features per bar (ALWAYS 6 for v3)
 
 //=== Inference Timing ===
 input group "======== INFERENCE ========"
@@ -28,40 +29,30 @@ input group "======== SESSION ========"
 input int InpStartHour = 0;            // Session start hour (0-23)
 input int InpEndHour   = 24;           // Session end hour (0-24)
 
-//=== Indicator Parameters (SGRADT 7.0 Defaults) ===
-input group "======== EMA ========"
-input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
+//=== Indicator Parameters ===
+input group "======== INDICATORS ========"
+input int InpStochK    = 7;            // Stochastic K period
+input int InpStochD    = 3;            // Stochastic D smoothing
+input int InpADXPeriod = 8;            // ADX period
 
-input group "======== VOLUME GATE ========"
-input double InpVolumeGateFactor = 0.8;  // Min volume vs 10-bar avg (e.g. 0.8 = 80%)
-
-input group "======== STOCHASTIC ========"
-input int    InpStochK          = 7;      // Stochastic K period
-input int    InpStochD          = 3;      // Stochastic D smoothing
-input double InpStochOversold   = 20.0;   // Oversold level
-input double InpStochOverbought = 80.0;   // Overbought level
-
-input group "======== ADX ========"
-input int    InpADXPeriod = 8;      // ADX period
-input double InpADXLimit  = 25.0;   // ADX trend threshold
-
-//=== Risk Management ===
-input group "======== RISK ========"
-input double InpLot        = 1.0;   // Lot size
-input int    InpMagic      = 7070;  // Magic number
-input double InpStopPoints = 50.0;  // Stop Loss in POINTS
-input double InpTakePoints = 100.0; // Take Profit in POINTS
+//=== Risk Management (ATR-based) ===
+input group "======== RISK (ATR-BASED) ========"
+input double InpLot           = 1.0;   // Lot size
+input int    InpMagic         = 7073;  // Magic number (v3)
+input int    InpATRPeriod     = 14;    // ATR period
+input double InpATRMultiplierSL = 2.0; // ATR multiplier for Stop Loss
+input double InpATRMultiplierTP = 3.0; // ATR multiplier for Take Profit
 
 //=== Display ===
 input group "======== DISPLAY ========"
-input bool InpShowPanel = true;     // Show information panel
+input bool InpShowPanel = true;        // Show information panel
 
 //--- Global Variables
 CTrade trade;
-long   g_onnx_handle = INVALID_HANDLE;
-int    g_ema_handle  = INVALID_HANDLE;
-int    g_adx_handle  = INVALID_HANDLE;
+long   g_onnx_handle  = INVALID_HANDLE;
+int    g_adx_handle   = INVALID_HANDLE;
 int    g_stoch_handle = INVALID_HANDLE;
+int    g_atr_handle   = INVALID_HANDLE;
 
 datetime g_last_bar_time = 0;
 datetime g_last_trade_bar = 0;
@@ -77,7 +68,8 @@ int      g_last_prediction = -1;
 int OnInit()
   {
    Print("\n", StringRepeat("-", 70));
-   Print("    SGRADT 7.0 - EMA 9 STRATEGY (5 Features)");
+   Print("    SGRADT 7.0 v3 - NN-DRIVEN STRATEGY (6 Features)");
+   Print("    No EMA Gate - Volume Gate Only");
    Print(StringRepeat("-", 70), "\n");
 
 //--- Load ONNX model
@@ -110,13 +102,6 @@ int OnInit()
 //--- Create indicator handles
    Print("\nInitializing indicators...");
 
-   g_ema_handle = iMA(_Symbol, _Period, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
-   if(g_ema_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create EMA indicator");
-      return INIT_FAILED;
-     }
-
    g_adx_handle = iADX(_Symbol, _Period, InpADXPeriod);
    if(g_adx_handle == INVALID_HANDLE)
      {
@@ -133,10 +118,17 @@ int OnInit()
       return INIT_FAILED;
      }
 
+   g_atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
+   if(g_atr_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create ATR indicator");
+      return INIT_FAILED;
+     }
+
    Print("[OK] Indicators created:");
-   Print("     - EMA(", InpEMAPeriod, ")");
    Print("     - ADX(", InpADXPeriod, ")");
    Print("     - Stochastic(", InpStochK, ",", InpStochD, ")");
+   Print("     - ATR(", InpATRPeriod, ")");
 
 //--- Wait for indicators to calculate
    Print("\nWaiting for indicators to calculate data...");
@@ -149,13 +141,13 @@ int OnInit()
      {
       double test_buf[];
 
-      int ema_count = CopyBuffer(g_ema_handle, 0, 0, required_bars, test_buf);
       int adx_count = CopyBuffer(g_adx_handle, 0, 0, required_bars, test_buf);
       int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, required_bars, test_buf);
+      int atr_count = CopyBuffer(g_atr_handle, 0, 0, required_bars, test_buf);
 
-      if(ema_count == required_bars &&
-         adx_count == required_bars &&
-         stoch_count == required_bars)
+      if(adx_count == required_bars &&
+         stoch_count == required_bars &&
+         atr_count == required_bars)
         {
          Print("[OK] All indicators ready with ", required_bars, " bars");
          indicators_ready = true;
@@ -199,59 +191,20 @@ void OnDeinit(const int reason)
    if(g_onnx_handle != INVALID_HANDLE)
       OnnxRelease(g_onnx_handle);
 
-   if(g_ema_handle != INVALID_HANDLE)
-      IndicatorRelease(g_ema_handle);
-
    if(g_adx_handle != INVALID_HANDLE)
       IndicatorRelease(g_adx_handle);
 
    if(g_stoch_handle != INVALID_HANDLE)
       IndicatorRelease(g_stoch_handle);
 
+   if(g_atr_handle != INVALID_HANDLE)
+      IndicatorRelease(g_atr_handle);
+
    Comment("");
 
    Print("\n", StringRepeat("-", 70));
    Print("    EA DEINITIALIZED");
    Print(StringRepeat("-", 70), "\n");
-  }
-
-//+------------------------------------------------------------------+
-//| Check if current volume is above average (relative volume gate)  |
-//+------------------------------------------------------------------+
-bool VolumeGateAllows()
-  {
-   long vol_buf[];
-   if(CopyTickVolume(_Symbol, _Period, 0, 11, vol_buf) != 11)
-      return false;
-
-   ArraySetAsSeries(vol_buf, true);
-
-   long vol_current = vol_buf[0];
-
-   double vol_avg = 0;
-   for(int i = 1; i <= 10; i++)
-      vol_avg += (double)vol_buf[i];
-   vol_avg /= 10.0;
-
-   return vol_current >= vol_avg * InpVolumeGateFactor;
-  }
-
-//+------------------------------------------------------------------+
-//| Check if price position agrees with predicted direction           |
-//+------------------------------------------------------------------+
-bool EMAGateAllows(int predicted_class)
-  {
-   double ema_gate[];
-   if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
-      return false;
-   double open_current = iOpen(_Symbol, _Period, 0);
-
-   if(predicted_class == 1)
-      return open_current > ema_gate[0];  // BUY: price must be above EMA
-   if(predicted_class == 2)
-      return open_current < ema_gate[0];  // SELL: price must be below EMA
-
-   return false;
   }
 
 //+------------------------------------------------------------------+
@@ -267,289 +220,261 @@ void OnTick()
       return;
      }
 
-//--- Check for exit based on EMA cross
-   CheckEMAExit();
+//--- Check for new bar or time-based inference
+   datetime current_bar_time = iTime(_Symbol, _Period, 0);
+   bool is_new_bar = (current_bar_time != g_last_bar_time);
 
-//--- Determine if should run inference
    bool should_infer = false;
-   datetime current_bar = iTime(_Symbol, _Period, 0);
 
    if(InpInferSeconds == 0)
      {
-      // New bar only mode
-      if(current_bar != g_last_bar_time)
+      // New bar mode
+      if(is_new_bar)
         {
          should_infer = true;
-         g_last_bar_time = current_bar;
+         g_last_bar_time = current_bar_time;
         }
      }
    else
      {
       // Time-based mode
-      if(TimeCurrent() >= g_last_inference_time + InpInferSeconds)
+      datetime current_time = TimeCurrent();
+      if((current_time - g_last_inference_time) >= InpInferSeconds)
         {
          should_infer = true;
-         g_last_inference_time = TimeCurrent();
+         g_last_inference_time = current_time;
+
+         if(is_new_bar)
+            g_last_bar_time = current_bar_time;
         }
      }
 
-//--- Run inference
+//--- Run inference if needed
    if(should_infer)
      {
-      RunInference();
+      // Prepare input buffer
+      float input_buffer[];
+      if(!PrepareInput(input_buffer))
+        {
+         Print("[WARNING] Cannot prepare input buffer - skipping inference");
+         if(InpShowPanel)
+            UpdatePanel();
+         return;
+        }
+
+      // Run ONNX inference
+      float probas[];
+      if(!OnnxRun(g_onnx_handle, ONNX_DEFAULT, input_buffer, probas))
+        {
+         Print("[ERROR] ONNX inference failed");
+         if(InpShowPanel)
+            UpdatePanel();
+         return;
+        }
+
       g_inference_count++;
+
+      // Get predicted class and probabilities
+      int predicted_class = 0;
+      double max_proba = probas[0];
+
+      for(int i = 1; i < 3; i++)
+        {
+         if(probas[i] > max_proba)
+           {
+            max_proba = probas[i];
+            predicted_class = i;
+           }
+        }
+
+      // Store for display
+      g_last_prediction = predicted_class;
+      ArrayCopy(g_last_probas, probas);
+
+      // Check confidence threshold
+      if(max_proba < InpMinConf)
+        {
+         if(InpShowPanel)
+            UpdatePanel();
+         return;
+        }
+
+      // Execute trades based on NN decision ONLY
+      // No manual gates - neural network makes ALL decisions
+
+      if(predicted_class == 1)  // BUY signal
+        {
+         if(!HasPosition(POSITION_TYPE_BUY))
+           {
+            // Check one-trade-per-bar rule
+            if(InpOneTradePerBar && g_last_trade_bar == current_bar_time)
+              {
+               if(InpShowPanel)
+                  UpdatePanel();
+               return;
+              }
+
+            // Close any opposite position
+            if(HasPosition(POSITION_TYPE_SELL))
+              {
+               for(int i = PositionsTotal() - 1; i >= 0; i--)
+                 {
+                  if(PositionGetSymbol(i) == _Symbol &&
+                     PositionGetInteger(POSITION_MAGIC) == InpMagic &&
+                     PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
+                    {
+                     ulong ticket = PositionGetInteger(POSITION_TICKET);
+                     trade.PositionClose(ticket);
+                    }
+                 }
+              }
+
+            // Open BUY position with ATR-based SL/TP
+            double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+
+            double atr_buf[];
+            CopyBuffer(g_atr_handle, 0, 0, 1, atr_buf);
+            double atr_value = atr_buf[0];
+
+            double sl = ask - (atr_value * InpATRMultiplierSL);
+            double tp = ask + (atr_value * InpATRMultiplierTP);
+
+            if(trade.Buy(InpLot, _Symbol, ask, sl, tp, "SGRADT v3 BUY"))
+              {
+               Print("BUY opened | Conf: ", DoubleToString(max_proba * 100, 1), "% | SL: ",
+                     DoubleToString(InpATRMultiplierSL, 1), "xATR | TP: ",
+                     DoubleToString(InpATRMultiplierTP, 1), "xATR");
+               g_last_trade_bar = current_bar_time;
+              }
+           }
+        }
+      else if(predicted_class == 2)  // SELL signal
+        {
+         if(!HasPosition(POSITION_TYPE_SELL))
+           {
+            // Check one-trade-per-bar rule
+            if(InpOneTradePerBar && g_last_trade_bar == current_bar_time)
+              {
+               if(InpShowPanel)
+                  UpdatePanel();
+               return;
+              }
+
+            // Close any opposite position
+            if(HasPosition(POSITION_TYPE_BUY))
+              {
+               for(int i = PositionsTotal() - 1; i >= 0; i--)
+                 {
+                  if(PositionGetSymbol(i) == _Symbol &&
+                     PositionGetInteger(POSITION_MAGIC) == InpMagic &&
+                     PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
+                    {
+                     ulong ticket = PositionGetInteger(POSITION_TICKET);
+                     trade.PositionClose(ticket);
+                    }
+                 }
+              }
+
+            // Open SELL position with ATR-based SL/TP
+            double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+            double atr_buf[];
+            CopyBuffer(g_atr_handle, 0, 0, 1, atr_buf);
+            double atr_value = atr_buf[0];
+
+            double sl = bid + (atr_value * InpATRMultiplierSL);
+            double tp = bid - (atr_value * InpATRMultiplierTP);
+
+            if(trade.Sell(InpLot, _Symbol, bid, sl, tp, "SGRADT v3 SELL"))
+              {
+               Print("SELL opened | Conf: ", DoubleToString(max_proba * 100, 1), "% | SL: ",
+                     DoubleToString(InpATRMultiplierSL, 1), "xATR | TP: ",
+                     DoubleToString(InpATRMultiplierTP, 1), "xATR");
+               g_last_trade_bar = current_bar_time;
+              }
+           }
+        }
+      // predicted_class == 0 (HOLD) - do nothing
      }
 
-//--- Update panel
+//--- Update display
    if(InpShowPanel)
       UpdatePanel();
   }
 
 //+------------------------------------------------------------------+
-//| Check for EMA cross exit                                          |
-//+------------------------------------------------------------------+
-void CheckEMAExit()
-  {
-   double ema[];
-   if(CopyBuffer(g_ema_handle, 0, 0, 3, ema) != 3)
-      return;
-   ArraySetAsSeries(ema, true);
-
-   // Use confirmed bar [1] for cross detection — never the live bar [0]
-   double open_prev = iOpen(_Symbol, _Period, 1);
-   double open_curr = iOpen(_Symbol, _Period, 0);
-   double ema_prev  = ema[1];
-   double ema_curr  = ema[0];
-
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-     {
-      if(PositionGetSymbol(i) == _Symbol && PositionGetInteger(POSITION_MAGIC) == InpMagic)
-        {
-         ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-
-         // BUY exit: open crossed below EMA on the last CLOSED bar
-         if(type == POSITION_TYPE_BUY &&
-            open_prev >= ema_prev &&   // previous bar was above
-            open_curr < ema_curr)      // current bar opened below
-           {
-            ulong ticket = PositionGetInteger(POSITION_TICKET);
-            if(trade.PositionClose(ticket))
-               Print("[EXIT BUY] Open crossed below EMA 9");
-           }
-
-         // SELL exit: open crossed above EMA on the last CLOSED bar
-         else
-            if(type == POSITION_TYPE_SELL &&
-               open_prev <= ema_prev &&  // previous bar was below
-               open_curr > ema_curr)     // current bar opened above
-              {
-               ulong ticket = PositionGetInteger(POSITION_TICKET);
-               if(trade.PositionClose(ticket))
-                  Print("[EXIT SELL] Open crossed above EMA 9");
-              }
-        }
-     }
-  }
-
-//+------------------------------------------------------------------+
-//| Run ONNX inference                                                |
-//+------------------------------------------------------------------+
-void RunInference()
-  {
-//--- Check if already traded this bar
-   datetime current_bar = iTime(_Symbol, _Period, 0);
-   if(InpOneTradePerBar && current_bar == g_last_trade_bar)
-     {
-      return;
-     }
-
-//--- Prepare input
-   float input_buffer[];
-   if(!PrepareInput(input_buffer))
-     {
-      Print("[WARNING] Cannot prepare input data - skipping inference");
-      return;
-     }
-
-//--- Validate buffer before ONNX call
-   int expected_size = InpWindowSize * InpFeaturesPerBar;
-   if(ArraySize(input_buffer) != expected_size)
-     {
-      Print("[ERROR] Input buffer size incorrect: expected ", expected_size, ", got ", ArraySize(input_buffer));
-      return;
-     }
-
-//--- Run inference
-   long output_label[];
-   float output_proba[];
-
-   ArrayResize(output_label, 1);
-   ArrayResize(output_proba, 3);
-
-   if(!OnnxRun(g_onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_proba))
-     {
-      Print("[ERROR] ONNX inference failed");
-      Print("        Input buffer size: ", ArraySize(input_buffer));
-      Print("        Expected: ", expected_size);
-      return;
-     }
-
-//--- Validate output
-   if(ArraySize(output_proba) != 3)
-     {
-      Print("[ERROR] Invalid output probabilities: expected 3, got ", ArraySize(output_proba));
-      return;
-     }
-
-//--- Store results
-   for(int i = 0; i < 3; i++)
-      g_last_probas[i] = output_proba[i];
-
-   g_last_prediction = (int)output_label[0];
-
-//--- Get max probability
-   double max_prob = g_last_probas[0];
-   int predicted_class = 0;
-
-   for(int i = 1; i < 3; i++)
-     {
-      if(g_last_probas[i] > max_prob)
-        {
-         max_prob = g_last_probas[i];
-         predicted_class = i;
-        }
-     }
-
-   if(max_prob > 0)
-     {
-      double adx_buf[], di_plus_buf[], di_minus_buf[], stoch_buf[], stochd_buf[];
-      CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
-      CopyBuffer(g_adx_handle, 1, 0, 1, di_plus_buf);
-      CopyBuffer(g_adx_handle, 2, 0, 1, di_minus_buf);
-      CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
-      CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
-      PrintFormat("Inference: %.2f (%s) | ADX: %.1f | DI+: %.1f | DI-: %.1f | Stoch: %.1f/%.1f",
-                  max_prob,
-                  (predicted_class == 1 ? "BUY" : predicted_class == 2 ? "SELL" : "HOLD"),
-                  adx_buf[0],
-                  di_plus_buf[0],
-                  di_minus_buf[0],
-                  stoch_buf[0],
-                  stochd_buf[0]);
-     }
-
-//--- Check confidence
-   if(max_prob < InpMinConf)
-     {
-      return;
-     }
-
-//--- Execute trade
-   if(predicted_class == 1)    // BUY
-     {
-      if(!HasPosition(POSITION_TYPE_BUY) && EMAGateAllows(predicted_class) && VolumeGateAllows())
-        {
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         double sl  = (InpStopPoints > 0) ? ask - InpStopPoints * _Point : 0;
-         double tp  = (InpTakePoints > 0) ? ask + InpTakePoints * _Point : 0;
-
-         if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 2) + "%"))
-           {
-            Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
-            g_last_trade_bar = current_bar;
-           }
-        }
-     }
-   else
-      if(predicted_class == 2)    // SELL
-        {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         double sl  = (InpStopPoints > 0) ? bid + InpStopPoints * _Point : 0;
-         double tp  = (InpTakePoints > 0) ? bid - InpTakePoints * _Point : 0;
-
-         if(!HasPosition(POSITION_TYPE_SELL) && EMAGateAllows(predicted_class) && VolumeGateAllows())
-           {
-            if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70 SELL @" + DoubleToString(max_prob, 2) + "%"))
-              {
-               Print("[SELL] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), "%");
-               g_last_trade_bar = current_bar;
-              }
-           }
-        }
-  }
-
-//+------------------------------------------------------------------+
-//| Prepare input data for ONNX model                                 |
+//| Prepare input buffer for ONNX (6 features per bar)               |
 //+------------------------------------------------------------------+
 bool PrepareInput(float &input_buffer[])
   {
    int window = InpWindowSize;
-   int total_size = window * InpFeaturesPerBar;
+   int total_size = window * InpFeaturesPerBar;  // 6 features per bar
 
-   ArrayFree(input_buffer);
-   if(ArrayResize(input_buffer, total_size) != total_size)
-     {
-      Print("[ERROR] Cannot resize input buffer to ", total_size);
-      return false;
-     }
+   ArrayResize(input_buffer, total_size);
    ArrayInitialize(input_buffer, 0.0);
 
-//--- Get indicator data
-   double adx_b[], di_plus_b[], di_minus_b[];
+//--- Get indicator buffers
    double stoch_k_b[], stoch_d_b[];
+   double adx_b[], di_plus_b[], di_minus_b[];
+   long volume_b[];
 
+   int stoch_k_count = CopyBuffer(g_stoch_handle, 0, 0, window, stoch_k_b);
+   int stoch_d_count = CopyBuffer(g_stoch_handle, 1, 0, window, stoch_d_b);
+   int adx_count = CopyBuffer(g_adx_handle, 0, 0, window, adx_b);
+   int di_plus_count = CopyBuffer(g_adx_handle, 1, 0, window, di_plus_b);
+   int di_minus_count = CopyBuffer(g_adx_handle, 2, 0, window, di_minus_b);
+   int volume_count = CopyTickVolume(_Symbol, _Period, 0, window + 10, volume_b);
+
+   if(stoch_k_count < window || stoch_d_count < window ||
+      adx_count < window || di_plus_count < window ||
+      di_minus_count < window || volume_count < window + 10)
+     {
+      Print("[WARNING] Not enough indicator data yet");
+      return false;
+     }
+
+//--- Set arrays as series (newest = 0)
+   ArraySetAsSeries(stoch_k_b, true);
+   ArraySetAsSeries(stoch_d_b, true);
    ArraySetAsSeries(adx_b, true);
    ArraySetAsSeries(di_plus_b, true);
    ArraySetAsSeries(di_minus_b, true);
-   ArraySetAsSeries(stoch_k_b, true);
-   ArraySetAsSeries(stoch_d_b, true);
+   ArraySetAsSeries(volume_b, true);
 
-   int copied;
-   copied = CopyBuffer(g_adx_handle, 0, 0, window, adx_b);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyBuffer ADX failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyBuffer(g_adx_handle, 1, 0, window, di_plus_b);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyBuffer DI+ failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyBuffer(g_adx_handle, 2, 0, window, di_minus_b);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyBuffer DI- failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyBuffer(g_stoch_handle, 0, 0, window, stoch_k_b);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyBuffer Stoch K failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-   copied = CopyBuffer(g_stoch_handle, 1, 0, window, stoch_d_b);
-   if(copied != window)
-     {
-      Print("[ERROR] CopyBuffer Stoch D failed: expected ", window, ", got ", copied);
-      return false;
-     }
-
-//--- Fill buffer (Order: stoch_k, stoch_d, adx, di_plus, di_minus)
+//--- Fill input buffer
+   // Loop through the lookback window
+   // i=0 is the most recent bar (current), i=window-1 is the oldest
    for(int i = 0; i < window; i++)
      {
-      int offset = i * InpFeaturesPerBar;
+      int offset = i * 6;  // 6 features per bar (v3)
 
-      input_buffer[offset + 0] = (float)stoch_k_b[i];             // stoch_main
-      input_buffer[offset + 1] = (float)stoch_d_b[i];             // stoch_signal
-      input_buffer[offset + 2] = (float)adx_b[i];                 // adx
-      input_buffer[offset + 3] = (float)di_plus_b[i];             // di_plus
-      input_buffer[offset + 4] = (float)di_minus_b[i];            // di_minus
+      // Features 1-5: Technical indicators
+      input_buffer[offset + 0] = (float)stoch_k_b[i];    // feat_stoch_main
+      input_buffer[offset + 1] = (float)stoch_d_b[i];    // feat_stoch_signal
+      input_buffer[offset + 2] = (float)adx_b[i];        // feat_adx
+      input_buffer[offset + 3] = (float)di_plus_b[i];    // feat_pdi
+      input_buffer[offset + 4] = (float)di_minus_b[i];   // feat_mdi
+
+      // Feature 6: Volume Gate (ratio vs 10-bar average)
+      // CRITICAL: Must match Python's rolling(window=10).mean()
+      // Python calculates: avg of [i-9, i-8, ..., i-1, i] (10 bars ending at current)
+      // Since arrays are SetAsSeries=true: volume_b[0]=newest, volume_b[19]=oldest
+      // For bar at index i, we need average of indices [i, i+1, ..., i+9]
+      double vol_avg = 0.0;
+      int vol_count = 0;
+
+      // Average the 10 bars starting from current position i
+      for(int j = i; j < MathMin(i + 10, ArraySize(volume_b)); j++)
+        {
+         vol_avg += (double)volume_b[j];
+         vol_count++;
+        }
+
+      if(vol_count > 0)
+         vol_avg /= (double)vol_count;
+
+      double volume_gate = (vol_avg > 0) ? (double)volume_b[i] / vol_avg : 1.0;
+      input_buffer[offset + 5] = (float)volume_gate;        // feat_volume_gate
      }
 
    if(ArraySize(input_buffer) != total_size)
@@ -611,54 +536,45 @@ void UpdatePanel()
    panel += "MODE: " + mode + " | Inferences: " + IntegerToString(g_inference_count) + "\n";
 
 //--- Indicators
-   double ema[], adx[], di_plus[], di_minus[], stoch_k[], stoch_d[];
+   double adx[], di_plus[], di_minus[], stoch_k[], stoch_d[], atr[];
 
-   CopyBuffer(g_ema_handle, 0, 0, 1, ema);
    CopyBuffer(g_adx_handle, 0, 0, 1, adx);
    CopyBuffer(g_adx_handle, 1, 0, 1, di_plus);
    CopyBuffer(g_adx_handle, 2, 0, 1, di_minus);
    CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_k);
    CopyBuffer(g_stoch_handle, 1, 0, 1, stoch_d);
-
-   double open_current = iOpen(_Symbol, _Period, 0);
-   double close_current = iClose(_Symbol, _Period, 0);
+   CopyBuffer(g_atr_handle, 0, 0, 1, atr);
 
    panel += StringRepeat("-", 52) + "\n";
-   panel += "EMA (Period: " + IntegerToString(InpEMAPeriod) + ")\n";
+   panel += "FEATURES (for Neural Network)\n";
    panel += StringRepeat("-", 52) + "\n";
-   panel += "   EMA: " + DoubleToString(ema[0], _Digits) + "\n";
-   panel += "   Open: " + DoubleToString(open_current, _Digits);
-   panel += (open_current > ema[0]) ? " [ABOVE]\n" : " [BELOW]\n";
-   panel += "   Close: " + DoubleToString(close_current, _Digits) + "\n";
+   panel += "   Stoch K/D: " + DoubleToString(stoch_k[0], 2) + " / " + DoubleToString(stoch_d[0], 2) + "\n";
+   panel += "   ADX: " + DoubleToString(adx[0], 2) + " | DI+: " + DoubleToString(di_plus[0], 2) +
+            " | DI-: " + DoubleToString(di_minus[0], 2) + "\n";
+
+   // Volume Gate
+   long vol_buf[];
+   CopyTickVolume(_Symbol, _Period, 0, 11, vol_buf);
+   ArraySetAsSeries(vol_buf, true);
+   double vol_avg = 0;
+   for(int i = 1; i <= 10; i++)
+      vol_avg += (double)vol_buf[i];
+   vol_avg /= 10.0;
+   double vol_ratio = (vol_avg > 0) ? (double)vol_buf[0] / vol_avg : 1.0;
+   panel += "   Volume Gate: " + DoubleToString(vol_ratio, 2) + "x avg\n";
 
    panel += StringRepeat("-", 52) + "\n";
-   panel += "ADX (Period: " + IntegerToString(InpADXPeriod) + ")\n";
+   panel += "ATR RISK MANAGEMENT\n";
    panel += StringRepeat("-", 52) + "\n";
-   panel += "   ADX: " + DoubleToString(adx[0], 2);
-   panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n" : " [RANGING]\n";
-   panel += "   DI+: " + DoubleToString(di_plus[0], 2);
-   panel += (di_plus[0] > di_minus[0]) ? " [DOMINANT]\n" : "\n";
-   panel += "   DI-: " + DoubleToString(di_minus[0], 2);
-   panel += (di_minus[0] > di_plus[0]) ? " [DOMINANT]\n" : "\n";
-
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "   K: " + DoubleToString(stoch_k[0], 2) + " | " + " D: " + DoubleToString(stoch_d[0], 2) + "\n";
-
-   string zone = "";
-   if(stoch_k[0] <= InpStochOversold)
-      zone = "OVERSOLD";
-   else
-      if(stoch_k[0] >= InpStochOverbought)
-         zone = "OVERBOUGHT";
-      else
-         zone = "NEUTRAL";
-   panel += "   Zone: " + zone + "\n";
+   panel += "   ATR(" + IntegerToString(InpATRPeriod) + "): " + DoubleToString(atr[0], _Digits) + "\n";
+   panel += "   SL: " + DoubleToString(InpATRMultiplierSL, 1) + " x ATR = " +
+            DoubleToString(atr[0] * InpATRMultiplierSL, _Digits) + "\n";
+   panel += "   TP: " + DoubleToString(InpATRMultiplierTP, 1) + " x ATR = " +
+            DoubleToString(atr[0] * InpATRMultiplierTP, _Digits) + "\n";
 
 //--- AI Prediction
    panel += StringRepeat("-", 52) + "\n";
-   panel += "AI PREDICTION\n";
+   panel += "NEURAL NETWORK DECISION\n";
    panel += StringRepeat("-", 52) + "\n";
 
    if(g_last_prediction >= 0)
@@ -666,32 +582,21 @@ void UpdatePanel()
       string signal_text = "";
       if(g_last_prediction == 0)
          signal_text = "HOLD";
+      else if(g_last_prediction == 1)
+         signal_text = "BUY";
       else
-         if(g_last_prediction == 1)
-            signal_text = "BUY";
-         else
-            signal_text = "SELL";
+         signal_text = "SELL";
 
       panel += "   Signal: " + signal_text + "\n";
-
-      panel += "   Confidence (Min: " + DoubleToString(InpMinConf * 100, 1) + ")\n";
+      panel += "   Confidence (Min: " + DoubleToString(InpMinConf * 100, 1) + "%)\n";
       panel += "   - H: " + DoubleToString(g_last_probas[0] * 100, 1) + "% | " +
                "B: " + DoubleToString(g_last_probas[1] * 100, 1) + "% | " +
                "S: " + DoubleToString(g_last_probas[2] * 100, 1) + "%\n";
-
      }
    else
      {
       panel += "   Waiting for first inference...\n";
      }
-
-//--- Risk Settings
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "RISK SETTINGS\n";
-   panel += StringRepeat("-", 52) + "\n";
-   panel += "   Lot: " + DoubleToString(InpLot, 2) + "\n";
-   panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts | TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
-   panel += "   Exit: EMA 9 Cross\n";
 
 //--- Position Info
    double pnl = 0;
@@ -732,14 +637,16 @@ void PrintConfiguration()
    Print("Point: ", DoubleToString(_Point, _Digits));
 
    Print("\n=== INDICATOR PARAMETERS ===");
-   Print("EMA: ", InpEMAPeriod);
-   Print("Stochastic: (", InpStochK, ",", InpStochD, ") [", InpStochOversold, "/", InpStochOverbought, "]");
-   Print("ADX: Period=", InpADXPeriod, ", Limit=", InpADXLimit);
+   Print("Stochastic: (", InpStochK, ",", InpStochD, ")");
+   Print("ADX: Period=", InpADXPeriod);
+   Print("ATR: Period=", InpATRPeriod);
 
    Print("\n=== STRATEGY ===");
-   Print("Entry: Open vs EMA + ADX/DI+/DI- + Stochastic");
-   Print("Features: stoch_k, stoch_d, adx, di_plus, di_minus");
-   Print("Exit: Open crosses EMA in opposite direction");
+   Print("Type: NN-Driven (Neural Network decides everything)");
+   Print("Features: 6 (stoch_k, stoch_d, adx, pdi, mdi, volume_gate)");
+   Print("Exit: ATR-based SL/TP (SL=", InpATRMultiplierSL, "xATR, TP=", InpATRMultiplierTP, "xATR)");
+   Print("No EMA gate - removed in v3");
+   Print("No manual gates - NN makes all decisions");
 
    string mode = (InpInferSeconds == 0) ? "New bar only" : StringFormat("Every %d seconds", InpInferSeconds);
    Print("\nInference mode: ", mode);
