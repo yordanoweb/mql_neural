@@ -13,7 +13,6 @@
 //=== AI Model Configuration ===
 input group "======== AI MODEL ========"
 input string InpModelName = "USTEC_M5_SGRADT70_ema9.onnx";  // Model filename
-input string InpMetaFile  = "USTEC_M5_SGRADT70_ema9.meta.json"; // Metadata file (optional)
 input double InpMinConf   = 0.55;      // Minimum confidence (0.0-1.0)
 input int    InpWindowSize = 20;       // Window size (must match training)
 input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 7.0)
@@ -31,9 +30,6 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 //=== Indicator Parameters (SGRADT 7.0 Defaults) ===
 input group "======== EMA ========"
 input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
-
-input group "======== VOLUME GATE ========"
-input double InpVolumeGateFactor = 0.8;  // Min volume vs 10-bar avg (e.g. 0.8 = 80%)
 
 input group "======== STOCHASTIC ========"
 input int    InpStochK          = 7;      // Stochastic K period
