@@ -80,6 +80,10 @@ parser.add_argument("--adx_limit", type=float, default=32.0, help="ADX trend str
 parser.add_argument("--adx_bypass", action="store_true", help="Bypass ADX signals (always True)")
 parser.add_argument("--adx_di_over", action="store_true", help="Require DI+ > DI- for buy and DI- > DI+ for sell")
 
+# Time parameters
+parser.add_argument("--start_hour", type=int, default=0, help="Start trading hour")
+parser.add_argument("--end_hour", type=int, default=23, help="End trading hour")
+
 args = parser.parse_args()
 
 SYMBOL = args.symbol
@@ -331,6 +335,13 @@ try:
             time.sleep(0.05)
             continue
         last_process = now
+
+        # Do not trade outside of time
+        _h = int(time.strftime("%H")) 
+        _m = int(time.strftime("%M"))
+        if _h < int(args.start_hour) or _h > int(args.end_hour):
+            print(colorize(f"We are ({_h}:{_m}) outside trading hours: {args.start_hour}-{args.end_hour}", Colors.YELLOW))
+            continue
 
         bid, ask = get_current_prices()
         if bid is None or ask is None:
