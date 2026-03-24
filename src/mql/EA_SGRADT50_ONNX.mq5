@@ -11,6 +11,7 @@ input string     InpMetaFile         = "EUR_USD_H1_SGRADT50.meta.json"; // Metad
 input float      InpMinConf          = 0.55;   // Minimum confidence threshold
 input int        InpWindowSize       = 20;     // Window size (from training)
 input int        InpFeaturesPerBar   = 5;      // Features per bar (FIXED: 5)
+input bool       InpReverseInference = false;
 
 input group "=== Inference Timing ==="
 input int        InpInferSeconds     = 15;     // Run inference every N seconds (0 = new bar only)
@@ -35,11 +36,11 @@ input int        InpADXPeriod        = 8;      // ADX period
 input group "=== Risk Management ==="
 input double     InpLot              = 1.0;    // Lot size
 input int        InpMagic            = 5050;   // Magic number
-input double     InpStopPoints       = 50.0;   // Stop Loss POINTS (used if ATR disabled)
-input double     InpTakePoints       = 100.0;  // Take Profit POINTS (used if ATR disabled)
+input double     InpStopPoints       = 50.0;   // SL POINTS (used if ATR disabled)
+input double     InpTakePoints       = 100.0;  // TP POINTS (used if ATR disabled)
 
 input group "=== ATR-Based SL/TP ==="
-input bool       InpUseATR           = false;  // ATR-based SL/TP instead of points
+input bool       InpUseATR           = false;  // ATR-based SL/TP instead of POINTS
 input int        InpATRPeriod        = 14;     // ATR period
 input double     InpATRSLMultiplier  = 1.5;   // SL = ATR × multiplier
 input double     InpATRTPMultiplier  = 3.0;   // TP = ATR × multiplier
@@ -387,6 +388,15 @@ void RunInference()
    g_conf_hold = output_probs[0];
    g_conf_buy = output_probs[1];
    g_conf_sell = output_probs[2];
+
+//--- Reverse the signal given by inference for testing
+   if(InpReverseInference)
+     {
+      if(g_prediction == 1)
+         g_prediction = 2;
+      else if(g_prediction == 2)
+         g_prediction = 1;
+     }
 
 //--- Get active confidence
    float active_conf = 0.0;
