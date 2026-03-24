@@ -14,6 +14,8 @@ input int ATRPeriod = 14;              // ATR calculation period
 input int TimerSeconds = 2;            // Update chart every X seconds
 input int MagicNumber = 9999111; // Unique ID for this EA
 
+datetime lastCandleTime = 0;
+
 // --- Function prototypes ---
 bool CheckStrategy1();
 bool CheckStrategy2();
@@ -27,6 +29,7 @@ bool CheckStrategy5();
 void ExecuteTrade(string side);
 void ManageExits();
 bool IsPositionOpen();
+bool IsNewCandle();
 
 //+------------------------------------------------------------------+
 //| Initialization                                                   |
@@ -51,6 +54,9 @@ void OnDeinit()
 //+------------------------------------------------------------------+
 void OnTick()
   {
+   // Only proceed on a new candle
+   if(!IsNewCandle())
+      return;
    if(!IsPositionOpen())
      {
       if(CheckStrategy1())
@@ -72,7 +78,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTimer()
   {
-   string status = "=== Strategy Dashboard ===\n";
+   string status = "\n\n=== Strategy Dashboard ===\n";
 
    if(CheckStrategy1())
       status += "Strategy 1: BUY signal detected\n";
@@ -94,6 +100,19 @@ void OnTimer()
 
    Comment(status);
   }
+
+bool IsNewCandle()
+{
+   datetime currentCandle = iTime(_Symbol, PERIOD_CURRENT, 0);
+
+   if(currentCandle != lastCandleTime)
+   {
+      lastCandleTime = currentCandle;
+      return true;
+   }
+
+   return false;
+}
 
 // Function to check if a position is already open for this symbol and magic number
 bool IsPositionOpen()
