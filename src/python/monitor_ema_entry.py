@@ -269,7 +269,7 @@ try:
                     sl_price = bid + (atr_value * SL_MULT)
                     tp_price = bid - (atr_value * TP_MULT)
                     print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
-                    send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, sl=sl_price, tp=tp_price)
+                    send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, sl=sl_price, tp=tp_price, comment=f"Python SELL@{bid}")
                 # Buy condition
                 elif (prev_candle['open'] < prev_ema and prev_candle['close'] > current_ema and
                       current_price > current_ema + entry_threshold):
@@ -278,7 +278,7 @@ try:
                     sl_price = ask - (atr_value * SL_MULT)
                     tp_price = ask + (atr_value * TP_MULT)
                     print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
-                    send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, sl=sl_price, tp=tp_price)
+                    send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, sl=sl_price, tp=tp_price, comment=f"Python BUY@{ask}")
 
         # --- Logging ---
         pos_status = "No position" if position is None else f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f}"
