@@ -13,15 +13,15 @@
 
 //=== AI Model Configuration ===
 input group "======== AI MODEL ========"
-input string InpModelName = "USTEC_M5_SGRADT70_v3.onnx";  // Model filename
-input string InpMetaFile  = "USTEC_M5_SGRADT70_v3.meta.json"; // Metadata file (optional)
+input string InpModelName = "USTEC_M5_SGRADT70.onnx";  // Model filename
+input string InpMetaFile  = "USTEC_M5_SGRADT70.meta.json"; // Metadata file (optional)
 input double InpMinConf   = 0.55;      // Minimum confidence (0.0-1.0)
-input int    InpWindowSize = 20;       // Window size (must match training)
+input int    InpWindowSize = 8;       // Window size (must match training)
 input int    InpFeaturesPerBar = 6;    // Features per bar (ALWAYS 6 for v3)
 
 //=== Inference Timing ===
 input group "======== INFERENCE ========"
-input int  InpInferSeconds = 0;        // Inference frequency (0 = new bar only)
+input int  InpInferSeconds = 15;        // Inference frequency (0 = new bar only)
 input bool InpOneTradePerBar = true;   // Limit to 1 trade per bar
 
 //=== Trading Session ===
@@ -31,7 +31,7 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 
 //=== Indicator Parameters ===
 input group "======== INDICATORS ========"
-input int InpStochK    = 7;            // Stochastic K period
+input int InpStochK    = 5;            // Stochastic K period
 input int InpStochD    = 3;            // Stochastic D smoothing
 input int InpADXPeriod = 8;            // ADX period
 
@@ -39,9 +39,9 @@ input int InpADXPeriod = 8;            // ADX period
 input group "======== RISK (ATR-BASED) ========"
 input double InpLot           = 1.0;   // Lot size
 input int    InpMagic         = 7073;  // Magic number (v3)
-input int    InpATRPeriod     = 14;    // ATR period
-input double InpATRMultiplierSL = 2.0; // ATR multiplier for Stop Loss
-input double InpATRMultiplierTP = 3.0; // ATR multiplier for Take Profit
+input int    InpATRPeriod     = 6;    // ATR period
+input double InpATRMultiplierSL = 1.0; // ATR multiplier for Stop Loss
+input double InpATRMultiplierTP = 1.0; // ATR multiplier for Take Profit
 
 //=== Display ===
 input group "======== DISPLAY ========"
@@ -645,7 +645,6 @@ void PrintConfiguration()
    Print("Type: NN-Driven (Neural Network decides everything)");
    Print("Features: 6 (stoch_k, stoch_d, adx, pdi, mdi, volume_gate)");
    Print("Exit: ATR-based SL/TP (SL=", InpATRMultiplierSL, "xATR, TP=", InpATRMultiplierTP, "xATR)");
-   Print("No EMA gate - removed in v3");
    Print("No manual gates - NN makes all decisions");
 
    string mode = (InpInferSeconds == 0) ? "New bar only" : StringFormat("Every %d seconds", InpInferSeconds);

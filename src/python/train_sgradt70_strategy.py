@@ -224,7 +224,7 @@ def train_and_export(csv_path, df, labels, features_list, args, output_dir):
         }
     )
 
-    output_path = output_dir / f"{csv_path.stem}_SGRADT70_v3.onnx"
+    output_path = output_dir / f"{csv_path.stem}_SGRADT70.onnx"
     with open(output_path, "wb") as f:
         f.write(onx.SerializeToString())
 
