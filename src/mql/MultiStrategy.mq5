@@ -91,7 +91,7 @@ void OnTimer()
    if(CheckStrategy5())
       status += "Strategy 5: BUY signal detected\n";
 
-   double atr = iATR(_Symbol, PERIOD_M15, ATRPeriod);
+   double atr = iATR(_Symbol, PERIOD_CURRENT, ATRPeriod);
    status += "ATR(" + IntegerToString(ATRPeriod) + "): " + DoubleToString(atr, 5) + "\n";
 
 // Show open positions info
@@ -135,10 +135,10 @@ bool IsPositionOpen()
 //+------------------------------------------------------------------+
 bool CheckStrategy1()
   {
-   double rsi = iRSI(_Symbol, PERIOD_M15, 14, PRICE_CLOSE);
-   double stochK = iStochastic(_Symbol, PERIOD_M15, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-   double ema50 = iMA(_Symbol, PERIOD_M15, 50, 0, MODE_EMA, PRICE_CLOSE);
-   double ema200 = iMA(_Symbol, PERIOD_M15, 200, 0, MODE_EMA, PRICE_CLOSE);
+   double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE);
+   double stochK = iStochastic(_Symbol, PERIOD_CURRENT, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
+   double ema50 = iMA(_Symbol, PERIOD_CURRENT, 50, 0, MODE_EMA, PRICE_CLOSE);
+   double ema200 = iMA(_Symbol, PERIOD_CURRENT, 200, 0, MODE_EMA, PRICE_CLOSE);
    return (rsi < 20 && stochK < 10 && ema50 < ema200);
   }
 
@@ -147,10 +147,10 @@ bool CheckStrategy1()
 //+------------------------------------------------------------------+
 bool CheckStrategy2()
   {
-   double rsi = iRSI(_Symbol, PERIOD_M15, 14, PRICE_CLOSE);
-   double ema50 = iMA(_Symbol, PERIOD_M15, 50, 0, MODE_EMA, PRICE_CLOSE);
-   double ema200 = iMA(_Symbol, PERIOD_M15, 200, 0, MODE_EMA, PRICE_CLOSE);
-   double atr = iATR(_Symbol, PERIOD_M15, ATRPeriod);
+   double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE);
+   double ema50 = iMA(_Symbol, PERIOD_CURRENT, 50, 0, MODE_EMA, PRICE_CLOSE);
+   double ema200 = iMA(_Symbol, PERIOD_CURRENT, 200, 0, MODE_EMA, PRICE_CLOSE);
+   double atr = iATR(_Symbol, PERIOD_CURRENT, ATRPeriod);
    return (rsi < 20 && ema50 < ema200 && atr > SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 100);
   }
 
@@ -159,10 +159,10 @@ bool CheckStrategy2()
 //+------------------------------------------------------------------+
 bool CheckStrategy3()
   {
-   double rsi = iRSI(_Symbol, PERIOD_M15, 14, PRICE_CLOSE);
-   double ema50 = iMA(_Symbol, PERIOD_M15, 50, 0, MODE_EMA, PRICE_CLOSE);
-   double ema200 = iMA(_Symbol, PERIOD_M15, 200, 0, MODE_EMA, PRICE_CLOSE);
-   double atr = iATR(_Symbol, PERIOD_M15, ATRPeriod);
+   double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE);
+   double ema50 = iMA(_Symbol, PERIOD_CURRENT, 50, 0, MODE_EMA, PRICE_CLOSE);
+   double ema200 = iMA(_Symbol, PERIOD_CURRENT, 200, 0, MODE_EMA, PRICE_CLOSE);
+   double atr = iATR(_Symbol, PERIOD_CURRENT, ATRPeriod);
    return (rsi < 25 && ema50 < ema200 && atr > SymbolInfoDouble(_Symbol, SYMBOL_POINT) * 100);
   }
 
@@ -171,10 +171,10 @@ bool CheckStrategy3()
 //+------------------------------------------------------------------+
 bool CheckStrategy4()
   {
-   double stochK = iStochastic(_Symbol, PERIOD_M15, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-   double ema10 = iMA(_Symbol, PERIOD_M15, 10, 0, MODE_EMA, PRICE_CLOSE);
-   double ema20 = iMA(_Symbol, PERIOD_M15, 20, 0, MODE_EMA, PRICE_CLOSE);
-   double macdMain = iMACD(_Symbol, PERIOD_M15, 12, 26, 9, PRICE_CLOSE);
+   double stochK = iStochastic(_Symbol, PERIOD_CURRENT, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
+   double ema10 = iMA(_Symbol, PERIOD_CURRENT, 10, 0, MODE_EMA, PRICE_CLOSE);
+   double ema20 = iMA(_Symbol, PERIOD_CURRENT, 20, 0, MODE_EMA, PRICE_CLOSE);
+   double macdMain = iMACD(_Symbol, PERIOD_CURRENT, 12, 26, 9, PRICE_CLOSE);
    return (stochK > 80 && ema10 < ema20 && macdMain < 0);
   }
 
@@ -183,10 +183,10 @@ bool CheckStrategy4()
 //+------------------------------------------------------------------+
 bool CheckStrategy5()
   {
-   double rsi = iRSI(_Symbol, PERIOD_M15, 14, PRICE_CLOSE);
-   double stochK = iStochastic(_Symbol, PERIOD_M15, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-   double ema50 = iMA(_Symbol, PERIOD_M15, 50, 0, MODE_EMA, PRICE_CLOSE);
-   double ema200 = iMA(_Symbol, PERIOD_M15, 200, 0, MODE_EMA, PRICE_CLOSE);
+   double rsi = iRSI(_Symbol, PERIOD_CURRENT, 14, PRICE_CLOSE);
+   double stochK = iStochastic(_Symbol, PERIOD_CURRENT, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
+   double ema50 = iMA(_Symbol, PERIOD_CURRENT, 50, 0, MODE_EMA, PRICE_CLOSE);
+   double ema200 = iMA(_Symbol, PERIOD_CURRENT, 200, 0, MODE_EMA, PRICE_CLOSE);
    return (rsi < 25 && stochK < 10 && ema50 < ema200);
   }
 
@@ -195,7 +195,7 @@ bool CheckStrategy5()
 //+------------------------------------------------------------------+
 void ExecuteTrade(string side)
   {
-   double atr = iATR(_Symbol, PERIOD_M15, ATRPeriod);
+   double atr = iATR(_Symbol, PERIOD_CURRENT, ATRPeriod);
    double slDistance = atr * ATRMultiplierSL;
    double tpDistance = atr * ATRMultiplierTP;
 
@@ -232,7 +232,7 @@ void ManageExits()
          double tp = PositionGetDouble(POSITION_TP);
          long type = PositionGetInteger(POSITION_TYPE); // 0=BUY, 1=SELL
 
-         double atr = iATR(symbol, PERIOD_M15, ATRPeriod); // NOTE: This is MQL4 style – must be fixed for MQL5
+         double atr = iATR(symbol, PERIOD_CURRENT, ATRPeriod); // NOTE: This is MQL4 style – must be fixed for MQL5
          double trailDistance = atr * ATRMultiplierSL;
 
          if(type == POSITION_TYPE_BUY)
