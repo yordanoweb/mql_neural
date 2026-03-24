@@ -1,6 +1,6 @@
 """
-MT5 Trading Script with EMA-based Entry and ATR-based Stop Loss / Take Profit
-(Exit only via SL/TP, not EMA cross)
+MT5 Trading Script with EMA Entry + Stochastic + ADX Confirmation
+Exit only via ATR-based Stop Loss / Take Profit
 """
 
 import time
@@ -54,7 +54,7 @@ def parse_timeframe(tf_str):
     return TIMEFRAME_MAP[tf_str]
 
 # ---------- Argument parsing ----------
-parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA Entry with ATR SL/TP")
+parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA + Stochastic + ADX Confirmation")
 parser.add_argument("--symbol", type=str, default="EURUSD", help="Trading symbol (default: EURUSD)")
 parser.add_argument("--timeframe", type=str, default="M1", help="Candle timeframe (e.g., M1, M5, H1, D1) (default: M1)")
 parser.add_argument("--ema_period", type=int, default=9, help="EMA period (default: 9)")
@@ -65,6 +65,21 @@ parser.add_argument("--magic", type=int, default=91234569, help="Magic number (d
 parser.add_argument("--volume", type=float, default=0.1, help="Order volume in lots (default: 0.1)")
 parser.add_argument("--entry_points", type=float, default=10.0, help="Points away from EMA to trigger entry (default: 10)")
 parser.add_argument("--interval", type=float, default=5.0, help="Seconds between processing steps (default: 5)")
+
+# Stochastic parameters
+parser.add_argument("--stoch_k", type=int, default=7, help="Stochastic %K period (default: 7)")
+parser.add_argument("--stoch_d", type=int, default=3, help="Stochastic %D period (default: 3)")
+parser.add_argument("--stoch_slowing", type=int, default=3, help="Stochastic slowing (default: 3)")
+parser.add_argument("--stoch_overbought", type=float, default=80.0, help="Stochastic overbought level (default: 80)")
+parser.add_argument("--stoch_oversold", type=float, default=20.0, help="Stochastic oversold level (default: 20)")
+parser.add_argument("--stoch_bypass", action="store_true", help="Bypass Stochastic signals (always True)")
+
+# ADX parameters
+parser.add_argument("--adx_period", type=int, default=8, help="ADX period (default: 8)")
+parser.add_argument("--adx_limit", type=float, default=32.0, help="ADX trend strength threshold (default: 32)")
+parser.add_argument("--adx_bypass", action="store_true", help="Bypass ADX signals (always True)")
+parser.add_argument("--adx_di_over", action="store_true", help="Require DI+ > DI- for buy and DI- > DI+ for sell")
+
 args = parser.parse_args()
 
 SYMBOL = args.symbol
@@ -77,6 +92,20 @@ MAGIC = args.magic
 VOLUME = args.volume
 ENTRY_POINTS = args.entry_points
 INTERVAL = args.interval
+
+# Stochastic args
+STOCH_K = args.stoch_k
+STOCH_D = args.stoch_d
+STOCH_SLOW = args.stoch_slowing
+STOCH_OB = args.stoch_overbought
+STOCH_OS = args.stoch_oversold
+STOCH_BYPASS = args.stoch_bypass
+
+# ADX args
+ADX_PERIOD = args.adx_period
+ADX_LIMIT = args.adx_limit
+ADX_BYPASS = args.adx_bypass
+ADX_DI_OVER = args.adx_di_over
 
 # ---------- MT5 Initialization ----------
 if not mt5.initialize():
@@ -102,6 +131,8 @@ print(colorize("MT5 initialized", Colors.GREEN) +
       f" – trading {SYMBOL} on {args.timeframe} with EMA{EMA_PERIOD}")
 print(f"Magic: {MAGIC}, Volume: {VOLUME}, Entry threshold: {ENTRY_POINTS} points ({entry_threshold:.5f})")
 print(f"ATR period: {ATR_PERIOD}, SL multiplier: {SL_MULT}, TP multiplier: {TP_MULT}")
+print(f"Stochastic: K={STOCH_K}, D={STOCH_D}, Slow={STOCH_SLOW}, OB={STOCH_OB}, OS={STOCH_OS}, bypass={STOCH_BYPASS}")
+print(f"ADX: period={ADX_PERIOD}, limit={ADX_LIMIT}, bypass={ADX_BYPASS}, DI_OVER={ADX_DI_OVER}")
 print(f"Checking every {INTERVAL} seconds\n")
 
 # ---------- Helper functions ----------
@@ -125,11 +156,94 @@ def compute_ema(df, period):
     return ta.trend.EMAIndicator(df['close'], window=period).ema_indicator()
 
 def compute_atr(df, period):
-    """Return the latest ATR value from the dataframe."""
     if df is None or len(df) < period:
         return None
     atr_ind = ta.volatility.AverageTrueRange(high=df['high'], low=df['low'], close=df['close'], window=period)
     return atr_ind.average_true_range().iloc[-1]
+
+def compute_stochastic(df, k_period, d_period, slowing):
+    """Return Stochastic %K and %D as pandas Series."""
+    stoch = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'],
+                                              window=k_period, smooth_window=d_period,
+                                              fillna=True)
+    # %K is the main line, %D is the signal line
+    # The library's output is: stoch.stoch() = %K, stoch.stoch_signal() = %D
+    # But we need to apply slowing (the built-in slowing is usually the smoothing of %K before %D)
+    # Actually, ta.momentum.StochasticOscillator uses:
+    #   window = %K period
+    #   smooth_window = moving average of %K to produce %D
+    # The slowing parameter is often the number of periods for %K smoothing; here we'll use the default
+    # and let the user set k_period as the raw %K period and d_period as the moving average of %K.
+    # The provided input 'slowing' is usually the same as d_period, but we'll just use the given values.
+    k = stoch.stoch()
+    d = stoch.stoch_signal()
+    return k, d
+
+def compute_adx(df, period):
+    """Return ADX, +DI, -DI as pandas Series."""
+    adx_ind = ta.trend.ADXIndicator(high=df['high'], low=df['low'], close=df['close'], window=period)
+    adx = adx_ind.adx()
+    plus_di = adx_ind.adx_pos()
+    minus_di = adx_ind.adx_neg()
+    return adx, plus_di, minus_di
+
+def stochastic_buy_signal(k, d, idx):
+    """
+    Check if a buy signal is present according to the strategy.
+    k, d are pandas Series; idx is the index of the most recent completed candle (e.g., -2 for prev).
+    We need to look back at least 3 candles.
+    """
+    # Oversold crossover (2 candles ago)
+    cond1 = (k.iloc[-3] < d.iloc[-3] and k.iloc[-2] > d.iloc[-2] and k.iloc[-2] <= STOCH_OS)
+    # Alternative lookback (3 candles ago)
+    cond2 = (k.iloc[-4] < d.iloc[-4] and k.iloc[-3] > d.iloc[-3] and k.iloc[-3] <= STOCH_OS)
+    # Strong upward momentum (current candle index -1 is the last completed? Actually we want the current candle (the forming one) but we only have completed candles.
+    # In the doc, "current candle" likely means the last completed one (index -1) and previous two (index -2, -3)
+    # We'll use the latest 3 completed candles: -1 (most recent), -2, -3.
+    # For momentum, we need: k[-1] > k[-2] + 7 and k[-2] > k[-3] + 7
+    cond3 = (k.iloc[-1] > k.iloc[-2] + 7 and k.iloc[-2] > k.iloc[-3] + 7)
+    return cond1 or cond2 or cond3
+
+def stochastic_sell_signal(k, d, idx):
+    cond1 = (k.iloc[-3] > d.iloc[-3] and k.iloc[-2] < d.iloc[-2] and k.iloc[-2] >= STOCH_OB)
+    cond2 = (k.iloc[-4] > d.iloc[-4] and k.iloc[-3] < d.iloc[-3] and k.iloc[-3] >= STOCH_OB)
+    cond3 = (k.iloc[-1] < k.iloc[-2] - 7 and k.iloc[-2] < k.iloc[-3] - 7)
+    return cond1 or cond2 or cond3
+
+def adx_trending(adx):
+    """Check if ADX pre-condition for entry is satisfied.
+    adx is a pandas Series (last 2 values enough)."""
+    # ADX value for current or previous candle above limit
+    cond1 = adx.iloc[-1] > ADX_LIMIT or adx.iloc[-2] > ADX_LIMIT
+    # Strong upward movement (>5)
+    cond2 = (adx.iloc[-2] - adx.iloc[-3] > 5) or (adx.iloc[-1] - adx.iloc[-2] > 5)
+    return cond1 or cond2
+
+def adx_buy_signal(plus_di, minus_di):
+    """Check ADX buy signal conditions."""
+    # Need at least 4 candles (indices -4 to -1)
+    # Condition 1: DI+ trending up, DI- trending down
+    cond1 = (plus_di.iloc[-1] > plus_di.iloc[-3] and plus_di.iloc[-2] > plus_di.iloc[-3] and plus_di.iloc[-1] > plus_di.iloc[-2]) and \
+            (minus_di.iloc[-1] < minus_di.iloc[-2] and minus_di.iloc[-2] < minus_di.iloc[-3])
+    # Condition 2: -DI sustained downtrend and +DI begins to rise
+    cond2 = (minus_di.iloc[-4] < minus_di.iloc[-5] and minus_di.iloc[-3] < minus_di.iloc[-4] and minus_di.iloc[-2] < minus_di.iloc[-3] and \
+             plus_di.iloc[-2] > plus_di.iloc[-4])
+    # Optional DI+ > DI- if flag set
+    if ADX_DI_OVER:
+        cond1 = cond1 and (plus_di.iloc[-1] > minus_di.iloc[-1])
+        cond2 = cond2 and (plus_di.iloc[-2] > minus_di.iloc[-2])
+    return cond1 or cond2
+
+def adx_sell_signal(plus_di, minus_di):
+    """Check ADX sell signal conditions."""
+    cond1 = (minus_di.iloc[-1] > minus_di.iloc[-3] and minus_di.iloc[-2] > minus_di.iloc[-3] and minus_di.iloc[-1] > minus_di.iloc[-2]) and \
+            (plus_di.iloc[-1] < plus_di.iloc[-2] and plus_di.iloc[-2] < plus_di.iloc[-3])
+    cond2 = (plus_di.iloc[-4] < plus_di.iloc[-5] and plus_di.iloc[-3] < plus_di.iloc[-4] and plus_di.iloc[-2] < plus_di.iloc[-3] and \
+             minus_di.iloc[-2] > minus_di.iloc[-4])
+    if ADX_DI_OVER:
+        cond1 = cond1 and (minus_di.iloc[-1] > plus_di.iloc[-1])
+        cond2 = cond2 and (minus_di.iloc[-2] > plus_di.iloc[-2])
+    return cond1 or cond2
 
 def get_open_position():
     positions = mt5.positions_get(symbol=SYMBOL)
@@ -224,8 +338,9 @@ try:
             continue
         current_price = (bid + ask) / 2.0
 
-        # Fetch enough candles: need at least max(EMA, ATR) + 2
-        candles_needed = max(EMA_PERIOD, ATR_PERIOD) + 2
+        # We need enough candles for all indicators: EMA, ATR, ADX, Stochastic.
+        # We'll fetch at least 50 to be safe.
+        candles_needed = max(50, EMA_PERIOD, ATR_PERIOD, ADX_PERIOD, STOCH_K + STOCH_D + STOCH_SLOW + 5)
         df = get_candles(candles_needed)
         if df is None or len(df) < candles_needed:
             print(colorize("Not enough candles yet, waiting...", Colors.YELLOW))
@@ -235,6 +350,19 @@ try:
         ema_series = compute_ema(df, EMA_PERIOD)
         if ema_series is None:
             print(colorize("Could not compute EMA, waiting...", Colors.YELLOW))
+            continue
+
+        # Compute ATR (only needed for entry to set SL/TP)
+        atr_value = compute_atr(df, ATR_PERIOD)
+
+        # Compute Stochastic
+        stoch_k, stoch_d = compute_stochastic(df, STOCH_K, STOCH_D, STOCH_SLOW)
+        # Compute ADX
+        adx, plus_di, minus_di = compute_adx(df, ADX_PERIOD)
+
+        # We need at least 6 completed candles for the conditions (indices -1 to -5)
+        if stoch_k.isnull().any() or stoch_d.isnull().any() or adx.isnull().any():
+            print(colorize("Not enough data for indicators, waiting...", Colors.YELLOW))
             continue
 
         prev_candle = df.iloc[-2]
@@ -248,33 +376,54 @@ try:
 
         position = get_open_position()
         if position:
-            # No automatic exit based on EMA – only SL/TP will close
+            # No automatic exit – only SL/TP will close
             pass
         else:
-            # Check entry signals
-            atr_value = compute_atr(df, ATR_PERIOD)
-            if atr_value is None:
-                print(colorize("ATR not available, skipping entry check", Colors.YELLOW))
-                # but we still continue to log
-            else:
-                # Sell condition
-                if (prev_candle['open'] > prev_ema and prev_candle['close'] < current_ema and
-                    current_price < current_ema - entry_threshold):
-                    print(colorize("Sell signal detected.", Colors.YELLOW))
-                    # Calculate SL and TP for sell
-                    sl_price = bid + (atr_value * SL_MULT)
-                    tp_price = bid - (atr_value * TP_MULT)
-                    print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
-                    send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, sl=sl_price, tp=tp_price, comment=f"Python SELL@{bid}")
-                # Buy condition
-                elif (prev_candle['open'] < prev_ema and prev_candle['close'] > current_ema and
-                      current_price > current_ema + entry_threshold):
-                    print(colorize("Buy signal detected.", Colors.YELLOW))
-                    # Calculate SL and TP for buy
+            # Check EMA entry condition
+            sell_ema_cond = (prev_candle['open'] > prev_ema and prev_candle['close'] < current_ema and
+                              current_price < current_ema - entry_threshold)
+            buy_ema_cond = (prev_candle['open'] < prev_ema and prev_candle['close'] > current_ema and
+                            current_price > current_ema + entry_threshold)
+
+            # Determine if Stochastic signals are present
+            stoch_buy = STOCH_BYPASS or stochastic_buy_signal(stoch_k, stoch_d, -1)
+            stoch_sell = STOCH_BYPASS or stochastic_sell_signal(stoch_k, stoch_d, -1)
+
+            # Determine ADX conditions
+            adx_trend = adx_trending(adx)
+            adx_buy = ADX_BYPASS or (adx_trend and adx_buy_signal(plus_di, minus_di))
+            adx_sell = ADX_BYPASS or (adx_trend and adx_sell_signal(plus_di, minus_di))
+
+            if buy_ema_cond and stoch_buy and adx_buy:
+                print(colorize("Buy signal confirmed: EMA + Stochastic + ADX", Colors.GREEN))
+                if atr_value is None:
+                    print(colorize("ATR not available, cannot set SL/TP", Colors.YELLOW))
+                else:
                     sl_price = ask - (atr_value * SL_MULT)
                     tp_price = ask + (atr_value * TP_MULT)
                     print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
                     send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, sl=sl_price, tp=tp_price, comment=f"Python BUY@{ask}")
+            elif sell_ema_cond and stoch_sell and adx_sell:
+                print(colorize("Sell signal confirmed: EMA + Stochastic + ADX", Colors.GREEN))
+                if atr_value is None:
+                    print(colorize("ATR not available, cannot set SL/TP", Colors.YELLOW))
+                else:
+                    sl_price = bid + (atr_value * SL_MULT)
+                    tp_price = bid - (atr_value * TP_MULT)
+                    print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
+                    send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, sl=sl_price, tp=tp_price, comment=f"Python SELL@{bid}")
+            else:
+                # Optional: log which conditions failed
+                if buy_ema_cond and (not stoch_buy or not adx_buy):
+                    missing = []
+                    if not stoch_buy: missing.append("Stochastic")
+                    if not adx_buy: missing.append("ADX")
+                    print(colorize(f"EMA buy signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
+                elif sell_ema_cond and (not stoch_sell or not adx_sell):
+                    missing = []
+                    if not stoch_sell: missing.append("Stochastic")
+                    if not adx_sell: missing.append("ADX")
+                    print(colorize(f"EMA sell signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
 
         # --- Logging ---
         pos_status = "No position" if position is None else f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f}"
@@ -290,6 +439,9 @@ try:
             dist_text = "above" if dist > 0 else "below"
             color_dist = Colors.GREEN if (position.type == 0 and dist > 0) or (position.type == 1 and dist < 0) else Colors.RED
             print(f"  Price is {colorize(f'{abs(dist):.5f}', color_dist)} {dist_text} EMA")
+
+        # Also log current Stochastic and ADX values for debugging
+        print(f"  Stoch %K={stoch_k.iloc[-1]:.2f} %D={stoch_d.iloc[-1]:.2f} | ADX={adx.iloc[-1]:.2f} +DI={plus_di.iloc[-1]:.2f} -DI={minus_di.iloc[-1]:.2f}")
 
         time.sleep(0.05)
 
