@@ -31,6 +31,7 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 //=== Indicator Parameters (SGRADT 7.0 Defaults) ===
 input group "======== EMA ========"
 input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
+input bool InpUseEMAGate = true;
 
 input group "======== STOCHASTIC ========"
 input int    InpStochK          = 5;      // Stochastic K period
@@ -228,6 +229,8 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 bool EMAGateAllows(int predicted_class)
   {
+   if(!InpUseEMAGate) return true;
+
    double ema_gate[];
    if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
       return false;
