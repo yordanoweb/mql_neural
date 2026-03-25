@@ -11,6 +11,7 @@ import argparse
 import sys
 import json
 import time
+import re
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
@@ -27,23 +28,59 @@ COLOR_INFO = "\033[94m"      # Blue
 COLOR_DEBUG = "\033[96m"     # Cyan
 COLOR_WARNING = "\033[93m"   # Yellow
 COLOR_ERROR = "\033[91m"     # Red
+COLOR_NUMBER = "\033[92m"    # Green
+COLOR_KEYWORD = "\033[95m"   # Magenta
 COLOR_RESET = "\033[0m"      # Reset to default
+
+def format_message_with_colors(message):
+    """Apply dynamic colors to numbers and keywords in a message"""
+    import re
+    
+    # Define keywords to highlight (case-insensitive)
+    keywords = [
+        'BUY', 'SELL', 'Accuracy', 'Processing time', 'Parameters', 
+        'Best score', 'Best parameters', 'Model saved', 'Writing ONNX model',
+        'Prepared training data', 'Label distribution', 'Starting model training',
+        'Training completed', 'Exporting model', 'Signal counts', 'Loaded',
+        'Processing', 'Starting SGRADT', 'Arguments', 'Output directory',
+        'Training session completed', 'Skipping', 'Insufficient signals'
+    ]
+    
+    # Apply keyword coloring
+    for keyword in keywords:
+        # Use regex to match whole words only, case-insensitive
+        pattern = r'\b' + re.escape(keyword) + r'\b'
+        message = re.sub(pattern, f'{COLOR_KEYWORD}{keyword}{COLOR_RESET}', message, flags=re.IGNORECASE)
+    
+    # Apply number coloring (integers and floats)
+    # Match numbers including decimals and negative numbers
+    number_pattern = r'-?\b\d+\.?\d*\b'
+    def replace_number(match):
+        return f'{COLOR_NUMBER}{match.group()}{COLOR_RESET}'
+    
+    message = re.sub(number_pattern, replace_number, message)
+    
+    return message
 
 def log_info(message):
     """Print formatted log message with timestamp"""
-    print(f"{COLOR_INFO}[INFO]{COLOR_RESET} {message}")
+    formatted_message = format_message_with_colors(message)
+    print(f"{COLOR_INFO}[INFO]{COLOR_RESET} {formatted_message}")
 
 def log_debug(message):
     """Print debug log message"""
-    print(f"{COLOR_DEBUG}[DEBUG]{COLOR_RESET} {message}")
+    formatted_message = format_message_with_colors(message)
+    print(f"{COLOR_DEBUG}[DEBUG]{COLOR_RESET} {formatted_message}")
 
 def log_warning(message):
     """Print warning log message"""
-    print(f"{COLOR_WARNING}[WARNING]{COLOR_RESET} {message}")
+    formatted_message = format_message_with_colors(message)
+    print(f"{COLOR_WARNING}[WARNING]{COLOR_RESET} {formatted_message}")
 
 def log_error(message):
     """Print error log message"""
-    print(f"{COLOR_ERROR}[ERROR]{COLOR_RESET} {message}")
+    formatted_message = format_message_with_colors(message)
+    print(f"{COLOR_ERROR}[ERROR]{COLOR_RESET} {formatted_message}")
 
 def calculate_signals_and_labels(df, args):
     """
