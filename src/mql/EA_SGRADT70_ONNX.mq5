@@ -21,6 +21,7 @@ input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 
 input group "======== INFERENCE ========"
 input int  InpInferSeconds = 0;        // Inference frequency (0 = new bar only)
 input bool InpOneTradePerBar = true;   // Limit to 1 trade per bar
+input bool InpReverseInfer = false;
 
 //=== Trading Session ===
 input group "======== SESSION ========"
@@ -401,6 +402,15 @@ void RunInference()
          max_prob = g_last_probas[i];
          predicted_class = i;
         }
+     }
+
+   if(InpReverseInfer)
+     {
+      if(predicted_class == 1)
+         predicted_class = 2;
+      if(predicted_class == 2)
+         predicted_class = 1;
+      PrintFormat("Reversed Inference Active: %.1f", predicted_class);
      }
 
    if(max_prob > 0)
