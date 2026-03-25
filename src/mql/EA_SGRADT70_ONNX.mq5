@@ -446,7 +446,8 @@ void RunInference()
       bool has_buy_pos = HasPosition(POSITION_TYPE_BUY);
       bool ema_allows = EMAGateAllows(predicted_class);
       
-      Print("[DEBUG BUY] HasPosition: ", has_buy_pos, " | EMAGate: ", ema_allows);
+      string ema_status = InpUseEMAGate ? (ema_allows ? "ALLOW" : "BLOCK") : "DISABLED";
+      Print("[DEBUG BUY] HasPosition: ", has_buy_pos, " | EMAGate: ", ema_status);
       
       if(has_buy_pos)
         {
@@ -488,7 +489,8 @@ void RunInference()
          bool has_sell_pos = HasPosition(POSITION_TYPE_SELL);
          bool ema_allows = EMAGateAllows(predicted_class);
          
-         Print("[DEBUG SELL] HasPosition: ", has_sell_pos, " | EMAGate: ", ema_allows);
+         string ema_status = InpUseEMAGate ? (ema_allows ? "ALLOW" : "BLOCK") : "DISABLED";
+         Print("[DEBUG SELL] HasPosition: ", has_sell_pos, " | EMAGate: ", ema_status);
          
          if(has_sell_pos)
            {
