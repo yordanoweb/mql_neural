@@ -655,23 +655,23 @@ void UpdatePanel()
    double open_current = iOpen(_Symbol, _Period, 0);
    double close_current = iClose(_Symbol, _Period, 0);
 
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "EMA (Period: " + IntegerToString(InpEMAPeriod) + ")\n";
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "   EMA: " + DoubleToString(ema[0], _Digits) + "\n";
    panel += "   Open: " + DoubleToString(open_current, _Digits);
    panel += (open_current > ema[0]) ? " [ABOVE]\n" : " [BELOW]\n";
    panel += "   Close: " + DoubleToString(close_current, _Digits) + "\n";
 
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "ADX (Period: " + IntegerToString(InpADXPeriod) + ")\n";
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "   ADX: " + DoubleToString(adx[0], 2);
    panel += (adx[0] > InpADXLimit) ? " [TRENDING]\n" : " [RANGING]\n";
 
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "STOCHASTIC (" + IntegerToString(InpStochK) + "," + IntegerToString(InpStochD) + ")\n";
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "   K: " + DoubleToString(stoch_k[0], 2) + " | " + " D: " + DoubleToString(stoch_d[0], 2) + "\n";
 
    string zone = "";
@@ -685,9 +685,9 @@ void UpdatePanel()
    panel += "   Zone: " + zone + "\n";
 
 //--- AI Prediction
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "AI PREDICTION\n";
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
 
    if(g_last_prediction >= 0)
      {
@@ -714,9 +714,9 @@ void UpdatePanel()
      }
 
 //--- Risk Settings
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "RISK SETTINGS\n";
-   panel += StringRepeat("-", 52) + "\n";
+   panel += StringRepeat("=", 25) + "\n";
    panel += "   Lot: " + DoubleToString(InpLot, 2) + "\n";
    panel += "   SL: " + DoubleToString(InpStopPoints, 0) + " pts | TP: " + DoubleToString(InpTakePoints, 0) + " pts\n";
    panel += "   Exit: EMA 9 Cross\n";
@@ -738,11 +738,11 @@ void UpdatePanel()
 
    if(pos_info != "")
      {
-      panel += StringRepeat("-", 52) + "\n";
+      panel += StringRepeat("=", 25) + "\n";
       panel += "ACTIVE POSITION: " + pos_info + "\n";
       string pnl_str = (pnl >= 0) ? "+" : "";
       panel += "   P&L: " + pnl_str + DoubleToString(pnl, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) + "\n";
-      panel += StringRepeat("-", 52) + "\n";
+      panel += StringRepeat("=", 25) + "\n";
      }
 
    Comment(panel);
