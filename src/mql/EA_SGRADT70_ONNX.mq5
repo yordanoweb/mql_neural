@@ -454,9 +454,16 @@ void RunInference()
         }
       else if(!ema_allows)
         {
-         double ema_val[], ask_val = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
-         Print("[SKIP BUY] EMA gate blocks: Ask=", DoubleToString(ask_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Ask > EMA)");
+         if(InpUseEMAGate)
+           {
+            double ema_val[], ask_val = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
+            Print("[SKIP BUY] EMA gate blocks: Ask=", DoubleToString(ask_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Ask > EMA)");
+           }
+         else
+           {
+            Print("[SKIP BUY] EMA gate disabled but still blocked (should not happen)");
+           }
         }
       else
         {
@@ -489,10 +496,16 @@ void RunInference()
            }
          else if(!ema_allows)
            {
-            double ema_val[], open_val = iOpen(_Symbol, _Period, 0);
-            CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
-            double bid_val = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-            Print("[SKIP SELL] EMA gate blocks: Bid=", DoubleToString(bid_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Bid < EMA)");
+            if(InpUseEMAGate)
+              {
+               double ema_val[], bid_val = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+               CopyBuffer(g_ema_handle, 0, 0, 1, ema_val);
+               Print("[SKIP SELL] EMA gate blocks: Bid=", DoubleToString(bid_val, _Digits), " EMA=", DoubleToString(ema_val[0], _Digits), " (need Bid < EMA)");
+              }
+            else
+              {
+               Print("[SKIP SELL] EMA gate disabled but still blocked (should not happen)");
+              }
            }
          else
            {
