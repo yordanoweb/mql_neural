@@ -1,3 +1,6 @@
+# CURRENT: Nasdaq (NQ)
+python src/python/train_sgradt70_strategy.py --window 20 --future 4 --min_profit_points 15 --adx_period 8 --adx_limit 24 --stoch_k 5 --stoch_oversold 30 --stoch_overbought 70 --n_iter 5 --csv csv/ndx100_rates_m5.csv
+
 # Nasdaq (NQ)
 python src/python/train_price_action_adx_points.py --csv csv/ndx100_rates_m5.csv --output ./onnx --window 25 --future 12 --move_points 40 --adx_thresh 25
 
