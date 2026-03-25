@@ -417,23 +417,21 @@ void RunInference()
       PrintFormat("Reversed Inference Active: %.1f", predicted_class);
      }
 
-   if(max_prob > 0)
-     {
-      double adx_buf[], stoch_buf[], stochd_buf[];
-      int adx_count = CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
-      int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
-      int stochd_count = CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
-      string class_name = "HOLD";
-      if(predicted_class == 1) class_name = "BUY";
-      else if(predicted_class == 2) class_name = "SELL";
-      
-      PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
-                  max_prob,
-                  class_name,
-                  adx_buf[0],
-                  stoch_buf[0],
-                  stochd_buf[0]);
-     }
+//--- Show inference values for debug purposes
+   double adx_buf[], stoch_buf[], stochd_buf[];
+   int adx_count = CopyBuffer(g_adx_handle, 0, 0, 1, adx_buf);
+   int stoch_count = CopyBuffer(g_stoch_handle, 0, 0, 1, stoch_buf);
+   int stochd_count = CopyBuffer(g_stoch_handle, 1, 0, 1, stochd_buf);
+   string class_name = "HOLD";
+   if(predicted_class == 1) class_name = "BUY";
+   else if(predicted_class == 2) class_name = "SELL";
+   
+   PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
+               max_prob,
+               class_name,
+               adx_buf[0],
+               stoch_buf[0],
+               stochd_buf[0]);
 
 //--- Check confidence
    if(max_prob < InpMinConf)
