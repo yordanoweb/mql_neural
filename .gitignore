@@ -89,14 +89,16 @@ tmp/**
 .venv/
 .python-version
 
-*.onnx
 *.csv
 src/mql/Credentials.mqh
 
 secrets.txt
 passwords.txt
 
+# Do not place rules under here refering ONNX
+onnx/**
+!onnx/ndx100_rates_m5_SGRADT70.onnx
+
 data/
-onnx/
 csv/**
 
