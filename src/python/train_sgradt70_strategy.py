@@ -22,21 +22,28 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# ANSI color codes
+COLOR_INFO = "\033[94m"      # Blue
+COLOR_DEBUG = "\033[96m"     # Cyan
+COLOR_WARNING = "\033[93m"   # Yellow
+COLOR_ERROR = "\033[91m"     # Red
+COLOR_RESET = "\033[0m"      # Reset to default
+
 def log_info(message):
     """Print formatted log message with timestamp"""
-    print(f"[INFO] {message}")
+    print(f"{COLOR_INFO}[INFO]{COLOR_RESET} {message}")
 
 def log_debug(message):
     """Print debug log message"""
-    print(f"[DEBUG] {message}")
+    print(f"{COLOR_DEBUG}[DEBUG]{COLOR_RESET} {message}")
 
 def log_warning(message):
     """Print warning log message"""
-    print(f"[WARNING] {message}")
+    print(f"{COLOR_WARNING}[WARNING]{COLOR_RESET} {message}")
 
 def log_error(message):
     """Print error log message"""
-    print(f"[ERROR] {message}")
+    print(f"{COLOR_ERROR}[ERROR]{COLOR_RESET} {message}")
 
 def calculate_signals_and_labels(df, args):
     """
