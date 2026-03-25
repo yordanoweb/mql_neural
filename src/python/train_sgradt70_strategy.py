@@ -8,10 +8,7 @@ Exit/Labeling: Fixed bar horizon (Target reached within 'future' bars).
 import pandas as pd
 import numpy as np
 import argparse
-import sys
-import json
 import time
-import re
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
@@ -38,7 +35,7 @@ def format_message_with_colors(message):
     
     # Define keywords to highlight (case-insensitive)
     keywords = [
-        'BUY', 'SELL', 'Accuracy', 'Processing time', 'Parameters', 
+        'BUY', 'SELL', 'TOTAL', 'HOLD', 'Accuracy', 'Processing time', 'Parameters', 
         'Best score', 'Best parameters', 'Model saved', 'Writing ONNX model',
         'Prepared training data', 'Label distribution', 'Starting model training',
         'Training completed', 'Exporting model', 'Signal counts', 'Loaded',
