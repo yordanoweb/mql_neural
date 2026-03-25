@@ -19,9 +19,10 @@ input int    InpFeaturesPerBar = 5;    // Features per bar (ALWAYS 5 for SGRADT 
 
 //=== Inference Timing ===
 input group "======== INFERENCE ========"
-input int  InpInferSeconds = 0;        // Inference frequency (0 = new bar only)
-input bool InpOneTradePerBar = true;   // Limit to 1 trade per bar
-input bool InpReverseInfer = false;
+input int    InpInferSeconds = 0;        // Inference frequency (0 = new bar only)
+input bool   InpOneTradePerBar = true;   // Limit to 1 trade per bar
+input bool   InpReverseInfer = false;    // BUY is SELL and SELL is BUY
+input string InpTrainParams = "";        // ONNX train params
 
 //=== Trading Session ===
 input group "======== SESSION ========"
@@ -30,7 +31,7 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 
 //=== Indicator Parameters (SGRADT 7.0 Defaults) ===
 input group "======== EMA ========"
-input int InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
+input int  InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
 input bool InpUseEMAGate = true;
 
 input group "======== STOCHASTIC ========"
