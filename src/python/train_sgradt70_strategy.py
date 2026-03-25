@@ -172,7 +172,7 @@ def main():
             log_warning(f"File does not exist: {csv_path}")
             continue
         
-        log_info(f"Processing: {csv_path.name}")
+        log_info(f"= Processing: {csv_path.name}")
         file_start_time = time.time()
         df = pd.read_csv(csv_path)
         log_info(f"Loaded {len(df)} rows from {csv_path.name}")
@@ -241,7 +241,7 @@ def main():
             f.write(onx_model.SerializeToString())
         
         file_elapsed = time.time() - file_start_time
-        log_info(f"Model saved: {out_name.name} | Accuracy: {model.best_score_:.4f} | Processing time: {file_elapsed:.2f}s")
+        log_info(f"* Model saved: {out_name.name} | Accuracy: {model.best_score_:.4f} | Processing time: {file_elapsed:.2f}s")
         processed_count += 1
     
     total_elapsed = time.time() - start_time
