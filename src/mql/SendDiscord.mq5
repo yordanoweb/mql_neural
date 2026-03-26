@@ -139,6 +139,10 @@ string FormatTradeMessage(ENUM_DEAL_TYPE deal_type, ENUM_DEAL_ENTRY deal_entry, 
          pl_status = "BREAK EVEN";
       }
       
+      // Get current account balance
+      double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+      string currency = AccountInfoString(ACCOUNT_CURRENCY);
+      
       string msg = StringFormat(
          "-----------------------------\n🤖 **%s**\n" +
          "%s **ORDEM FECHADA**\n" +
@@ -147,13 +151,15 @@ string FormatTradeMessage(ENUM_DEAL_TYPE deal_type, ENUM_DEAL_ENTRY deal_entry, 
          "Vol: %.2f | Preço: %.5f\n" +
          "🎫 Posição: `#%llu`\n" +
          "%s **%s: %.2f %s**\n" +
+         "💰 **Balance: %.2f %s**\n" +
          "🕐 %s",
          ea_title,
          pl_emoji,
          action, symbol,
          symbol, volume, price,
          position_ticket,
-         pl_emoji, pl_status, profit, AccountInfoString(ACCOUNT_CURRENCY),
+         pl_emoji, pl_status, profit, currency,
+         balance, currency,
          TimeToString(TimeCurrent(), TIME_DATE|TIME_MINUTES)
       );
       return msg;
