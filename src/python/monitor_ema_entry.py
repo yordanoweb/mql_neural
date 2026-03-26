@@ -551,7 +551,7 @@ try:
                     if not buy_candle_ok and USE_CANDLE_GATE: missing.append("Candle(Bullish)")
                     if not stoch_buy: missing.append("Stochastic")
                     if not adx_buy: missing.append("ADX")
-                    if not h1_candle_allow_buy and USE_H1_CANDLE_GATE: missing.append("H1 Previous Candle(Bullish)")
+                    if not h1_candle_allow_buy and USE_H1_CANDLE_GATE: missing.append("H1 Prev(Bullish)")
                     if missing:
                         print(colorize(f"EMA buy signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
                 elif sell_ema_cond:
@@ -559,7 +559,7 @@ try:
                     if not sell_candle_ok and USE_CANDLE_GATE: missing.append("Candle(Bearish)")
                     if not stoch_sell: missing.append("Stochastic")
                     if not adx_sell: missing.append("ADX")
-                    if not h1_candle_allow_sell and USE_H1_CANDLE_GATE: missing.append("H1 Previous Candle(Bearish)")
+                    if not h1_candle_allow_sell and USE_H1_CANDLE_GATE: missing.append("H1 Prev(Bearish)")
                     if missing:
                         print(colorize(f"EMA sell signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
 
