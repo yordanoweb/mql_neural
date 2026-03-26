@@ -1,6 +1,6 @@
 """
 MT5 Trading Script with EMA Entry + Stochastic + ADX Confirmation
-Exit only via ATR-based Stop Loss / Take Profit
+Exit: ATR-based SL/TP + Forecast-based exit (close at profit after N candles)
 """
 
 import time
@@ -54,7 +54,7 @@ def parse_timeframe(tf_str):
     return TIMEFRAME_MAP[tf_str]
 
 # ---------- Argument parsing ----------
-parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA + Stochastic + ADX Confirmation")
+parser = argparse.ArgumentParser(description="MT5 Trading Script - EMA + Stochastic + ADX + Forecast Exit")
 parser.add_argument("--symbol", type=str, default="EURUSD", help="Trading symbol (default: EURUSD)")
 parser.add_argument("--timeframe", type=str, default="M1", help="Candle timeframe (e.g., M1, M5, H1, D1) (default: M1)")
 parser.add_argument("--ema_period", type=int, default=9, help="EMA period (default: 9)")
@@ -65,6 +65,9 @@ parser.add_argument("--magic", type=int, default=91234569, help="Magic number (d
 parser.add_argument("--volume", type=float, default=0.1, help="Order volume in lots (default: 0.1)")
 parser.add_argument("--entry_points", type=float, default=10.0, help="Points away from EMA to trigger entry (default: 10)")
 parser.add_argument("--interval", type=float, default=5.0, help="Seconds between processing steps (default: 5)")
+
+# Forecast exit parameter
+parser.add_argument("--forecast_horizon", type=int, default=4, help="Candles to wait before checking forecast fulfillment (default: 4, 0=disabled)")
 
 # Stochastic parameters
 parser.add_argument("--stoch_k", type=int, default=7, help="Stochastic %K period (default: 7)")
@@ -96,6 +99,7 @@ MAGIC = args.magic
 VOLUME = args.volume
 ENTRY_POINTS = args.entry_points
 INTERVAL = args.interval
+FORECAST_HORIZON = args.forecast_horizon  # NEW: Forecast horizon for exit
 
 # Stochastic args
 STOCH_K = args.stoch_k
@@ -135,6 +139,7 @@ print(colorize("MT5 initialized", Colors.GREEN) +
       f" – trading {SYMBOL} on {args.timeframe} with EMA{EMA_PERIOD}")
 print(f"Magic: {MAGIC}, Volume: {VOLUME}, Entry threshold: {ENTRY_POINTS} points ({entry_threshold:.5f})")
 print(f"ATR period: {ATR_PERIOD}, SL multiplier: {SL_MULT}, TP multiplier: {TP_MULT}")
+print(f"Forecast horizon: {FORECAST_HORIZON} candles" if FORECAST_HORIZON > 0 else "Forecast exit: DISABLED")
 print(f"Stochastic: K={STOCH_K}, D={STOCH_D}, Slow={STOCH_SLOW}, OB={STOCH_OB}, OS={STOCH_OS}, bypass={STOCH_BYPASS}")
 print(f"ADX: period={ADX_PERIOD}, limit={ADX_LIMIT}, bypass={ADX_BYPASS}, DI_OVER={ADX_DI_OVER}")
 print(f"Checking every {INTERVAL} seconds\n")
@@ -170,15 +175,6 @@ def compute_stochastic(df, k_period, d_period, slowing):
     stoch = ta.momentum.StochasticOscillator(high=df['high'], low=df['low'], close=df['close'],
                                               window=k_period, smooth_window=d_period,
                                               fillna=True)
-    # %K is the main line, %D is the signal line
-    # The library's output is: stoch.stoch() = %K, stoch.stoch_signal() = %D
-    # But we need to apply slowing (the built-in slowing is usually the smoothing of %K before %D)
-    # Actually, ta.momentum.StochasticOscillator uses:
-    #   window = %K period
-    #   smooth_window = moving average of %K to produce %D
-    # The slowing parameter is often the number of periods for %K smoothing; here we'll use the default
-    # and let the user set k_period as the raw %K period and d_period as the moving average of %K.
-    # The provided input 'slowing' is usually the same as d_period, but we'll just use the given values.
     k = stoch.stoch()
     d = stoch.stoch_signal()
     return k, d
@@ -324,6 +320,51 @@ def close_position(position):
     print(colorize(f"Position closed: {position.ticket}", Colors.GREEN))
     return True
 
+# NEW: Calculate bars since position opened
+def get_bars_since_entry(position, df):
+    """Calculate how many bars have passed since position opened."""
+    if position is None:
+        return 0
+    # Convert position time to pandas datetime
+    entry_time = pd.to_datetime(position.time, unit='s')
+    # Find the index of the bar at or after entry time
+    bars_after_entry = df[df['time'] >= entry_time]
+    if len(bars_after_entry) == 0:
+        return 0
+    # Count bars from entry to current (inclusive)
+    return len(bars_after_entry)
+
+# NEW: Check forecast-based exit condition
+def check_forecast_exit(position, df, current_candle_time):
+    """
+    Check if position should be closed based on forecast fulfillment.
+    Returns True if position was closed, False otherwise.
+    """
+    if FORECAST_HORIZON <= 0 or position is None:
+        return False
+    
+    bars_held = get_bars_since_entry(position, df)
+    
+    # Only check after forecast horizon reached
+    if bars_held < FORECAST_HORIZON:
+        return False
+    
+    # Check if in profit
+    current_profit = position.profit
+    
+    if current_profit > 0:
+        # Forecast fulfilled - close position
+        print(colorize(f"[FORECAST EXIT] Position held for {bars_held} bars (horizon: {FORECAST_HORIZON}), "
+                      f"profit: {current_profit:.2f}. Closing...", Colors.GREEN))
+        return close_position(position)
+    else:
+        # Not in profit yet, log status periodically (every bar)
+        if bars_held % 1 == 0:  # Log every bar after horizon
+            print(colorize(f"[FORECAST WAIT] Bars: {bars_held}/{FORECAST_HORIZON}+, "
+                          f"profit: {current_profit:.2f} (waiting for profit)...", Colors.YELLOW))
+    
+    return False
+
 # ---------- Main loop ----------
 last_candle_time = None
 last_process = time.time() - INTERVAL
@@ -386,11 +427,20 @@ try:
             last_candle_time = current_candle_time
 
         position = get_open_position()
+        
+        # MODIFIED: Check forecast-based exit if position exists
         if position:
-            # No automatic exit – only SL/TP will close
-            pass
+            closed = check_forecast_exit(position, df, current_candle_time)
+            if closed:
+                position = None  # Position closed, will look for new entry next iteration
         else:
-            # Check EMA entry condition
+            # Check EMA entry condition (EMA PROTECTION: BUY only below EMA, SELL only above EMA)
+            # Actually: script logic is - buy when price crosses UP through EMA (was below, now above)
+            #            sell when price crosses DOWN through EMA (was above, now below)
+            # But the EMA protection mentioned by user: "never enter sell above fast ema, never enter buy below fast ema"
+            # Current code implements: buy when price > ema + threshold, sell when price < ema - threshold
+            # This already respects the protection (buy only above, sell only below)
+            
             sell_ema_cond = (prev_candle['open'] > prev_ema and prev_candle['close'] < current_ema and
                               current_price < current_ema - entry_threshold)
             buy_ema_cond = (prev_candle['open'] < prev_ema and prev_candle['close'] > current_ema and
@@ -437,7 +487,18 @@ try:
                     print(colorize(f"EMA sell signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
 
         # --- Logging ---
-        pos_status = "No position" if position is None else f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f}"
+        # MODIFIED: Show bars held if position exists
+        pos_status = "No position"
+        bars_held_str = ""
+        if position is not None:
+            bars_held = get_bars_since_entry(position, df)
+            bars_held_str = f" [Bars: {bars_held}"
+            if FORECAST_HORIZON > 0:
+                bars_held_str += f"/{FORECAST_HORIZON}]"
+            else:
+                bars_held_str += "]"
+            pos_status = f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f}{bars_held_str}"
+        
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
         msg = (f"[{colorize(timestamp, Colors.BLUE)}] "
                f"{colorize(SYMBOL, Colors.WHITE)} price={colorize(f'{current_price:.5f}', Colors.CYAN)} "
