@@ -71,6 +71,7 @@ parser.add_argument("--forecast_horizon", type=int, default=4, help="Candles to 
 
 # Candle direction gate parameter
 parser.add_argument("--use_candle_gate", action="store_true", help="Only buy on bullish candles, sell on bearish candles")
+parser.add_argument("--use_h1_candle_gate", action="store_true", help="Only buy on H1 bullish candles, sell on H1 bearish candles")
 
 # Stochastic parameters
 parser.add_argument("--stoch_k", type=int, default=7, help="Stochastic %K period (default: 7)")
@@ -103,7 +104,8 @@ VOLUME = args.volume
 ENTRY_POINTS = args.entry_points
 INTERVAL = args.interval
 FORECAST_HORIZON = args.forecast_horizon
-USE_CANDLE_GATE = args.use_candle_gate  # NEW: Candle direction gate
+USE_CANDLE_GATE = args.use_candle_gate  # Candle direction gate
+USE_H1_CANDLE_GATE = args.use_h1_candle_gate  # H1 Candle direction gate
 
 # Stochastic args
 STOCH_K = args.stoch_k
@@ -145,6 +147,7 @@ print(f"Magic: {MAGIC}, Volume: {VOLUME}, Entry threshold: {ENTRY_POINTS} points
 print(f"ATR period: {ATR_PERIOD}, SL multiplier: {SL_MULT}, TP multiplier: {TP_MULT}")
 print(f"Forecast horizon: {FORECAST_HORIZON} candles" if FORECAST_HORIZON > 0 else "Forecast exit: DISABLED")
 print(f"Candle direction gate: {'ENABLED' if USE_CANDLE_GATE else 'DISABLED'}")
+print(f"H1 candle gate: {'ENABLED' if USE_H1_CANDLE_GATE else 'DISABLED'}")
 print(f"Stochastic: K={STOCH_K}, D={STOCH_D}, Slow={STOCH_SLOW}, OB={STOCH_OB}, OS={STOCH_OS}, bypass={STOCH_BYPASS}")
 print(f"ADX: period={ADX_PERIOD}, limit={ADX_LIMIT}, bypass={ADX_BYPASS}, DI_OVER={ADX_DI_OVER}")
 print(f"Checking every {INTERVAL} seconds\n")
@@ -192,7 +195,27 @@ def compute_adx(df, period):
     minus_di = adx_ind.adx_neg()
     return adx, plus_di, minus_di
 
-# NEW: Get current forming candle direction
+def get_h1_candle_direction():
+    """
+    Check the direction of the last COMPLETED H1 candle.
+    Returns: 1 for bullish (close > open), -1 for bearish, 0 for neutral or error
+    """
+    # pos=1 gets the last completed candle
+    rates = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_H1, 1, 1)
+    if rates is None or len(rates) < 1:
+        # Potential sync issue or no data
+        return 0
+    
+    prev_h1 = rates[0]
+    
+    if prev_h1['close'] > prev_h1['open']:
+        return 1  # Bullish
+    elif prev_h1['close'] < prev_h1['open']:
+        return -1  # Bearish
+    else:
+        return 0  # Neutral
+
+# Get current forming candle direction
 def get_current_candle_direction(df):
     """
     Determine if the current forming candle is bullish or bearish.
@@ -476,6 +499,13 @@ try:
             candle_direction = get_current_candle_direction(df)
             candle_bullish = (candle_direction == 1)
             candle_bearish = (candle_direction == -1)
+
+            # NEW: Check H1 candle direction gate (CLOSED candle)
+            h1_candle_direction = get_h1_candle_direction()
+            h1_candle_bullish = (h1_candle_direction == 1)
+            h1_candle_bearish = (h1_candle_direction == -1)
+            h1_candle_allow_buy = h1_candle_bullish or not USE_H1_CANDLE_GATE
+            h1_candle_allow_sell = h1_candle_bearish or not USE_H1_CANDLE_GATE
             
             if USE_CANDLE_GATE:
                 # Apply candle direction filter
@@ -496,7 +526,7 @@ try:
             adx_sell = ADX_BYPASS or (adx_trend and adx_sell_signal(plus_di, minus_di))
 
             # MODIFIED: Entry evaluation with candle direction gate
-            if buy_ema_cond and buy_candle_ok and stoch_buy and adx_buy:
+            if buy_ema_cond and buy_candle_ok and stoch_buy and adx_buy and h1_candle_allow_buy:
                 print(colorize("Buy signal confirmed: EMA + Candle(Bullish) + Stochastic + ADX", Colors.GREEN))
                 if atr_value is None:
                     print(colorize("ATR not available, cannot set SL/TP", Colors.YELLOW))
@@ -505,7 +535,7 @@ try:
                     tp_price = ask + (atr_value * TP_MULT)
                     print(colorize(f"ATR: {atr_value:.5f}, SL: {sl_price:.5f}, TP: {tp_price:.5f}", Colors.CYAN))
                     send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, sl=sl_price, tp=tp_price, comment=f"Python BUY@{ask}")
-            elif sell_ema_cond and sell_candle_ok and stoch_sell and adx_sell:
+            elif sell_ema_cond and sell_candle_ok and stoch_sell and adx_sell and h1_candle_allow_sell:
                 print(colorize("Sell signal confirmed: EMA + Candle(Bearish) + Stochastic + ADX", Colors.GREEN))
                 if atr_value is None:
                     print(colorize("ATR not available, cannot set SL/TP", Colors.YELLOW))
@@ -521,6 +551,7 @@ try:
                     if not buy_candle_ok and USE_CANDLE_GATE: missing.append("Candle(Bullish)")
                     if not stoch_buy: missing.append("Stochastic")
                     if not adx_buy: missing.append("ADX")
+                    if not h1_candle_allow_buy and USE_H1_CANDLE_GATE: missing.append("H1 Previous Candle(Bullish)")
                     if missing:
                         print(colorize(f"EMA buy signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
                 elif sell_ema_cond:
@@ -528,6 +559,7 @@ try:
                     if not sell_candle_ok and USE_CANDLE_GATE: missing.append("Candle(Bearish)")
                     if not stoch_sell: missing.append("Stochastic")
                     if not adx_sell: missing.append("ADX")
+                    if not h1_candle_allow_sell and USE_H1_CANDLE_GATE: missing.append("H1 Previous Candle(Bearish)")
                     if missing:
                         print(colorize(f"EMA sell signal but {', '.join(missing)} condition(s) not met", Colors.YELLOW))
 
