@@ -239,13 +239,13 @@ bool CheckH1CandleGate(ENUM_POSITION_TYPE position_type)
       return true;
       
    double open[], close[];
-   int copied = CopyOpen(_Symbol, TIMEFRAME_H1, 0, 2, open);
+   int copied = CopyOpen(_Symbol, PERIOD_H1, 0, 2, open);
    if(copied != 2)
      {
       Print("[ERROR] CopyOpen failed: expected ", 2, ", got ", copied);
       return false;
      }
-   copied = CopyClose(_Symbol, TIMEFRAME_H1, 0, 2, close);
+   copied = CopyClose(_Symbol, PERIOD_H1, 0, 2, close);
    if(copied != 2)
      {
       Print("[ERROR] CopyClose failed: expected ", 2, ", got ", copied);
