@@ -70,7 +70,7 @@ parser.add_argument("--interval", type=float, default=5.0, help="Seconds between
 parser.add_argument("--forecast_horizon", type=int, default=4, help="Candles to wait before checking forecast fulfillment (default: 4, 0=disabled)")
 
 # Candle direction gate parameter
-parser.add_argument("--use_candle_gate", type=bool, default=True, help="Only buy on bullish candles, sell on bearish candles (default: True)")
+parser.add_argument("--use_candle_gate", action="store_true", help="Only buy on bullish candles, sell on bearish candles")
 
 # Stochastic parameters
 parser.add_argument("--stoch_k", type=int, default=7, help="Stochastic %K period (default: 7)")
