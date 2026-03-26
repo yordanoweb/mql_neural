@@ -536,6 +536,12 @@ void RunInference()
             return;
          }
 
+         if(!CheckH1CandleGate(POSITION_TYPE_BUY))
+         {
+            Print("[SKIP BUY] H1 candle gate is not satisfied");
+            return;
+         }
+
          if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 2) + "%"))
            {
             Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), 
@@ -561,6 +567,12 @@ void RunInference()
          if(!CheckADXGate(POSITION_TYPE_SELL))
          {
             Print("[SKIP SELL] ADX gate is not satisfied");
+            return;
+         }
+
+         if(!CheckH1CandleGate(POSITION_TYPE_SELL))
+         {
+            Print("[SKIP SELL] H1 candle gate is not satisfied");
             return;
          }
 
