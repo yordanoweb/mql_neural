@@ -280,9 +280,9 @@ bool CheckADXGate(ENUM_POSITION_TYPE position_type)
       CopyBuffer(g_adx_handle, 2, 0, 2, diminus_buf) < 2)
       return false;
       
-   double adx = adx_buf[1];
-   double diplus = diplus_buf[1];
-   double diminus = diminus_buf[1];
+   double adx = adx_buf[0];
+   double diplus = diplus_buf[0];
+   double diminus = diminus_buf[0];
    
    if(position_type == POSITION_TYPE_BUY)
    {
