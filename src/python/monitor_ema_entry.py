@@ -589,8 +589,20 @@ try:
             color_dist = Colors.GREEN if (position.type == 0 and dist > 0) or (position.type == 1 and dist < 0) else Colors.RED
             print(f"  Price is {colorize(f'{abs(dist):.5f}', color_dist)} {dist_text} EMA")
 
-        # Also log current Stochastic and ADX values for debugging
-        print(f"  Stoch %K={stoch_k.iloc[-1]:.2f} %D={stoch_d.iloc[-1]:.2f} | ADX={adx.iloc[-1]:.2f} +DI={plus_di.iloc[-1]:.2f} -DI={minus_di.iloc[-1]:.2f}")
+        # Also log current Stochastic, ADX and other values for debugging
+        h1_candle_direction_str = (
+            "BULLISH" if get_h1_candle_direction() == 1 else
+            "BEARISH" if get_h1_candle_direction() == -1 else
+            "NEUTRAL"
+        )
+        h1_color = (
+            Colors.GREEN if h1_candle_direction_str == 'BULLISH' else
+            Colors.RED if h1_candle_direction_str == 'BEARISH' else
+            Colors.WHITE
+        )
+        print(f"  Stoch %K={stoch_k.iloc[-1]:.2f} %D={stoch_d.iloc[-1]:.2f} | "
+              f"ADX={adx.iloc[-1]:.2f} +DI={plus_di.iloc[-1]:.2f} -DI={minus_di.iloc[-1]:.2f} | "
+              f"H1 Candle: {colorize(h1_candle_direction_str, h1_color)}")
 
         time.sleep(0.05)
 
