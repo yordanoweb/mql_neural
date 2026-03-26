@@ -33,6 +33,7 @@ input int InpEndHour   = 24;           // Session end hour (0-24)
 input group "======== EMA ========"
 input int  InpEMAPeriod = 9;            // EMA period (pivot for entry/exit)
 input bool InpUseEMAGate = true;
+input bool InpUseEMAExit = true;
 
 input group "======== STOCHASTIC ========"
 input int    InpStochK          = 5;      // Stochastic K period
@@ -274,7 +275,7 @@ void OnTick()
      }
 
 //--- Check for exit based on EMA cross
-   CheckEMAExit();
+   if(InpUseEMAExit) CheckEMAExit();
 
 //--- Determine if should run inference
    bool should_infer = false;
