@@ -39,6 +39,7 @@ input double InpStochOverbought = 70.0;   // Overbought level
 input group "======== ADX ========"
 input int    InpADXPeriod = 8;      // ADX period
 input double InpADXLimit  = 24.0;   // ADX trend threshold
+input bool   InpUseADXGate = true;  // Use ADX gate
 
 //=== Forecast Exit Configuration ===
 input group "======== FORECAST EXIT ========"
@@ -230,6 +231,9 @@ void OnDeinit(const int reason)
 
 bool CheckADXGate(ENUM_POSITION_TYPE position_type)
 {
+   if(!InpUseADXGate)
+      return true;
+
    double adx_buf[];
    double diplus_buf[];
    double diminus_buf[];
