@@ -228,6 +228,35 @@ void OnDeinit(const int reason)
    Print(StringRepeat("-", 70), "\n");
   }
 
+bool CheckADXGate(ENUM_POSITION_TYPE position_type)
+{
+   double adx_buf[];
+   double diplus_buf[];
+   double diminus_buf[];
+   
+   if(CopyBuffer(g_adx_handle, 0, 0, 2, adx_buf) < 2 ||
+      CopyBuffer(g_adx_handle, 1, 0, 2, diplus_buf) < 2 ||
+      CopyBuffer(g_adx_handle, 2, 0, 2, diminus_buf) < 2)
+      return false;
+      
+   double adx = adx_buf[1];
+   double diplus = diplus_buf[1];
+   double diminus = diminus_buf[1];
+   
+   if(position_type == POSITION_TYPE_BUY)
+   {
+      if(adx > InpADXLimit && diplus > diminus)
+         return true;
+   }
+   else if(position_type == POSITION_TYPE_SELL)
+   {
+      if(adx > InpADXLimit && diminus > diplus)
+         return true;
+   }
+      
+   return false;
+}
+
 //+------------------------------------------------------------------+
 //| Check forecast-based exit                                         |
 //| Closes position if price has moved favorably at forecast horizon  |
@@ -460,6 +489,12 @@ void RunInference()
          double sl  = (InpATRMultSL > 0 && current_atr > 0) ? ask - current_atr * InpATRMultSL : 0;
          double tp  = (InpATRMultTP > 0 && current_atr > 0) ? ask + current_atr * InpATRMultTP : 0;
          
+         if(!CheckADXGate(POSITION_TYPE_BUY))
+         {
+            Print("[SKIP BUY] ADX gate is not satisfied");
+            return;
+         }
+
          if(trade.Buy(InpLot, _Symbol, 0, sl, tp, "SGRADT70 BUY @" + DoubleToString(max_prob, 2) + "%"))
            {
             Print("[BUY] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), 
@@ -482,6 +517,12 @@ void RunInference()
          double sl  = (InpATRMultSL > 0 && current_atr > 0) ? bid + current_atr * InpATRMultSL : 0;
          double tp  = (InpATRMultTP > 0 && current_atr > 0) ? bid - current_atr * InpATRMultTP : 0;
          
+         if(!CheckADXGate(POSITION_TYPE_SELL))
+         {
+            Print("[SKIP SELL] ADX gate is not satisfied");
+            return;
+         }
+
          if(trade.Sell(InpLot, _Symbol, 0, sl, tp, "SGRADT70 SELL @" + DoubleToString(max_prob, 2) + "%"))
            {
             Print("[SELL] Order opened | Confidence: ", DoubleToString(max_prob * 100, 2), 
