@@ -46,6 +46,10 @@ input group "======== FORECAST EXIT ========"
 input int    InpForecastHorizon = 2;    // Bars to wait for forecast fulfillment (0=disabled)
 input bool   InpUseForecastExit = true;  // Close if forecast fulfilled at horizon
 
+//=== Candle Direction Gate Configuration ===
+input group "======== CANDLE DIRECTION GATE ========"
+input bool   InpUseH1CandleGate = true;  // Use H1 candle direction
+
 //=== Risk Management ===
 input group "======== RISK ========"
 input double InpLot        = 1.0;   // Lot size
@@ -228,6 +232,39 @@ void OnDeinit(const int reason)
    Print("    EA DEINITIALIZED");
    Print(StringRepeat("-", 70), "\n");
   }
+
+bool CheckH1CandleGate(ENUM_POSITION_TYPE position_type)
+{
+   if(!InpUseH1CandleGate)
+      return true;
+      
+   double open[], close[];
+   int copied = CopyOpen(_Symbol, TIMEFRAME_H1, 0, 2, open);
+   if(copied != 2)
+     {
+      Print("[ERROR] CopyOpen failed: expected ", 2, ", got ", copied);
+      return false;
+     }
+   copied = CopyClose(_Symbol, TIMEFRAME_H1, 0, 2, close);
+   if(copied != 2)
+     {
+      Print("[ERROR] CopyClose failed: expected ", 2, ", got ", copied);
+      return false;
+     }
+   
+   if(position_type == POSITION_TYPE_BUY)
+   {
+      if(open[1] < close[1])
+         return true;
+   }
+   else if(position_type == POSITION_TYPE_SELL)
+   {
+      if(open[1] > close[1])
+         return true;
+   }
+   
+   return false;
+}
 
 bool CheckADXGate(ENUM_POSITION_TYPE position_type)
 {
