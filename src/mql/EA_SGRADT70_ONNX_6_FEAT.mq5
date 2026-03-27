@@ -497,7 +497,8 @@ void RunInference()
    if(predicted_class == 1) class_name = "BUY";
    else if(predicted_class == 2) class_name = "SELL";
    
-   PrintFormat("Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
+   PrintFormat("%s | Inference: %.2f (%s) | ADX: %.1f | Stoch: %.1f/%.1f",
+               _Symbol,
                max_prob,
                class_name,
                adx_buf[0],
