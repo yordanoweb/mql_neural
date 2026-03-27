@@ -28,6 +28,7 @@ long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
 const int WINDOW_SIZE = 20;
 const int FEATURES    = 3; 
+double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 
 int OnInit()
 {
@@ -124,9 +125,13 @@ void OnTick()
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI " + GetPeriodString());
       }
    }
+
+   double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
    
-   Comment("AI | Confidence: ", DoubleToString(confidence*100, 2), "%",
-           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
+   Comment("\n\nAI | Confidence: ", DoubleToString(confidence*100, 2), "%",
+           "\nPrediction: ", prediction_str,
+           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
+           "\nSession P/ L: $", DoubleToString(balance_diff, 2));
 }
 
 string GetPeriodString()
@@ -136,11 +141,15 @@ string GetPeriodString()
    {
       case PERIOD_M1: return "M1";
       case PERIOD_M2: return "M2";
+      case PERIOD_M3: return "M3";
       case PERIOD_M5: return "M5";
       case PERIOD_M10: return "M10";
       case PERIOD_M15: return "M15";
+      case PERIOD_M20: return "M20";
       case PERIOD_M30: return "M30";
       case PERIOD_H1: return "H1";
+      case PERIOD_H2: return "H2";
+      case PERIOD_H3: return "H3";
       case PERIOD_H4: return "H4";
       case PERIOD_D1: return "D1";
       default: return "Unknown";
