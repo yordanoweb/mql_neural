@@ -8,3 +8,4 @@ ta
 yfinance
 pyarrow
 vectorbt
+colorama
