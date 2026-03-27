@@ -35,6 +35,7 @@ input int    InpStochK          = 5;      // Stochastic K period
 input int    InpStochD          = 3;      // Stochastic D smoothing
 input double InpStochOversold   = 30.0;   // Oversold level
 input double InpStochOverbought = 70.0;   // Overbought level
+input bool   InpUseStochGate    = false;  // Use Stochastic gate
 
 input group "======== ADX ========"
 input int    InpADXPeriod = 8;      // ADX period
@@ -300,6 +301,51 @@ bool CheckADXGate(ENUM_POSITION_TYPE position_type)
    return false;
 }
 
+bool CheckStochGate(ENUM_POSITION_TYPE position_type)
+{
+   if(!InpUseStochGate)
+      return true;
+
+   double stoch_buf[];
+   double stochd_buf[];
+   
+   ArraySetAsSeries(stoch_buf, true);
+   ArraySetAsSeries(stochd_buf, true);
+   
+   if(CopyBuffer(g_stoch_handle, 0, 0, 4, stoch_buf) < 4 ||
+      CopyBuffer(g_stoch_handle, 1, 0, 4, stochd_buf) < 4)
+      return false;
+      
+   // Logic based on stoch_adx_strategy.md
+   if(position_type == POSITION_TYPE_BUY)
+   {
+      // 1. Oversold Crossover: Main crosses above Signal in oversold area
+      bool crossover1 = (stoch_buf[2] < stochd_buf[2] && stoch_buf[1] > stochd_buf[1] && stoch_buf[1] <= InpStochOversold);
+      // Alternative lookback for crossover
+      bool crossover2 = (stoch_buf[3] < stochd_buf[3] && stoch_buf[2] > stochd_buf[2] && stoch_buf[2] <= InpStochOversold);
+      
+      // 2. Strong Upward Momentum: Increase by > 7 for two consecutive candles
+      bool momentum = (stoch_buf[0] > stoch_buf[1] + 7 && stoch_buf[1] > stoch_buf[2] + 7);
+      
+      if(crossover1 || crossover2 || momentum)
+         return true;
+   }
+   else if(position_type == POSITION_TYPE_SELL)
+   {
+      // 1. Overbought Crossover: Main crosses below Signal in overbought area
+      bool crossover1 = (stoch_buf[2] > stochd_buf[2] && stoch_buf[1] < stochd_buf[1] && stoch_buf[1] >= InpStochOverbought);
+      // Alternative lookback for crossover
+      bool crossover2 = (stoch_buf[3] > stochd_buf[3] && stoch_buf[2] < stochd_buf[2] && stoch_buf[2] >= InpStochOverbought);
+      
+      // 2. Strong Downward Momentum: Decrease by > 7 for two consecutive candles
+      bool momentum = (stoch_buf[0] < stoch_buf[1] - 7 && stoch_buf[1] < stoch_buf[2] - 7);
+      
+      if(crossover1 || crossover2 || momentum)
+         return true;
+   }
+      
+   return false;
+}
 //+------------------------------------------------------------------+
 //| Check forecast-based exit                                         |
 //| Closes position if price has moved favorably at forecast horizon  |
@@ -539,6 +585,12 @@ void RunInference()
             return;
          }
 
+         if(!CheckStochGate(POSITION_TYPE_BUY))
+         {
+            Print("[SKIP BUY] Stochastic gate is not satisfied");
+            return;
+         }
+
          if(!CheckH1CandleGate(POSITION_TYPE_BUY))
          {
             Print("[SKIP BUY] H1 candle gate is not satisfied");
@@ -570,6 +622,12 @@ void RunInference()
          if(!CheckADXGate(POSITION_TYPE_SELL))
          {
             Print("[SKIP SELL] ADX gate is not satisfied");
+            return;
+         }
+
+         if(!CheckStochGate(POSITION_TYPE_SELL))
+         {
+            Print("[SKIP SELL] Stochastic gate is not satisfied");
             return;
          }
 
