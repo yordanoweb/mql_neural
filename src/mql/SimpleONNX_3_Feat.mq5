@@ -116,15 +116,33 @@ void OnTick()
       if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI " + IntegerToString(_Period));
+         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI " + GetPeriodString());
       }
       else
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI " + IntegerToString(_Period));
+         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI " + GetPeriodString());
       }
    }
    
    Comment("AI | Confidence: ", DoubleToString(confidence*100, 2), "%",
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
+}
+
+string GetPeriodString()
+{
+   ENUM_TIMEFRAMES period = _Period;
+   switch(period)
+   {
+      case PERIOD_M1: return "M1";
+      case PERIOD_M2: return "M2";
+      case PERIOD_M5: return "M5";
+      case PERIOD_M10: return "M10";
+      case PERIOD_M15: return "M15";
+      case PERIOD_M30: return "M30";
+      case PERIOD_H1: return "H1";
+      case PERIOD_H4: return "H4";
+      case PERIOD_D1: return "D1";
+      default: return "Unknown";
+   }
 }
