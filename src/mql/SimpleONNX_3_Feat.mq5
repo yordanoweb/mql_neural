@@ -28,6 +28,7 @@ CTrade   m_trade;
 const int WINDOW_SIZE = 20;
 const int FEATURES    = 3; 
 double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
+string program_name = MQLInfoString(MQL_PROGRAM_NAME);
 
 int OnInit()
 {
@@ -116,18 +117,19 @@ void OnTick()
       if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI " + GetPeriodString());
+         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, program_name + " SELL@" + DoubleToString(price, _Digits));
       }
       else
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI " + GetPeriodString());
+         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, program_name + " BUY@" + DoubleToString(price, _Digits));
       }
    }
 
    double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
    
-   Comment("\n\nAI | Confidence: ", DoubleToString(confidence*100, 2), "%",
+   Comment("\n\nAI | Conf: ", DoubleToString(confidence*100, 2), "% / ",
+           DoubleToString(InpMinConf*100, 2), "%",
            "\nModel: ", InpModelFile,
            "\nPrediction: ", prediction_str,
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
