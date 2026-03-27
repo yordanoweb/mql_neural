@@ -17,6 +17,7 @@ input float      InpMinConf    = 0.55;
 input int        InpStartHour  = 0;            
 input int        InpEndHour    = 23;           
 input group "Risk"
+input int        InpRSI        = 14;
 input double     InpLot        = 1;          
 input int        InpMagic      = 8812345688;
 input int        InpATR        = 6;
@@ -69,7 +70,7 @@ void OnTick()
       CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, open) < WINDOW_SIZE) return;
 
    // 4. INDICATORS
-   int rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
+   int rsi_handle = iRSI(_Symbol, _Period, InpRSI, PRICE_CLOSE);
    double rsi_buffer[];
    ArraySetAsSeries(rsi_buffer, true);
    CopyBuffer(rsi_handle, 0, 0, WINDOW_SIZE, rsi_buffer);

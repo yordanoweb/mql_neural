@@ -98,6 +98,7 @@ passwords.txt
 # Do not place rules under here refering ONNX
 onnx/**
 !onnx/ndx100_rates_m5_SGRADT70.onnx
+!onnx/ndx100_rates_m5_3_feat.onnx
 
 data/
 csv/**
