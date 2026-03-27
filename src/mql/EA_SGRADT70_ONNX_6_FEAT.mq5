@@ -284,6 +284,8 @@ bool CheckADXGate(ENUM_POSITION_TYPE position_type)
    double diplus = diplus_buf[0];
    double diminus = diminus_buf[0];
    
+   bool adx_increase = adx_buf[0] > adx_buf[1];
+   
    if(position_type == POSITION_TYPE_BUY)
    {
       if(adx > InpADXLimit && diplus > diminus)
