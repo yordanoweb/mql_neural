@@ -104,6 +104,9 @@ void OnTick()
    long  prediction = output_label[0];
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
 
+   string prediction_str = (prediction == 1) ? "SELL" : "BUY";
+   Print("Prediction: ", prediction_str, " | Confidence: ", confidence);
+
    // 7. EXECUTION WITH TIME FILTER
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
    {
