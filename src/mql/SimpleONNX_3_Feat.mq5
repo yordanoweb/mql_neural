@@ -5,14 +5,13 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\ndx100_rates_m5_3_feat.onnx" as uchar ExtModel[]
-
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
 input group "AI Config"
-input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
+input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
+input string     InpModelFile  = "ndx100_rates_m5_3_feat.onnx";
 input float      InpMinConf    = 0.55;         
 input int        InpStartHour  = 0;            
 input int        InpEndHour    = 23;           
@@ -32,7 +31,7 @@ double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 
 int OnInit()
 {
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
    long input_shape[] = {1, 60}; // 20 candles * 3 attributes
@@ -129,6 +128,7 @@ void OnTick()
    double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
    
    Comment("\n\nAI | Confidence: ", DoubleToString(confidence*100, 2), "%",
+           "\nModel: ", InpModelFile,
            "\nPrediction: ", prediction_str,
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nSession P/ L: $", DoubleToString(balance_diff, 2));
