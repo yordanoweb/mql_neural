@@ -1,3 +1,6 @@
+# Python to MQL5
+python src\python\monitor_ema_entry.py --symbol US30 --timeframe M1 --ema_period 9 --atr_period 14 --sl_multiplier 1.0 --tp_multiplier 2.0 --magic 91234569 --volume 0.1 --entry_points 1 --interval 5 --forecast_horizon 2 --use_candle _gate --stoch_k 5 --stoch_oversold 70 --stoch_overbought 30 --adx_period 8 --adx_limit 24 --use_h1_candle_gate
+
 # CURRENT: Nasdaq (NQ)
 python src/python/train_sgradt70_strategy.py --window 20 --future 4 --min_profit_points 15 --adx_period 8 --adx_limit 24 --stoch_k 5 --stoch_oversold 30 --stoch_overbought 70 --n_iter 5 --csv csv/ndx100_rates_m5.csv
 
