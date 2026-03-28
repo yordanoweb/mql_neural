@@ -70,7 +70,7 @@ void OnTick()
 // 1. CORRECT TIME FILTER
    MqlDateTime dt;
    TimeCurrent(dt);
-   bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+   bool valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
 
 // 2. BAR CONTROL
    static datetime last_bar = 0;
