@@ -80,6 +80,14 @@ Trades are opened at the start of a new bar if:
   - **Stop Loss**: $ATR(6) \times Multiplier$.
   - **Take Profit**: $Stop Loss \times 1.5$ (Fixed R:R ratio).
 
+### 4.4 Backtesting
+Best parameters were:
+- InpMinConf: 0.77
+- InpStartHour: 2
+- InpEndHour: 18
+- InpATR: 8
+- InpMultiplier: 1.5
+
 ---
 
 ## 5. Model Compatibility & Export <a name="model-compatibility"></a>
