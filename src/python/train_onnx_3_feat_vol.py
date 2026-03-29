@@ -263,7 +263,8 @@ def main():
     model, scaler, input_dim = train_model(X, y, args.n_iter)
     
     # 5. Exportar a ONNX
-    output_filename = f"onnx_model_w{args.window}_f{args.future}_volSMA{args.volume_sma_period}.onnx"
+    csv_basename = os.path.basename(args.input_csv).split('.')[0]
+    output_filename = f"{csv_basename}_w{args.window}_f{args.future}_volSMA{args.volume_sma_period}.onnx"
     output_path = os.path.join(args.output_dir, output_filename)
     export_to_onnx(model, scaler, input_dim, output_path)
     
