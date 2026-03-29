@@ -1,5 +1,31 @@
 # CONFIGS
 
+## SimpleONNX_3_Feat_Vol
+
+```
+InpMinConf 0.53
+Hours 10-13
+InpMultiplier 1.1
+AtrPeriod 8
+VSAMAPeriod 12
+```
+
+```
+InpMinConf 0.53
+Hours 7-12
+InpMultiplier 0.8
+AtrPeriod 8
+VSAMAPeriod 12
+```
+
+```
+InpMinConf 0.54
+Hours 1-16
+InpMultiplier 1.4
+AtrPeriod 8
+VSAMAPeriod 12
+```
+
 ## EA_SGRADT70_ONNX
 
 - EA_SGRADT70_ONNX.mq5
