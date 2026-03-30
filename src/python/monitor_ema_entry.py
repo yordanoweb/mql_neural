@@ -140,6 +140,7 @@ if not symbol_info.visible:
 
 point = symbol_info.point
 entry_threshold = ENTRY_POINTS * point
+session_start_balance = mt5.account_info().balance if mt5.account_info() else 0
 
 print(colorize("MT5 initialized", Colors.GREEN) +
       f" – trading {SYMBOL} on {args.timeframe} with EMA{EMA_PERIOD}")
@@ -600,8 +601,15 @@ try:
             Colors.RED if h1_candle_direction_str == 'BEARISH' else
             Colors.WHITE
         )
+
+        # Calculate session P/L
+        acc = mt5.account_info()
+        session_pnl = acc.balance - session_start_balance if acc else 0.0
+        pnl_color = Colors.GREEN if session_pnl >= 0 else Colors.RED
+        
         print(f"  Stoch %K={stoch_k.iloc[-1]:.2f} %D={stoch_d.iloc[-1]:.2f} | "
-              f"ADX={adx.iloc[-1]:.2f} +DI={plus_di.iloc[-1]:.2f} -DI={minus_di.iloc[-1]:.2f} | "
+              f"ADX={adx.iloc[-1]:.2f} +DI={plus_di.iloc[-1]:.2f} -DI={minus_di.iloc[-1]:.2f}")
+        print(f"  Session P/L: {colorize(f'${session_pnl:.2f}', pnl_color)} | "
               f"H1 Candle: {colorize(h1_candle_direction_str, h1_color)}")
 
         time.sleep(0.05)
