@@ -18,6 +18,9 @@ input float      InpMinConf    = 0.55;
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
 input bool       InpReverse    = false; // BUY is SELL and SELL is BUY
+input group "EMA"
+input int        InpEMAPeriod  = 9;
+input bool       InpEmaGate    = true;
 input group "Risk"
 input int        InpATRPeriod  = 14;
 input double     InpLot        = 1;
@@ -32,6 +35,7 @@ const int WINDOW_SIZE = 20;
 const int FEATURES    = 4;
 double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 string program_name = MQLInfoString(MQL_PROGRAM_NAME);
+int      g_ema_handle  = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -50,6 +54,13 @@ int OnInit()
    OnnxSetOutputShape(onnx_handle, 0, out_shape_label);
    long out_shape_probs[] = {1, 2};
    OnnxSetOutputShape(onnx_handle, 1, out_shape_probs);
+
+   g_ema_handle = iMA(_Symbol, _Period, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   if(g_ema_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create EMA indicator");
+      return INIT_FAILED;
+     }
 
    m_trade.SetExpertMagicNumber(InpMagic);
 
@@ -190,6 +201,9 @@ void OnTick()
       double sl_dist = current_atr * InpMultiplier;
       double tp_dist = sl_dist * 1.5;
 
+      if(InpEmaGate && !EMAGateAllows(prediction))
+         return;
+
       if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
@@ -201,6 +215,27 @@ void OnTick()
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, program_name + " BUY@" + DoubleToString(price, _Digits));
         }
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Check if price position agrees with predicted direction           |
+//+------------------------------------------------------------------+
+bool EMAGateAllows(int predicted_class)
+  {
+   double ema_gate[];
+   if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
+      return false;
+
+   if(predicted_class == 1)
+      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
+   if(predicted_class == 2)
+      return SymbolInfoDouble(_Symbol, SYMBOL_BID) < ema_gate[0];  // SELL: bid must be below EMA
+
+   Print("EMA Gate does not allow the trade");
+   Print("Trade direction: ", predicted_class == 1 ? "SELL" : "BUY");
+   Print("EMA Gate: ", ema_gate[0]);
+   Print("Price: ", SymbolInfoDouble(_Symbol, SYMBOL_ASK));
+   return false;
   }
 
 //+------------------------------------------------------------------+
