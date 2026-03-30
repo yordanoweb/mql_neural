@@ -17,6 +17,7 @@ input string     InpModelFile  = "ndx100_rates_m5_w20_f5_atr6_minp0.5.onnx"; // 
 input float      InpMinConf    = 0.55;
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
+input bool       InpReverse    = false; // BUY is SELL and SELL is BUY
 input group "Risk"
 input int        InpATRPeriod  = 14;
 input double     InpLot        = 1;
@@ -150,6 +151,10 @@ void OnTick()
       return;
 
    long  prediction = output_label[0];
+   if(InpReverse)
+     {
+      prediction = 1 - prediction;
+     }
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
 
    string prediction_str = (prediction == 1) ? "SELL" : "BUY";
