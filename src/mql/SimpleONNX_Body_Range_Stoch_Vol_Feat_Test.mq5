@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\sp500_rates_m5_w20_f4_atr8_rsi8_minp1.5.onnx" as uchar ExtModel[];
+#resource "\\Files\\ndx100_rates_m5_w20_f5_atr6_minp0.5.onnx" as uchar ExtModel[];
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -13,12 +13,11 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelFile  = "sp500_rates_m5_w20_f4_atr8_rsi8_minp1.5.onnx"; // Informational only
+input string     InpModelFile  = "ndx100_rates_m5_w20_f5_atr6_minp0.5.onnx"; // Informational only
 input float      InpMinConf    = 0.55;
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
 input group "Risk"
-input int        InpRSI        = 14;
 input int        InpATRPeriod  = 14;
 input double     InpLot        = 1;
 input int        InpMagic      = 8812345688;
