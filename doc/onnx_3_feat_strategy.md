@@ -9,6 +9,7 @@ This document provides a detailed technical overview of the machine learning tra
 4. [Expert Advisor (`SimpleONNX_3_Feat.mq5`)](#expert-advisor)
 5. [Model Compatibility & Export](#model-compatibility)
 6. [Usage Guide](#usage-guide)
+7. [Configuration](#configuration)
 
 ## 1. Introduction <a name="introduction"></a>
 The **ONNX 3-Feature Strategy** is a supervised learning system designed to predict short-term price movements based on bar geometry and momentum. It uses a **Random Forest Classifier** to analyze historical data and identifies patterns that lead to a specific profit target within a defined window.
@@ -118,6 +119,14 @@ python train_onnx_3_feat.py --input_csv EURUSD_M5.csv --atr_period 14 --min_prof
 
 > [!IMPORTANT]
 > Ensure that the `InpATRPeriod` in the MQ5 robot matches the `--atr_period` used during training (default: 14 for both).
+
+7. [Configuration](#configuration)
+
+- Amazing results generated with the following training configuration:
+
+```bash
+python src/python/train_onnx_3_feat.py --input_csv csv/sp500_rates_m5.csv --output_dir ~/MQL5/Files/ --rsi_period 8 --atr_period 8 --window 20 --future 4 --n_iter 5
+```
 
 ---
 *Documentation generated for mql_neural project.*
