@@ -266,12 +266,12 @@ bool EMAGateAllows(bool is_sell)
    // SELL: the Bid price must be below the EMA 
    if(bid < ema_value) 
      {
-      Print("[EMA Gate] SELL operation accepted. Bid price (", bid, ") is below the EMA (", ema_value, ")");
+      Print("[EMA Gate] SELL operation accepted.\nBid price (", bid, ") is below the EMA (", ema_value, ")");
       return true;
      }
    else
      {
-      Print("[EMA Gate] SELL operation rejected. Bid price (", bid, ") is not below the EMA (", ema_value, ")");
+      Print("[EMA Gate] SELL operation rejected.\nBid price (", bid, ") is not below the EMA (", ema_value, ")");
       return false;
      }
   }
