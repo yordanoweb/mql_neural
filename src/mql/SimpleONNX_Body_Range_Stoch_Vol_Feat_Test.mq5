@@ -36,6 +36,9 @@ const int FEATURES    = 4;
 double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 string program_name = MQLInfoString(MQL_PROGRAM_NAME);
 int      g_ema_handle  = INVALID_HANDLE;
+float  g_confidence = 0;
+string g_prediction_str = "WAITING...";
+bool   g_valid_time = false;
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -64,6 +67,9 @@ int OnInit()
 
    m_trade.SetExpertMagicNumber(InpMagic);
 
+   EventSetTimer(60);
+   OnTimer();
+
    return(INIT_SUCCEEDED);
   }
 
@@ -75,6 +81,21 @@ void OnDeinit(const int reason)
    if(onnx_handle != INVALID_HANDLE)
       OnnxRelease(onnx_handle);
    Comment("");
+   EventKillTimer();
+  }
+
+void OnTimer()
+  {
+// Calculate the balance difference in real time
+   double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
+
+// UPDATE THE COMMENT (Now it updates in each tick)
+   Comment("\n\nAI | Conf: ", DoubleToString(g_confidence*100, 2), "% / ",
+           DoubleToString(InpMinConf*100, 2), "%", 
+           "\nModel: ", InpModelFile,
+           "\nPrediction: ", g_prediction_str,
+           "\nSchedule: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
+           "\nSession P/ L: $", DoubleToString(balance_diff, 2));
   }
 
 //+------------------------------------------------------------------+
@@ -92,17 +113,6 @@ void OnTick()
    MqlDateTime dt;
    TimeCurrent(dt);
    bool valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
-
-// Calculate the balance difference in real time
-   double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
-
-// UPDATE THE COMMENT (Now it updates in each tick)
-   Comment("\n\nAI | Conf: ", DoubleToString(s_confidence*100, 2), "% / ",
-           DoubleToString(InpMinConf*100, 2), "%", 
-           "\nModel: ", InpModelFile,
-           "\nPrediction: ", s_prediction_str,
-           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
-           "\nSession P/ L: $", DoubleToString(balance_diff, 2));
 
 // 2. BAR CONTROL
    static datetime last_bar = 0;
@@ -187,13 +197,12 @@ void OnTick()
       prediction = 1 - prediction;
      }
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
-
    string prediction_str = (prediction == 1) ? "SELL" : "BUY";
    Print("Prediction: ", prediction_str, (InpReverse ? "(R)" : ""), " | Confidence: ", confidence);
 
    // Save the data in the static variables to use them in the next ticks
-   s_confidence = confidence;
-   s_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
+   g_confidence = confidence;
+   g_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
 
 // 7. EXECUTION WITH TIME FILTER
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
@@ -226,12 +235,13 @@ bool EMAGateAllows(int predicted_class)
    if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
       return false;
 
-   if(predicted_class == 1)
-      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
    if(predicted_class == 2)
+      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
+   if(predicted_class == 1)
       return SymbolInfoDouble(_Symbol, SYMBOL_BID) < ema_gate[0];  // SELL: bid must be below EMA
 
    Print("EMA Gate does not allow the trade");
+   Print("Predicted class: ", predicted_class);
    Print("Trade direction: ", predicted_class == 1 ? "SELL" : "BUY");
    Print("EMA Gate: ", ema_gate[0]);
    Print("Price: ", SymbolInfoDouble(_Symbol, SYMBOL_ASK));
