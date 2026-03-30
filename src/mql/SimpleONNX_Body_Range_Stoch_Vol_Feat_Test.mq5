@@ -52,6 +52,7 @@ int OnInit()
    OnnxSetOutputShape(onnx_handle, 1, out_shape_probs);
 
    m_trade.SetExpertMagicNumber(InpMagic);
+
    return(INIT_SUCCEEDED);
   }
 
@@ -158,7 +159,7 @@ void OnTick()
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
 
    string prediction_str = (prediction == 1) ? "SELL" : "BUY";
-   Print("Prediction: ", prediction_str, " | Confidence: ", confidence);
+   Print("Prediction: ", prediction_str, (InpReverse ? "(R)" : ""), " | Confidence: ", confidence);
 
 // 7. EXECUTION WITH TIME FILTER
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
@@ -183,7 +184,7 @@ void OnTick()
    Comment("\n\nAI | Conf: ", DoubleToString(confidence*100, 2), "% / ",
            DoubleToString(InpMinConf*100, 2), "%",
            "\nModel: ", InpModelFile,
-           "\nPrediction: ", prediction_str,
+           "\nPrediction: ", prediction_str, (InpReverse ? "(R)" : ""),
            "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nSession P/ L: $", DoubleToString(balance_diff, 2));
   }
