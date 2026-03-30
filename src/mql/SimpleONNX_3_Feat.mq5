@@ -17,9 +17,10 @@ input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
 input group "Risk"
 input int        InpRSI        = 14;
+input int        InpATRPeriod  = 14;
 input double     InpLot        = 1;
 input int        InpMagic      = 8812345688;
-input int        InpATR        = 6;
+input int        InpATRSL      = 6;
 input double     InpMultiplier = 1.1;
 
 //--- GLOBAL VARIABLES
@@ -87,7 +88,9 @@ void OnTick()
    ArraySetAsSeries(low, true);
 
    if(CopyClose(_Symbol, _Period, 0, WINDOW_SIZE + 15, close) < WINDOW_SIZE + 15 ||
-      CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, open) < WINDOW_SIZE)
+      CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, open) < WINDOW_SIZE ||
+      CopyHigh(_Symbol, _Period, 0, WINDOW_SIZE, high) < WINDOW_SIZE ||
+      CopyLow(_Symbol, _Period, 0, WINDOW_SIZE, low) < WINDOW_SIZE)
       return;
 
 // 4. INDICATORS
@@ -96,24 +99,31 @@ void OnTick()
    ArraySetAsSeries(rsi_buffer, true);
    CopyBuffer(rsi_handle, 0, 0, WINDOW_SIZE, rsi_buffer);
 
-   int atr_handle = iATR(_Symbol, _Period, InpATR);
+   int atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
    double atr_buffer[];
    ArraySetAsSeries(atr_buffer, true);
-   CopyBuffer(atr_handle, 0, 0, 1, atr_buffer);
-   double current_atr = atr_buffer[0];
+   CopyBuffer(atr_handle, 0, 0, WINDOW_SIZE, atr_buffer);
+   
+   int atr_sl_handle = iATR(_Symbol, _Period, InpATRSL);
+   double atr_sl_buffer[];
+   ArraySetAsSeries(atr_sl_buffer, true);
+   CopyBuffer(atr_sl_handle, 0, 0, 1, atr_sl_buffer);
+   double current_atr = atr_sl_buffer[0];
 
-// 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
+// 5. INPUT BUFFER WITH ATR NORMALIZATION
    float input_buffer[];
    ArrayResize(input_buffer, WINDOW_SIZE * FEATURES);
-
-// _Digits is the correct variable. If it's 5 or 3 decimals, adjust to pips (x10).
-   double pip_unit = _Point * (_Digits == 5 || _Digits == 3 ? 10 : 1);
 
    for(int i=0; i < WINDOW_SIZE; i++)
      {
       int mql_idx = WINDOW_SIZE - 1 - i;
-      input_buffer[i * 3 + 0] = (float)((close[mql_idx] - open[mql_idx]) / pip_unit);
-      input_buffer[i * 3 + 1] = (float)((iHigh(_Symbol, _Period, mql_idx) - iLow(_Symbol, _Period, mql_idx)) / pip_unit);
+      
+      // Prevent division by zero
+      double current_bar_atr = (atr_buffer[mql_idx] > 0) ? atr_buffer[mql_idx] : 0.0001;
+      
+      // Features normalized by ATR
+      input_buffer[i * 3 + 0] = (float)((close[mql_idx] - open[mql_idx]) / current_bar_atr);
+      input_buffer[i * 3 + 1] = (float)((high[mql_idx] - low[mql_idx]) / current_bar_atr);
       input_buffer[i * 3 + 2] = (float)(rsi_buffer[mql_idx] / 100.0);
      }
 

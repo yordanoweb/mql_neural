@@ -26,25 +26,26 @@ def colorize(text, color):
     return f"{color}{text}{Colors.RESET}"
 
 # --- CONFIGURATION ---
-parser = argparse.ArgumentParser(description="Train ONNX model from CSV data with 3 features (body, range, RSI)")
+parser = argparse.ArgumentParser(description="Train ONNX model from CSV data with 3 features (body, range, RSI) using ATR normalization")
 parser.add_argument("--input_csv", type=str, required=True, help="Path to the input CSV file")
 parser.add_argument("--output_dir", type=str, default=".", help="Directory to save the ONNX model (default: current directory)")
 parser.add_argument("--rsi_period", type=int, default=14, help="Period for RSI calculation (default: 14)")
+parser.add_argument("--atr_period", type=int, default=14, help="Period for ATR calculation (default: 14)")
 parser.add_argument("--window", type=int, default=20, help="Window size (number of bars) for features")
 parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
-parser.add_argument("--min_profit_points", type=float, default=10.0, help="Minimum profit points for a positive target")
-parser.add_argument("--pip_unit", type=float, default=0.01, help="Pip unit value - MT5's calculation: _Point * (_Digits==5||_Digits==3 ? 10 : 1)")
+parser.add_argument("--min_profit_atr", type=float, default=1.5, help="Minimum profit in ATR multiples for a positive target (default: 1.5)")
 
 args = parser.parse_args()
 
 csv_file = args.input_csv
 output_dir = args.output_dir
 rsi_period = args.rsi_period
+atr_period = args.atr_period
 window = args.window
 future = args.future
 n_iter = args.n_iter
-min_profit_points = args.min_profit_points
+min_profit_atr = args.min_profit_atr
 
 if not os.path.exists(csv_file):
     print(colorize(f"Error: File '{csv_file}' not found", Colors.RED))
@@ -55,9 +56,9 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Generate output filename: same basename as CSV but with .onnx extension, in output_dir
-output_filename = os.path.join(output_dir, Path(csv_file).stem + "_3_feat.onnx")
+output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_w{window}_f{future}_atr{atr_period}_rsi{rsi_period}_minp{min_profit_atr}.onnx")
 
-print(colorize("--- FAST TRAINING ---", Colors.CYAN))
+print(colorize("--- FAST TRAINING WITH ATR NORMALIZATION ---", Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
 print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
 
@@ -65,21 +66,35 @@ print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
 df = pd.read_csv(csv_file)
 print(f"Rows loaded: {colorize(str(len(df)), Colors.GREEN)}")
 
-pip_unit = args.pip_unit
+# Calculate ATR for normalization
+atr_indicator = ta.volatility.AverageTrueRange(
+    high=df['high'],
+    low=df['low'],
+    close=df['close'],
+    window=atr_period
+)
+df['atr'] = atr_indicator.average_true_range()
 
-df['feat_body'] = (df['close'] - df['open']) / pip_unit
-df['feat_range'] = (df['high'] - df['low']) / pip_unit
+# Calculate features normalized by ATR
+df['feat_body'] = (df['close'] - df['open']) / df['atr']
+df['feat_range'] = (df['high'] - df['low']) / df['atr']
 df['feat_rsi'] = ta.momentum.RSIIndicator(df['close'], window=rsi_period).rsi() / 100.0
 
-# 2. GENERATE TARGET (Labeling based on future profit)
-print(f"Generating target with future={colorize(str(future), Colors.MAGENTA)} and min_profit_points={colorize(str(min_profit_points), Colors.MAGENTA)}...")
+# 2. GENERATE TARGET (Labeling based on future profit in ATR multiples)
+print(f"Generating target with future={colorize(str(future), Colors.MAGENTA)} and min_profit_atr={colorize(str(min_profit_atr), Colors.MAGENTA)}...")
 labels = np.zeros(len(df))
 for i in range(len(df) - future):
+    if pd.isna(df['atr'].iloc[i]) or df['atr'].iloc[i] == 0:
+        continue
+    
     entry_price = df['close'].iloc[i]
-    # Check if price reaches target profit point in the next 'future' candles
+    current_atr = df['atr'].iloc[i]
+    
+    # Check if price reaches target profit in ATR multiples in the next 'future' candles
     future_prices = df['high'].iloc[i+1 : i+future+1]
-    profit = (future_prices.max() - entry_price) / pip_unit
-    if profit >= min_profit_points:
+    profit = (future_prices.max() - entry_price) / current_atr
+    
+    if profit >= min_profit_atr:
         labels[i] = 1
 
 df['target'] = labels
@@ -97,6 +112,9 @@ for i in range(window, len(df) - future):
 X = np.array(X).astype(np.float32)
 y = np.array(y)
 
+print(f"Training samples: {colorize(str(len(X)), Colors.GREEN)}")
+print(f"Positive samples: {colorize(str(int(y.sum())), Colors.GREEN)} ({colorize(f'{(y.sum()/len(y)*100):.2f}%', Colors.YELLOW)})")
+
 # 4. FAST OPTIMIZATION (Random Search)
 print(colorize("Searching for efficient configuration (Random Search)...", Colors.YELLOW))
 param_dist = {
@@ -105,7 +123,7 @@ param_dist = {
     'min_samples_leaf': [1, 5]
 }
 
-# TimeSeriesSplit con 2 pliegues para velocidad
+# TimeSeriesSplit with 2 folds for speed
 tscv = TimeSeriesSplit(n_splits=2)
 
 search = RandomizedSearchCV(
@@ -122,6 +140,7 @@ print(colorize(f"Starting training with {X.shape[0]} samples...", Colors.CYAN))
 search.fit(X, y)
 model = search.best_estimator_
 print(colorize(f"Best configuration: {search.best_params_}", Colors.GREEN))
+print(colorize(f"Best score: {search.best_score_:.4f}", Colors.GREEN))
 
 # 5. EXPORT WITH CSV-BASED NAME
 initial_type = [('float_input', FloatTensorType([None, window * 3]))]
