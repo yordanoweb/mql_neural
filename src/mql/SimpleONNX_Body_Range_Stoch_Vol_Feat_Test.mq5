@@ -208,14 +208,20 @@ void OnTick()
    if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
      {
       double sl_dist = current_atr * InpMultiplier;
-      double tp_dist = sl_dist * 1.5;
+      double tp_dist = sl_dist * 1.5; 
 
-      if(InpEmaGate && !EMAGateAllows(prediction))
-         return;
+      // A. Determine the final operation direction
+      bool is_sell = (InpLogic == LOGIC_MIRROR && prediction == 1) || 
+                     (InpLogic == LOGIC_NORMAL && prediction == 0); 
 
-      if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
+      // B. Pass that boolean to the EMA Gate
+      if(InpEmaGate && !EMAGateAllows(is_sell)) 
+         return; 
+
+      // C. Execute according to the established direction
+      if(is_sell) 
         {
-         double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         double price = SymbolInfoDouble(_Symbol, SYMBOL_BID); 
          m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, program_name + " SELL@" + DoubleToString(price, _Digits));
         }
       else
@@ -227,25 +233,47 @@ void OnTick()
   }
 
 //+------------------------------------------------------------------+
-//| Check if price position agrees with predicted direction           |
+//| Check if price position agrees with trade direction              |
 //+------------------------------------------------------------------+
-bool EMAGateAllows(int predicted_class)
+bool EMAGateAllows(bool is_sell)
   {
    double ema_gate[];
-   if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
+   // Check that the EMA buffer is copied correctly
+   if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1) 
+      return false; 
+   
+   double ema_value = ema_gate[0];
+
+   // If not a sell, it's a buy
+   if(!is_sell)
+     {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK); 
+      // BUY: the Ask price must be above the EMA 
+      if(ask > ema_value) 
+        {
+         Print("[EMA Gate] BUY operation accepted. Ask price (", ask, ") is above the EMA (", ema_value, ")");
+         return true;
+        }
+      else
+        {
+         Print("[EMA Gate] BUY operation rejected. Ask price (", ask, ") is not above the EMA (", ema_value, ")");
+         return false;
+        }
+     }
+   
+   // If it's a sell
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID); 
+   // SELL: the Bid price must be below the EMA 
+   if(bid < ema_value) 
+     {
+      Print("[EMA Gate] SELL operation accepted. Bid price (", bid, ") is below the EMA (", ema_value, ")");
+      return true;
+     }
+   else
+     {
+      Print("[EMA Gate] SELL operation rejected. Bid price (", bid, ") is not below the EMA (", ema_value, ")");
       return false;
-
-   if(predicted_class == 2)
-      return SymbolInfoDouble(_Symbol, SYMBOL_ASK) > ema_gate[0];  // BUY: ask must be above EMA
-   if(predicted_class == 1)
-      return SymbolInfoDouble(_Symbol, SYMBOL_BID) < ema_gate[0];  // SELL: bid must be below EMA
-
-   Print("EMA Gate does not allow the trade");
-   Print("Predicted class: ", predicted_class);
-   Print("Trade direction: ", predicted_class == 1 ? "SELL" : "BUY");
-   Print("EMA Gate: ", ema_gate[0]);
-   Print("Price: ", SymbolInfoDouble(_Symbol, SYMBOL_ASK));
-   return false;
+     }
   }
 
 //+------------------------------------------------------------------+
