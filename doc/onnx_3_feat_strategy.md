@@ -10,8 +10,6 @@ This document provides a detailed technical overview of the machine learning tra
 5. [Model Compatibility & Export](#model-compatibility)
 6. [Usage Guide](#usage-guide)
 
----
-
 ## 1. Introduction <a name="introduction"></a>
 The **ONNX 3-Feature Strategy** is a supervised learning system designed to predict short-term price movements based on bar geometry and momentum. It uses a **Random Forest Classifier** to analyze historical data and identifies patterns that lead to a specific profit target within a defined window.
 
@@ -26,13 +24,18 @@ Three primary features are calculated for each bar in a sliding window of size `
 
 | Feature Name | Logic | Description |
 | :--- | :--- | :--- |
-| **feat_body** | `(Close - Open) / pip_unit` | Measures the magnitude and direction of the candle body in pips/points. |
-| **feat_range** | `(High - Low) / pip_unit` | Measures total candle volatility (High to Low) in pips/points. |
+| **feat_body** | `(Close - Open) / ATR` | Measures the magnitude and direction of the candle body relative to volatility. |
+| **feat_range** | `(High - Low) / ATR` | Measures total candle volatility normalized by ATR. |
 | **feat_rsi** | `RSI(Close, Period) / 100.0` | Normalized Relative Strength Index (0.0 to 1.0) for momentum. |
 
-### Normalization
-- **Pip Unit Logic**: The system automatically detects the pip unit (0.0001 for 5-digit brokers, 0.01 for 3-digit brokers) to keep feature values consistent across different symbols/brokers.
+### Normalization & Advantages
+- **ATR-Based Scaling**: By dividing body and range by the **Average True Range (ATR)**, the features become unitless and self-adjusting to market volatility.
 - **RSI**: Scaled between 0 and 1 to facilitate faster convergence and stable predictions.
+
+#### Key Advantages:
+- **Asset Agnostic**: Works identically across Forex, indices, stocks, and crypto without manual configuration.
+- **Volatility Adaptive**: Automatically adapts to changing market conditions.
+- **No Pip Logic**: Eliminates the need to handle decimal places (`_Digits`) or pip/point conversions.
 
 ---
 
@@ -41,7 +44,7 @@ The Python script is responsible for data preprocessing, target labeling, model 
 
 ### 3.1 Target Labeling (The "Future" Logic)
 The script creates binary labels based on a look-ahead window.
-- **Label 1 (Positive)**: If the high price of any of the next `F` bars (default: 5) is at least `P` points (default: 10) above the current close.
+- **Label 1 (Positive)**: If the high price of any of the next `F` bars (default: 5) is at least `N \times ATR` (default: 1.5 * ATR) above the current close.
 - **Label 0 (Negative)**: If the target is not reached within the look-ahead window.
 
 ### 3.2 Model Architecture
@@ -54,9 +57,10 @@ The script creates binary labels based on a look-ahead window.
 | :--- | :--- | :--- |
 | `--input_csv` | (Required) | Path to historical rates exported from MT5. |
 | `--rsi_period` | 14 | Period for the RSI calculation. |
+| `--atr_period` | 14 | Period for the ATR calculation (used for normalization). |
 | `--window` | 20 | Number of bars to include in the input vector. |
 | `--future` | 5 | Number of bars to look ahead for target labeling. |
-| `--min_profit_points` | 10.0 | Minimum profit (in pips/points) for a positive label. |
+| `--min_profit_atr` | 1.5 | Minimum profit (as multiplier of ATR) for a positive label. |
 | `--n_iter` | 5 | Iterations for hyperparameter search. |
 
 ---
@@ -66,7 +70,8 @@ The MQL5 Expert Advisor implements the inference engine and trade execution logi
 
 ### 4.1 Key Components
 - **ONNX Runtime**: Loads the `.onnx` file using `OnnxCreate`.
-- **Input Preparation**: Constructs the input vector of size $20 \times 3 = 60$ floats representing the last 20 candles.
+- **Input Preparation**: Constructs the input vector of size $20 \times 3 = 60$ floats. Features are normalized by dividing by the current bar's ATR.
+- **ATR Logic**: Uses `InpATRPeriod` to calculate volatility. Includes protection against division by zero.
 - **Probability Extraction**: Unlike simple classifiers, this EA retrieves class probabilities (`output_probs`) to filter trades by confidence.
 
 ### 4.2 Trade Logic
@@ -102,14 +107,17 @@ The exporter in `train_onnx_3_feat.py` uses specific settings required for MetaT
 
 ### Training
 ```bash
-python train_onnx_3_feat.py --input_csv data/eurusd_m15.csv --output_dir models --min_profit_points 15
+python train_onnx_3_feat.py --input_csv EURUSD_M5.csv --atr_period 14 --min_profit_atr 1.5 --window 20 --future 5
 ```
 
 ### Deployment
 1. Copy the generated `.onnx` file to the MT5 `/MQL5/Files/` directory.
-2. Launch the `SimpleONNX_3_Feat` EA.
+2. Launch the `SimpleONNX_3_Feat_ATR` EA.
 3. Set the `InpModelFile` parameter to the name of your ONNX file.
 4. Adjust `InpMinConf` to control the trade frequency and quality.
+
+> [!IMPORTANT]
+> Ensure that the `InpATRPeriod` in the MQ5 robot matches the `--atr_period` used during training (default: 14 for both).
 
 ---
 *Documentation generated for mql_neural project.*
