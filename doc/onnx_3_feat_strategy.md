@@ -128,5 +128,15 @@ python train_onnx_3_feat.py --input_csv EURUSD_M5.csv --atr_period 14 --min_prof
 python src/python/train_onnx_3_feat.py --input_csv csv/sp500_rates_m5.csv --output_dir ~/MQL5/Files/ --rsi_period 8 --atr_period 8 --window 20 --future 4 --n_iter 5
 ```
 
+- Optimal parameters for the EA:
+
+```
+InpMinConf: 0.55
+InpStartHour: 8
+InpEndHour: 22
+InpATRSL: 6
+InpMultiplier: 0.7
+```
+
 ---
 *Documentation generated for mql_neural project.*
