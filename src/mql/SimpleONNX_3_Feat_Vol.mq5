@@ -11,21 +11,25 @@
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
-input group "AI Config"
+input group "===== AI CONFIG ====="
 input ENUM_LOGIC InpLogic       = LOGIC_MIRROR;
 input float      InpMinConf     = 0.55;
 input int        InpStartHour   = 0;
 input int        InpEndHour     = 23;
-input group "Model"
+input group "===== MODEL ====="
 // Bars in the feature window — must match --window used during training (default: 20).
 // Controls the ONNX input shape {1, InpWindow * 3}. Wrong value = garbage inference.
 input int        InpWindow      = 20;
-input group "Risk"
+input group "===== RISK ====="
 input double     InpLot         = 1;
 input int        InpMagic       = 8812345688;
 input int        InpATRPeriod   = 6;   // ATR Period (match training)
 input double     InpMultiplier  = 1.1;  // SL = ATR * multiplier; TP = SL * 1.5
 input int        InpVSAMAPeriod = 8;   // VSA Period (match training)
+//=== Forecast Exit Configuration ===
+input group "===== FORECAST EXIT ====="
+input int    InpForecastHorizon = 2;    // Bars to wait for forecast fulfillment (0=disabled)
+input bool   InpUseForecastExit = true;  // Close if forecast fulfilled at horizon
 
 //--- GLOBAL VARIABLES
 long      onnx_handle         = INVALID_HANDLE;
@@ -105,6 +109,9 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
   {
+//--- Check for forecast-based exit
+   if(InpUseForecastExit) CheckForecastExit();
+
 //--- 1. TIME FILTER
    MqlDateTime dt;
    TimeCurrent(dt);
@@ -273,14 +280,14 @@ void OnTick()
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          m_trade.Sell(InpLot, _Symbol, price,
                       price + sl_dist, price - tp_dist,
-                      program_name + " SELL@" + DoubleToString(price, _Digits));
+                      program_name + "SimpleONNX_Vol SELL@" + DoubleToString(price, _Digits));
         }
       else
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          m_trade.Buy(InpLot, _Symbol, price,
                      price - sl_dist, price + tp_dist,
-                     program_name + " BUY@" + DoubleToString(price, _Digits));
+                     program_name + "SimpleONNX_Vol BUY@" + DoubleToString(price, _Digits));
         }
      }
 
@@ -316,3 +323,65 @@ string GetPeriodString()
      }
   }
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Check forecast-based exit                                         |
+//| Closes position if price has moved favorably at forecast horizon  |
+//+------------------------------------------------------------------+
+void CheckForecastExit()
+  {
+   if(!InpUseForecastExit || InpForecastHorizon <= 0) return;
+   
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      
+      if(PositionGetSymbol(i) != _Symbol || 
+         PositionGetInteger(POSITION_MAGIC) != InpMagic)
+         continue;
+      
+      // Get position open time and calculate bars since entry
+      datetime open_time = (datetime)PositionGetInteger(POSITION_TIME);
+      int entry_bar = iBarShift(_Symbol, _Period, open_time, false);
+      int current_bar = 0; // Current bar is always 0 in timeseries indexing
+      int bars_elapsed = entry_bar - current_bar;
+      
+      // Check if we've reached the forecast horizon
+      if(bars_elapsed < InpForecastHorizon) continue;
+      
+      ENUM_POSITION_TYPE type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+      double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+      double current_price = (type == POSITION_TYPE_BUY) ? 
+                             SymbolInfoDouble(_Symbol, SYMBOL_BID) : 
+                             SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      
+      bool forecast_fulfilled = false;
+      
+      if(type == POSITION_TYPE_BUY)
+        {
+         // For BUY: forecast was for price to go up
+         if(current_price > open_price)
+           {
+            forecast_fulfilled = true;
+            if(m_trade.PositionClose(ticket))
+               Print("[EXIT BUY] Forecast fulfilled at horizon ", InpForecastHorizon, 
+                     " | Entry: ", DoubleToString(open_price, _Digits),
+                     " | Current: ", DoubleToString(current_price, _Digits),
+                     " | Profit: ", DoubleToString(current_price - open_price, _Digits));
+           }
+        }
+      else if(type == POSITION_TYPE_SELL)
+        {
+         // For SELL: forecast was for price to go down
+         if(current_price < open_price)
+           {
+            forecast_fulfilled = true;
+            if(m_trade.PositionClose(ticket))
+               Print("[EXIT SELL] Forecast fulfilled at horizon ", InpForecastHorizon,
+                     " | Entry: ", DoubleToString(open_price, _Digits),
+                     " | Current: ", DoubleToString(current_price, _Digits),
+                     " | Profit: ", DoubleToString(open_price - current_price, _Digits));
+           }
+        }
+     }
+  }
