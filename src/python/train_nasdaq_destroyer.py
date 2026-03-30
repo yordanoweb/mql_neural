@@ -34,6 +34,7 @@ parser.add_argument("--window", type=int, default=20, help="Window size (number 
 parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
 parser.add_argument("--min_profit_points", type=float, default=10.0, help="Minimum profit points for a positive target")
+parser.add_argument("--pip_unit", type=float, default=0.0001, help="Pip unit for a positive target (NASDAQ: 0.0001, SP500: 0.001)")
 
 args = parser.parse_args()
 
@@ -44,6 +45,7 @@ window = args.window
 future = args.future
 n_iter = args.n_iter
 min_profit_points = args.min_profit_points
+pip_unit = args.pip_unit
 
 if not os.path.exists(csv_file):
     print(colorize(f"Error: File '{csv_file}' not found", Colors.RED))
@@ -54,7 +56,7 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Generate output filename: same basename as CSV but with .onnx extension, in output_dir
-output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_oc_hl_w{window}_f{future}_minp{min_profit_points}_rsi{rsi_period}.onnx")
+output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_oc_hl_rsi_w{window}_f{future}_minp{min_profit_points}_rsi{rsi_period}_pip{pip_unit}.onnx")
 
 print(colorize("--- FAST TRAINING ---", Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
@@ -63,10 +65,6 @@ print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
 # 1. LOAD DATA FROM CSV
 df = pd.read_csv(csv_file)
 print(f"Rows loaded: {colorize(str(len(df)), Colors.GREEN)}")
-
-# Infer pip unit from data (optional, or set based on symbol detection if available)
-# If symbol info is not available, we'll use a reasonable default
-pip_unit = 0.0001  # Default for most pairs; could be refined if symbol is known
 
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
