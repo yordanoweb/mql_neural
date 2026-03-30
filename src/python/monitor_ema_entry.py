@@ -61,7 +61,7 @@ parser.add_argument("--ema_period", type=int, default=9, help="EMA period (defau
 parser.add_argument("--atr_period", type=int, default=14, help="ATR period for SL/TP (default: 14)")
 parser.add_argument("--sl_multiplier", type=float, default=2.0, help="Stop loss multiplier of ATR (default: 2.0)")
 parser.add_argument("--tp_multiplier", type=float, default=3.0, help="Take profit multiplier of ATR (default: 3.0)")
-parser.add_argument("--magic", type=int, default=91234569, help="Magic number (default: 91234569)")
+parser.add_argument("--magic", type=int, default=int(str(time.time()).split(".")[0]), help="Magic number (default: 91234569)")
 parser.add_argument("--volume", type=float, default=0.1, help="Order volume in lots (default: 0.1)")
 parser.add_argument("--entry_points", type=float, default=10.0, help="Points away from EMA to trigger entry (default: 10)")
 parser.add_argument("--interval", type=float, default=5.0, help="Seconds between processing steps (default: 5)")
