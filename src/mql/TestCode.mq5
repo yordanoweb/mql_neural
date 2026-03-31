@@ -75,7 +75,7 @@ void OnDeinit(const int reason)
 
 void OnTimer()
   {
-   Comment("\n=== EMA CROSS AI ===", 
+   Comment("\n=== EMA(", IntegerToString(InpEMAPeriod), ") CROSS AI ===", 
            "\nPred: ", g_prediction_str,
            "\nConf: ", DoubleToString(g_confidence*100,1), "% / ", DoubleToString(InpMinConf*100,1), "%",
            "\nTime: ", (g_valid_time ? "OPEN" : "CLOSED"));
