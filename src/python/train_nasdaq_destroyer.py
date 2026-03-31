@@ -34,7 +34,7 @@ parser.add_argument("--window", type=int, default=20, help="Window size (number 
 parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
 parser.add_argument("--min_profit_points", type=float, default=10.0, help="Minimum profit points for a positive target")
-parser.add_argument("--pip_unit", type=float, default=0.0001, help="Pip unit for a positive target (NASDAQ: 0.0001, SP500: 0.001)")
+parser.add_argument("--pip_unit", type=float, default=0.0001, help="Pip unit for a positive target (NASDAQ: 0.0001, SP500: 0.01)")
 
 args = parser.parse_args()
 
