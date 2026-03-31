@@ -175,14 +175,14 @@ int OnInit()
 {
    if(DISCORD_SEND)
    {
-      Print("Discord Trade Alerts iniciado para \"" + _Symbol + "\". Token: ", (DISCORD_TOKEN == "" ? "NÃO CONFIGURADO" : "OK"));
+      Print("Discord Trade Alerts started. Token: ", (DISCORD_TOKEN == "" ? "NOT CONFIGURED" : "OK"));
       Print("Main Channel: ", DISCORD_CHANNEL_ID, " | Orders Channel: ", DISCORD_ORDERS_STREAM_ID);
       Print("Magic Number: ", InpMagicNumber);
    
       if(SEND_TEST_ON_START)
       {
          string ea_title = (InpNotificationTitle == "") ? MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
-         string start_msg = "------------------------------\n🟢 **MT5 Trade Bot online!**\n🤖 **" + ea_title + "**\nMonitorando '**" + _Symbol + "**' ordens... ✅";
+         string start_msg = "------------------------------\n🟢 **MT5 Trade Bot online!**\n🤖 **" + ea_title + "**\nMonitoring orders... ✅";
          SendDiscord(start_msg, DISCORD_CHANNEL_ID);
       }
    }
