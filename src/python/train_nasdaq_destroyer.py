@@ -57,6 +57,7 @@ if not os.path.exists(output_dir):
 
 # Generate output filename: same basename as CSV but with .onnx extension, in output_dir
 output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_oc_hl_rsi_w{window}_f{future}_minp{min_profit_points}_rsi{rsi_period}_pip{pip_unit}.onnx")
+output_filename = output_filename.replace("_rates", "")
 
 print(colorize("--- FAST TRAINING ---", Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
