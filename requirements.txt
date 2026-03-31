@@ -9,3 +9,5 @@ yfinance
 pyarrow
 vectorbt
 colorama
+xgboost
+onnxmltools
