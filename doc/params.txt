@@ -1,3 +1,9 @@
+# Market Destroyer for NASDAQ
+python src/python/train_nasdaq_destroyer.py --input_csv csv/ndx100_rates_m5.csv --output_dir ~/MQL5/Files/ --rsi_period 8 --window 20 --future 4 --n_iter 5 --pip_unit 0.0001
+
+# Market Destroyer for SP500
+python src/python/train_nasdaq_destroyer.py --input_csv csv/sp500_rates_m5.csv --output_dir ~/MQL5/Files/ --rsi_period 8 --window 20 --future 4 --n_iter 5 --pip_unit 0.01
+
 # Market Destroyer Training Params
 python src/python/train_onnx_3_feat.py --input_csv csv/ndx100_rates_m5.csv --window 20 --future 4 --n_iter 5 --min_profit_points 5 --output_dir ./onnx/
 
