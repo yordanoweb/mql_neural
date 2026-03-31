@@ -113,6 +113,7 @@ void OnTick()
    MqlDateTime dt;
    TimeCurrent(dt);
    bool valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
+   g_valid_time = valid_time;
 
 // 2. BAR CONTROL
    static datetime last_bar = 0;
