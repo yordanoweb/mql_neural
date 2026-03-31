@@ -1,3 +1,6 @@
+# Wine command line
+python src\python\monitor_ema_entry.py --symbol US500 --timeframe M1 --ema_period 9 --atr_period 14 --sl_multiplier 1.0 --tp_multiplier 2.0 --volume 2 --entry_points 1 --interval 5 --forecast_horizon 2 --use_candle_gate --stoch_k 5 --stoch_oversold 70 --stoch_overbought 30 --adx_period 8 --adx_limit 24 --use_h1_candle_gate
+
 # Market Destroyer for NASDAQ
 python src/python/train_nasdaq_destroyer.py --input_csv csv/ndx100_rates_m5.csv --output_dir ~/MQL5/Files/ --rsi_period 8 --window 20 --future 4 --n_iter 5 --pip_unit 0.0001
 
