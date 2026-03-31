@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\sp500_m5_oc_hl_rsi_w20_f4_minp10.0_rsi6_pip0.01.onnx" as uchar ExtModel[]
+#resource "\\Files\\sp500_m5_oc_hl_rsi_w20_f4_minp10.0_rsi8_pip0.01.onnx" as uchar ExtModel[]
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
