@@ -1,126 +1,173 @@
 ﻿//+------------------------------------------------------------------+
-//|                                              SimpleONNX_EA.mq5   |
+//|                                          SimpleONNX_EMA_Cross.mq5|
+//|                        Single-Feature EMA Cross Predictor        |
 //+------------------------------------------------------------------+
 #property strict
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\sp500_m5_oc_hl_rsi_w20_f4_minp10.0_rsi8_pip0.01.onnx" as uchar ExtModel[]
-
-//--- ENUMERATIONS
-enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
+// IMPORTANTE: Actualizar con el nombre de tu modelo generado
+#resource "\\Files\\ndx100_m5_ema20_f14_cls.onnx" as uchar ExtModel[];
 
 //--- INPUTS
 input group "AI Config"
-input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
-input float      InpMinConf    = 0.55;         
-input int        InpStartHour  = 0;            
-input int        InpEndHour    = 23;           
-input group "Risk"
-input double     InpLot        = 1;          
-input int        InpMagic      = 8812345688;
-input int        InpATR        = 6;
-input double     InpMultiplier = 1.1;          
+input string     InpModelFile  = "ndx100_m5_ema20_f14_cls.onnx";
+input float      InpMinConf    = 0.55;      // Min confidence
+input int        InpStartHour  = 0;
+input int        InpEndHour    = 23;
+input bool       InpReverse    = false;       // Invert signal
 
-//--- GLOBAL VARIABLES
+input group "EMA & ATR - Match training values"
+input int        InpEMAPeriod  = 20;
+input int        InpATRPeriod  = 14;
+
+input group "Risk Management"
+input double     InpLot        = 1.0;
+input int        InpMagic      = 8812345688;
+input double     InpProfitATR  = 1.5;       // TP in ATRs
+input double     InpStopATR    = 1.0;       // SL in ATRs
+input int        InpMaxHoldBars= 10;        // Match with --future param
+
+//--- GLOBALS
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
-const int WINDOW_SIZE = 20;
-const int FEATURES    = 3; 
+int      g_ema_handle, g_atr_handle;
+float    g_confidence = 0;
+string   g_prediction_str = "WAITING...";
+bool     g_valid_time = false;
 
+//+------------------------------------------------------------------+
 int OnInit()
-{
+  {
    onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
    if(onnx_handle == INVALID_HANDLE) return(INIT_FAILED);
 
-   long input_shape[] = {1, 60}; // 20 candles * 3 attributes
+   // SHAPE CRÍTICO: [batch=1, features=1] - UNA SOLA FEATURE
+   long input_shape[] = {1, 1};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
 
-   long out_shape_label[] = {1};
-   OnnxSetOutputShape(onnx_handle, 0, out_shape_label);
-   long out_shape_probs[] = {1, 2};
-   OnnxSetOutputShape(onnx_handle, 1, out_shape_probs);
+   long out_label[] = {1};
+   long out_probs[] = {1, 2};
+   OnnxSetOutputShape(onnx_handle, 0, out_label);
+   OnnxSetOutputShape(onnx_handle, 1, out_probs);
+
+   g_ema_handle = iMA(_Symbol, _Period, InpEMAPeriod, 0, MODE_EMA, PRICE_CLOSE);
+   g_atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
+   
+   if(g_ema_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE) 
+      return(INIT_FAILED);
 
    m_trade.SetExpertMagicNumber(InpMagic);
+   EventSetTimer(1);
+   
+   Print("[INIT] EMA Cross AI loaded | EMA:", InpEMAPeriod, " | MaxHold:", InpMaxHoldBars);
    return(INIT_SUCCEEDED);
-}
+  }
 
-void OnDeinit(const int reason) { if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle); }
+void OnDeinit(const int reason)
+  {
+   if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle);
+   IndicatorRelease(g_ema_handle);
+   IndicatorRelease(g_atr_handle);
+   Comment(""); 
+   EventKillTimer();
+  }
+
+void OnTimer()
+  {
+   Comment("\n=== EMA CROSS AI ===", 
+           "\nPred: ", g_prediction_str,
+           "\nConf: ", DoubleToString(g_confidence*100,1), "% / ", DoubleToString(InpMinConf*100,1), "%",
+           "\nTime: ", (g_valid_time ? "OPEN" : "CLOSED"));
+  }
 
 void OnTick()
-{
-   // 1. CORRECT TIME FILTER
-   MqlDateTime dt;
-   TimeCurrent(dt); 
-   bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+  {
+   // 1. Gestionar posición abierta (time-based exit)
+   if(PositionSelect(_Symbol))
+     {
+      ManageExit();
+      return;
+     }
 
-   // 2. BAR CONTROL
-   static datetime last_bar = 0;
-   datetime current_bar = iTime(_Symbol, _Period, 0);
-   if(current_bar == last_bar) return;
-   last_bar = current_bar;
+   // 2. Filtro horario
+   MqlDateTime dt; TimeCurrent(dt);
+   g_valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
+   if(!g_valid_time) return;
 
-   // 3. DATA
-   double close[], open[], high[], low[];
-   ArraySetAsSeries(close, true); ArraySetAsSeries(open, true);
-   ArraySetAsSeries(high, true);  ArraySetAsSeries(low, true);
-
-   if(CopyClose(_Symbol, _Period, 0, WINDOW_SIZE + 15, close) < WINDOW_SIZE + 15 ||
-      CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, open) < WINDOW_SIZE) return;
-
-   // 4. INDICATORS
-   int rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
-   double rsi_buffer[];
-   ArraySetAsSeries(rsi_buffer, true);
-   CopyBuffer(rsi_handle, 0, 0, WINDOW_SIZE, rsi_buffer);
-
-   int atr_handle = iATR(_Symbol, _Period, InpATR);
-   double atr_buffer[];
-   ArraySetAsSeries(atr_buffer, true);
-   CopyBuffer(atr_handle, 0, 0, 1, atr_buffer);
-   double current_atr = atr_buffer[0];
-
-   // 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
-   float input_buffer[];
-   ArrayResize(input_buffer, WINDOW_SIZE * FEATURES);
+   // 3. Datos de indicadores (necesitamos 2 velas para detectar cruce)
+   double ema[2], atr[1], close[2];
+   ArraySetAsSeries(ema, true); ArraySetAsSeries(atr, true); ArraySetAsSeries(close, true);
    
-   // _Digits is the correct variable. If it's 5 or 3 decimals, adjust to pips (x10).
-   double pip_unit = _Point * (_Digits == 5 || _Digits == 3 ? 10 : 1);
-
-   for(int i=0; i < WINDOW_SIZE; i++)
-   {
-      int mql_idx = WINDOW_SIZE - 1 - i;
-      input_buffer[i * 3 + 0] = (float)((close[mql_idx] - open[mql_idx]) / pip_unit);
-      input_buffer[i * 3 + 1] = (float)((iHigh(_Symbol, _Period, mql_idx) - iLow(_Symbol, _Period, mql_idx)) / pip_unit);
-      input_buffer[i * 3 + 2] = (float)(rsi_buffer[mql_idx] / 100.0);
-   }
-
-   // 6. INFERENCE
-   long output_label[]; float output_probs[];
-   ArrayResize(output_label, 1); ArrayResize(output_probs, 2);
-   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_probs)) return;
-
-   long  prediction = output_label[0];
-   float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
-
-   // 7. EXECUTION WITH TIME FILTER
-   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
-   {
-      double sl_dist = current_atr * InpMultiplier;
-      double tp_dist = sl_dist * 1.5;
-
-      if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
-      {
-         double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI " + IntegerToString(_Period));
-      }
-      else
-      {
-         double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI " + IntegerToString(_Period));
-      }
-   }
+   if(CopyBuffer(g_ema_handle, 0, 0, 2, ema) != 2) return;
+   if(CopyBuffer(g_atr_handle, 0, 0, 1, atr) != 1) return;
+   if(CopyClose(_Symbol, _Period, 0, 2, close) != 2) return;
    
-   Comment("AI | Confidence: ", DoubleToString(confidence*100, 2), "%",
-           "\nSchedule: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
-}
+   if(ema[0] == 0 || atr[0] == 0) return;
+
+   // 4. DETECTAR CRUCE EXACTO
+   bool above_now = close[0] > ema[0];
+   bool above_prev = close[1] > ema[1];
+   bool cross_up = !above_prev && above_now;
+   bool cross_down = above_prev && !above_now;
+   
+   if(!cross_up && !cross_down) return; // Sin cruce, no operar
+
+   // 5. FEATURE ÚNICA: (close - ema) / atr
+   float feature = (float)((close[0] - ema[0]) / atr[0]);
+   float input_buffer[1] = {feature};
+
+   // 6. INFERENCIA
+   long label[1]; 
+   float probs[2];
+   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, label, probs)) return;
+
+   long pred = label[0];  // 0=fallo, 1=éxito
+   float conf = probs[pred];
+   
+   if(InpReverse) 
+     { 
+      pred = 1 - pred; 
+      conf = 1.0f - conf; 
+     }
+
+   g_confidence = conf;
+   g_prediction_str = (pred == 1) ? (cross_up ? "BUY" : "SELL") : "SKIP";
+
+   // 7. FILTRO DE CONFIANZA
+   if(pred != 1 || conf < InpMinConf) 
+     {
+      Print("[SKIP] Cross ", (cross_up?"UP":"DOWN"), " | Conf:", DoubleToString(conf*100,1), "%");
+      return;
+     }
+
+   // 8. EJECUTAR
+   double sl_dist = atr[0] * InpStopATR;
+   double tp_dist = atr[0] * InpProfitATR;
+   
+   if(cross_up) // BUY
+     {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      if(m_trade.Buy(InpLot, _Symbol, ask, ask-sl_dist, ask+tp_dist, "EMA_CROSS_BUY"))
+         Print("[BUY] Conf:", DoubleToString(conf*100,1), "% | Feature:", DoubleToString(feature,4));
+     }
+   else // SELL
+     {
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      if(m_trade.Sell(InpLot, _Symbol, bid, bid+sl_dist, bid-tp_dist, "EMA_CROSS_SELL"))
+         Print("[SELL] Conf:", DoubleToString(conf*100,1), "% | Feature:", DoubleToString(feature,4));
+     }
+  }
+
+void ManageExit()
+  {
+   datetime open_time = (datetime)PositionGetInteger(POSITION_TIME);
+   int bars_held = Bars(_Symbol, _Period, open_time, TimeCurrent());
+   
+   if(bars_held >= InpMaxHoldBars)
+     {
+      m_trade.PositionClose(_Symbol);
+      Print("[EXIT] Time-based close after ", bars_held, " bars");
+     }
+  }
+//+------------------------------------------------------------------+
