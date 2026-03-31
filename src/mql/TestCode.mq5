@@ -7,26 +7,26 @@
 #include <Trade\Trade.mqh>
 
 // IMPORTANTE: Actualizar con el nombre de tu modelo generado
-#resource "\\Files\\ndx100_m5_ema20_f14_cls.onnx" as uchar ExtModel[];
+#resource "\\Files\\ndx100_m5_ema9_f14_cls.onnx" as uchar ExtModel[];
 
 //--- INPUTS
 input group "AI Config"
-input string     InpModelFile  = "ndx100_m5_ema20_f14_cls.onnx";
+input string     InpModelFile  = "ndx100_m5_ema9_f14_cls.onnx";
 input float      InpMinConf    = 0.55;      // Min confidence
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
 input bool       InpReverse    = false;       // Invert signal
 
 input group "EMA & ATR - Match training values"
-input int        InpEMAPeriod  = 20;
-input int        InpATRPeriod  = 14;
+input int        InpEMAPeriod  = 9;
+input int        InpATRPeriod  = 6;
 
 input group "Risk Management"
 input double     InpLot        = 1.0;
 input int        InpMagic      = 8812345688;
 input double     InpProfitATR  = 1.5;       // TP in ATRs
 input double     InpStopATR    = 1.0;       // SL in ATRs
-input int        InpMaxHoldBars= 10;        // Match with --future param
+input int        InpMaxHoldBars= 14;        // Hold bars (match with --future)
 
 //--- GLOBALS
 long     onnx_handle = INVALID_HANDLE;

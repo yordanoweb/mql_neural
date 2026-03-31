@@ -54,6 +54,10 @@ df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], w
 # FEATURE ÚNICA: Distancia en ATRs (más robusta que %)
 df['ema_dist'] = (df['close'] - df['ema']) / df['atr']
 
+# 🔥 FIX: Limpiar infinitos y valores extremos
+df['ema_dist'] = df['ema_dist'].replace([np.inf, -np.inf], np.nan)
+df['ema_dist'] = df['ema_dist'].clip(-10.0, 10.0)  # Limitar a ±10 ATRs
+
 # Cruces
 df['above'] = df['close'] > df['ema']
 df['cross_up'] = (~df['above'].shift(1).fillna(False)) & df['above']
@@ -64,6 +68,9 @@ labels = np.zeros(len(df))
 directions = np.zeros(len(df))
 
 for i in range(len(df) - future - 1):
+    # 🔥 FIX: Skip si ATR es inválido o muy pequeño
+    if pd.isna(df['atr'].iloc[i]) or df['atr'].iloc[i] < 0.00001:
+        continue
     if not (df['cross_up'].iloc[i] or df['cross_down'].iloc[i]):
         continue
         
@@ -95,16 +102,24 @@ for i in range(len(df) - future - 1):
             labels[i] = 1
         directions[i] = -1
 
+# --- LÍNEAS 95-100 (DATASET) ---
 # Dataset
 mask = (df['cross_up'] | df['cross_down']).values
 X = df.loc[mask, ['ema_dist']].values.astype(np.float32)
 y = labels[mask]
 dirs = directions[mask]
 
-valid = ~np.isnan(X).any(axis=1) & ~np.isnan(y)
-X, y, dirs = X[valid], y[valid].astype(int), dirs[valid]
+# 🔥 FIX: Doble chequeo de valores inválidos
+valid = ~np.isnan(X).any(axis=1) & ~np.isinf(X).any(axis=1) & ~np.isnan(y)
+X = X[valid]
+y = y[valid].astype(int)
+dirs = dirs[valid]
+
+# 🔥 FIX: Asegurar que no hay infinitos escondidos
+X = np.nan_to_num(X, nan=0.0, posinf=10.0, neginf=-10.0)
 
 print(f"Samples: {len(X)} | Base success rate: {y.mean():.1%}")
+print(f"Feature stats - Min: {X.min():.2f}, Max: {X.max():.2f}, Mean: {X.mean():.2f}")
 
 if len(X) < 100:
     sys.exit("Insufficient data")
