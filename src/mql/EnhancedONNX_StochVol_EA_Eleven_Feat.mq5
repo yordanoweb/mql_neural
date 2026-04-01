@@ -59,8 +59,9 @@ int OnInit()
    Print("=================================================================");
    Print("  ENHANCED ONNX EA - Advanced Stochastic & Volume Features");
    Print("=================================================================");
+   Print("Symbol: ", _Symbol, " | Period: ", _Period);
    Print("Features: ", FEATURES, " | Window: ", WINDOW_SIZE, " | Total inputs: ", WINDOW_SIZE * FEATURES);
-   
+
    if(MQLInfoInteger(MQL_TESTER)) {
       Print("Running in Strategy Tester");
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
@@ -410,7 +411,7 @@ void OnTick()
    g_confidence = confidence;
    g_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
    
-   Print("Prediction: ", prediction_str, (InpReverse ? "(R)" : ""), 
+   Print(_Symbol, " | Prediction: ", prediction_str, (InpReverse ? "(R)" : ""), 
          " | Confidence: ", DoubleToString(confidence * 100, 2), "%");
 
    // --- EXECUTION WITH FILTERS ---
