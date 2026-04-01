@@ -6,7 +6,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\your_model.onnx" as uchar ExtModel[]
+#resource "\\Files\\xauusd_m15_w20_f8_pct0.5_h1-3.onnx" as uchar ExtModel[]
 
 //--- INPUTS
 input group "AI Config"
@@ -15,14 +15,14 @@ input int        InpStartHour  = 1;            // Start hour of trading window
 input int        InpEndHour    = 3;            // End hour of trading window
 input double     InpTargetPct  = 0.5;          // Target percentage move (for display only)
 input int        InpFuture     = 20;           // Number of bars to learn (match --window)
-input string     InpModelFile  = "";           // ONNX File (embed and recompile for backtest)
+input string     InpModelFile  = "xauusd_m15_w20_f8_pct0.5_h1-3.onnx";   // ONNX File (embed and recompile for backtest)
 
 input group "Risk Management"
 input double     InpLot        = 1.0;          // Lot size
 input int        InpMagic      = 88122188;     // Magic number
 input int        InpATRPeriod  = 14;           // ATR Period
 input double     InpATRMultSL  = 1.5;          // ATR Multiplier for SL
-input double     InpATRMultTP  = 2.5;          // ATR Multiplier for TP
+input double     InpATRMultTP  = 1.5;          // ATR Multiplier for TP
 
 input group "Trade Management"
 input bool       InpOneTradePerWindow = true;  // Allow only one trade per time window
