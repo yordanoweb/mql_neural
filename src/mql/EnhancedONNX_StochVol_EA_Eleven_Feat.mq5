@@ -6,7 +6,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\your_model_enhanced.onnx" as uchar ExtModel[];
+#resource "\\Files\\sp500_m5_enh_w20_f10_atr14_minp0.5.onnx" as uchar ExtModel[];
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -14,7 +14,7 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "===== AI Configuration ====="
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelFile  = "your_model_enhanced.onnx"; // Informational only
+input string     InpModelFile  = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Informational only
 input float      InpMinConf    = 0.55;
 input int        InpWindow     = 20;
 input int        InpStartHour  = 0;

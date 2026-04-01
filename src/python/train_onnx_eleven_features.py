@@ -10,6 +10,7 @@ from skl2onnx.common.data_types import FloatTensorType
 import ta
 import onnx
 import argparse
+import time
 
 # ---------- Color setup ----------
 class Colors:
@@ -145,6 +146,8 @@ min_profit_atr = args.min_profit_atr
 stoch_window   = args.stoch_window
 vol_window     = args.vol_window
 jobs           = args.jobs
+
+start_time = time.time()
 
 if not os.path.exists(csv_file):
     print(colorize(f"Error: File '{csv_file}' not found", Colors.RED))
@@ -319,3 +322,7 @@ print(colorize(f"✓ Input shape:      [1, {window * len(features)}]", Colors.GR
 print(colorize("\n" + "=" * 70, Colors.CYAN))
 print(colorize("PROCESS COMPLETED SUCCESSFULLY!", Colors.CYAN))
 print(colorize("=" * 70, Colors.CYAN))
+
+end_time = time.time()
+print(colorize(f"\nTotal execution time: {int(end_time - start_time) // 60} minutes "
+               f"and {int(end_time - start_time) % 60} seconds", Colors.GREEN))
