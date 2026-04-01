@@ -32,7 +32,7 @@ parser.add_argument("--output_dir", type=str, default=".", help="Directory to sa
 parser.add_argument("--window", type=int, default=20, help="Window size (number of bars) for features")
 parser.add_argument("--future", type=int, default=10, help="Number of bars to look into the future for target")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
-parser.add_argument("--target_pct", type=float, default=0.5, help="Target percentage move (default: 0.5 for 0.5%)")
+parser.add_argument("--target_pct", type=float, default=0.5, help="Target percentage move (default: 0.5 for 0.5%%)")
 parser.add_argument("--time_start", type=int, default=1, help="Start hour for trading window (0-23)")
 parser.add_argument("--time_end", type=int, default=3, help="End hour for trading window (0-23)")
 
@@ -169,7 +169,7 @@ search = RandomizedSearchCV(
     n_iter=n_iter,
     cv=tscv,
     scoring='balanced_accuracy',
-    n_jobs=-1,
+    n_jobs=4,
     verbose=2
 )
 
