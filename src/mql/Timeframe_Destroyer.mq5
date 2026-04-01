@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                       Nasdaq_Destroyer_v2.mq5    |
+//|                                       Timeframe_Destroyer.mq5    |
 //|                                  Timeframe Entry Strategy         |
 //+------------------------------------------------------------------+
 #property strict
@@ -10,11 +10,11 @@
 
 //--- INPUTS
 input group "AI Config"
+input int        InpWindowSize = 20;           // Window size (must match --window from training)
 input float      InpMinConf    = 0.55;         // Minimum confidence threshold
 input int        InpStartHour  = 1;            // Start hour of trading window
 input int        InpEndHour    = 3;            // End hour of trading window
 input double     InpTargetPct  = 0.5;          // Target percentage move (for display only)
-input int        InpFuture     = 20;           // Number of bars to learn (match --window)
 input string     InpModelFile  = "xauusd_m15_w20_f8_pct0.5_h1-3.onnx";   // ONNX File (embed and recompile for backtest)
 
 input group "Risk Management"
@@ -27,29 +27,38 @@ input double     InpATRMultTP  = 1.5;          // ATR Multiplier for TP
 input group "Trade Management"
 input bool       InpOneTradePerWindow = true;  // Allow only one trade per time window
 
+input group "Debug"
+input bool       InpDebugPrint = false;        // Print debug info
+
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
-const int WINDOW_SIZE = InpFuture;
-const int FEATURES    = 2;  // Only body and range
+const int FEATURES = 2;  // Only body and range
 datetime last_trade_time = 0;
 
 int OnInit()
 {
    // Load ONNX model
    if(MQLInfoInteger(MQL_TESTER)) {
-      Print("Running in Strategy Tester");
+      Print("Running in Strategy Tester - Loading embedded model");
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
    } else {
       Print("Running Live/Demo | Model: ", InpModelFile);
       onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
    }
+   
+   if(onnx_handle == INVALID_HANDLE) 
+   {
+      Print("Failed to load ONNX model");
+      return(INIT_FAILED);
+   }
 
-   // Set input shape: 20 candles * 2 features = 40
-   long input_shape[] = {1, 40};
+   // Set input shape: window * 2 features
+   int input_size = InpWindowSize * FEATURES;
+   long input_shape[] = {1, input_size};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) 
    {
-      Print("Failed to set input shape");
+      Print("Failed to set input shape [1, ", input_size, "]");
       return(INIT_FAILED);
    }
 
@@ -61,10 +70,11 @@ int OnInit()
 
    m_trade.SetExpertMagicNumber(InpMagic);
    
-   Print("=== Nasdaq Destroyer v2 Initialized ===");
+   Print("=== TIMEFRAME DESTROYER INITIALIZED ===");
    Print("Trading Window: ", InpStartHour, ":00 - ", InpEndHour, ":00");
    Print("Target Move: ±", DoubleToString(InpTargetPct, 2), "%");
-   Print("Window Size: ", WINDOW_SIZE, " | Features: ", FEATURES);
+   Print("Window Size: ", InpWindowSize, " | Features: ", FEATURES);
+   Print("Input Shape: [1, ", input_size, "]");
    
    return(INIT_SUCCEEDED);
 }
@@ -119,24 +129,43 @@ void OnTick()
    ArraySetAsSeries(high, true);  
    ArraySetAsSeries(low, true);
 
-   if(CopyClose(_Symbol, _Period, 0, WINDOW_SIZE, close) < WINDOW_SIZE ||
-      CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, open) < WINDOW_SIZE ||
-      CopyHigh(_Symbol, _Period, 0, WINDOW_SIZE, high) < WINDOW_SIZE ||
-      CopyLow(_Symbol, _Period, 0, WINDOW_SIZE, low) < WINDOW_SIZE) 
+   if(CopyClose(_Symbol, _Period, 0, InpWindowSize, close) < InpWindowSize ||
+      CopyOpen(_Symbol, _Period, 0, InpWindowSize, open) < InpWindowSize ||
+      CopyHigh(_Symbol, _Period, 0, InpWindowSize, high) < InpWindowSize ||
+      CopyLow(_Symbol, _Period, 0, InpWindowSize, low) < InpWindowSize) 
    {
       Print("Failed to copy price data");
       return;
    }
 
-   // 5. PREPARE INPUT BUFFER (Only body and range features)
+   // 5. PREPARE INPUT BUFFER
+   // CRITICAL: Match Python training order exactly
+   // Python loops: for i in range(window, len(df) - future):
+   //     window_data = df[features].iloc[i-window:i].values.flatten()
+   // This means: [oldest_candle_features, ..., newest_candle_features]
+   
    float input_buffer[];
-   ArrayResize(input_buffer, WINDOW_SIZE * FEATURES);
+   ArrayResize(input_buffer, InpWindowSize * FEATURES);
 
-   for(int i = 0; i < WINDOW_SIZE; i++)
+   // MT5 arrays are in reverse (index 0 = newest)
+   // So we need to reverse the order when building the buffer
+   for(int i = 0; i < InpWindowSize; i++)
    {
-      int mql_idx = WINDOW_SIZE - 1 - i;
-      input_buffer[i * 2 + 0] = (float)(close[mql_idx] - open[mql_idx]);  // body
-      input_buffer[i * 2 + 1] = (float)(high[mql_idx] - low[mql_idx]);    // range
+      // Go from oldest to newest to match Python
+      int mql_idx = InpWindowSize - 1 - i;  // oldest first
+      
+      // Features in same order as Python: body, range
+      input_buffer[i * FEATURES + 0] = (float)(close[mql_idx] - open[mql_idx]);  // body
+      input_buffer[i * FEATURES + 1] = (float)(high[mql_idx] - low[mql_idx]);     // range
+   }
+   
+   // Debug: Print first and last candle features
+   if(InpDebugPrint)
+   {
+      Print("=== INPUT DEBUG ===");
+      Print("First candle (oldest): body=", input_buffer[0], " range=", input_buffer[1]);
+      int last_idx = (InpWindowSize - 1) * FEATURES;
+      Print("Last candle (newest): body=", input_buffer[last_idx], " range=", input_buffer[last_idx + 1]);
    }
 
    // 6. RUN INFERENCE
@@ -154,6 +183,12 @@ void OnTick()
    long  prediction = output_label[0];  // 0=no_trade, 1=long, 2=short
    float confidence = output_probs[prediction];
 
+   if(InpDebugPrint)
+   {
+      Print("Prediction: ", prediction, " | Confidence: ", confidence);
+      Print("Probs: [", output_probs[0], ", ", output_probs[1], ", ", output_probs[2], "]");
+   }
+
    // 7. DISPLAY INFO
    string status_msg = "";
    if(!valid_time)
@@ -169,7 +204,7 @@ void OnTick()
       else if(prediction == 2) status_msg = "SHORT SIGNAL";
    }
 
-   Comment("=== NASDAQ DESTROYER v2 ===",
+   Comment("=== TIMEFRAME DESTROYER ===",
            "\nWindow: ", InpStartHour, ":00 - ", InpEndHour, ":00",
            "\nCurrent Time: ", IntegerToString(dt.hour, 2, '0'), ":", IntegerToString(dt.min, 2, '0'),
            "\nStatus: ", status_msg,
@@ -181,8 +216,8 @@ void OnTick()
            DoubleToString(output_probs[1]*100, 1), "%, ",
            DoubleToString(output_probs[2]*100, 1), "%]");
 
-   // 8. EXECUTE TRADES
-   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
+   // 8. EXECUTE TRADES (only if prediction is 1 or 2)
+   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf && prediction != 0)
    {
       // Calculate SL and TP using ATR
       int atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
@@ -208,8 +243,12 @@ void OnTick()
          if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, 
             "AI_LONG " + DoubleToString(confidence*100, 1) + "%"))
          {
-            Print("LONG executed | Conf: ", confidence*100, "% | Target: +", InpTargetPct, "%");
+            Print(">>> LONG EXECUTED | Conf: ", confidence*100, "% | SL: ", sl_dist/_Point, " pts | TP: ", tp_dist/_Point, " pts");
             trade_executed = true;
+         }
+         else
+         {
+            Print(">>> LONG FAILED | Error: ", GetLastError());
          }
       }
       else if(prediction == 2)  // SHORT
@@ -221,11 +260,14 @@ void OnTick()
          if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, 
             "AI_SHORT " + DoubleToString(confidence*100, 1) + "%"))
          {
-            Print("SHORT executed | Conf: ", confidence*100, "% | Target: -", InpTargetPct, "%");
+            Print(">>> SHORT EXECUTED | Conf: ", confidence*100, "% | SL: ", sl_dist/_Point, " pts | TP: ", tp_dist/_Point, " pts");
             trade_executed = true;
          }
+         else
+         {
+            Print(">>> SHORT FAILED | Error: ", GetLastError());
+         }
       }
-      // prediction == 0 (no_trade) -> do nothing
       
       if(trade_executed)
          last_trade_time = TimeCurrent();
