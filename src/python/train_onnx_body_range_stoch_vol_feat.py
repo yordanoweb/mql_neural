@@ -31,7 +31,7 @@ parser.add_argument("--input_csv", type=str, required=True, help="Path to the in
 parser.add_argument("--output_dir", type=str, default=".", help="Directory to save the ONNX model (default: current directory)")
 parser.add_argument("--atr_period", type=int, default=14, help="Period for ATR calculation (default: 14)")
 parser.add_argument("--window", type=int, default=20, help="Window size (number of bars) for features (default: 20)")
-parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling (default: 5)")
+parser.add_argument("--future", type=int, default=10, help="Number of bars to look into the future for target labeling (default: 10)")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV (default: 5)")
 parser.add_argument("--min_profit_atr", type=float, default=1.5, help="Minimum profit in ATR multiples for a positive target (default: 1.5)")
 
@@ -55,6 +55,7 @@ if not os.path.exists(output_dir):
 
 # Generate output filename: same basename as CSV but with .onnx extension, in output_dir
 output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_w{window}_f{future}_atr{atr_period}_minp{min_profit_atr}.onnx")
+output_filename = str(output_filename).replace("_rates", "")
 
 print(colorize("--- FAST TRAINING WITH ATR NORMALIZATION ---", Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
