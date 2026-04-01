@@ -15,6 +15,7 @@ input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
 input string     InpModelFile  = "ndx100_m5_w20_f10_atr14_minp1.0.onnx"; // Informational only
 input float      InpMinConf    = 0.55;
+input int        InpWindow     = 20;
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
 input bool       InpReverse    = false; // BUY is SELL and SELL is BUY
@@ -31,7 +32,7 @@ input double     InpMultiplier = 1.1;
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
-const int WINDOW_SIZE = 20;
+const int WINDOW_SIZE = InpWindow;
 const int FEATURES    = 4;
 double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 string program_name = MQLInfoString(MQL_PROGRAM_NAME);
