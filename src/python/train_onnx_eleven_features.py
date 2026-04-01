@@ -122,15 +122,16 @@ def calculate_volume_features(tick_volume, close, window=20):
 
 # --- CONFIGURATION ---
 parser = argparse.ArgumentParser(description="Train ONNX model with ENHANCED features")
-parser.add_argument("--input_csv",       type=str,   required=True, help="Path to the input CSV file")
-parser.add_argument("--output_dir",      type=str,   default=".",   help="Directory to save the ONNX model")
-parser.add_argument("--atr_period",      type=int,   default=14,    help="Period for ATR calculation")
-parser.add_argument("--window",          type=int,   default=20,    help="Window size (number of bars) for features")
-parser.add_argument("--future",          type=int,   default=10,    help="Number of bars to look into the future")
-parser.add_argument("--n_iter",          type=int,   default=10,    help="Number of iterations for RandomizedSearchCV")
-parser.add_argument("--min_profit_atr",  type=float, default=1.5,   help="Minimum profit in ATR multiples")
-parser.add_argument("--stoch_window",    type=int,   default=14,    help="Stochastic period")
-parser.add_argument("--vol_window",      type=int,   default=20,    help="Volume analysis window")
+parser.add_argument("--input_csv",       type=str,   required=True, help="Path to the input CSV file (required)")
+parser.add_argument("--output_dir",      type=str,   default=".",   help="Directory to save the ONNX model (default: .)")
+parser.add_argument("--atr_period",      type=int,   default=14,    help="Period for ATR calculation (default: 14)")
+parser.add_argument("--window",          type=int,   default=20,    help="Window size (number of bars) for features (default: 20)")
+parser.add_argument("--future",          type=int,   default=10,    help="Number of bars to look into the future (default: 10)")
+parser.add_argument("--n_iter",          type=int,   default=10,    help="Number of iterations for RandomizedSearchCV (default: 10)")
+parser.add_argument("--min_profit_atr",  type=float, default=1.5,   help="Minimum profit in ATR multiples (default: 1.5)")
+parser.add_argument("--stoch_window",    type=int,   default=14,    help="Stochastic period (default: 14)")
+parser.add_argument("--vol_window",      type=int,   default=20,    help="Volume analysis window (default: 20)")
+parser.add_argument("--jobs",            type=int,   default=3,     help="Number of parallel jobs (default: 3)")
 
 args = parser.parse_args()
 
@@ -143,6 +144,7 @@ n_iter         = args.n_iter
 min_profit_atr = args.min_profit_atr
 stoch_window   = args.stoch_window
 vol_window     = args.vol_window
+jobs           = args.jobs
 
 if not os.path.exists(csv_file):
     print(colorize(f"Error: File '{csv_file}' not found", Colors.RED))
@@ -271,7 +273,7 @@ search = RandomizedSearchCV(
     n_iter=n_iter,
     cv=tscv,
     scoring='balanced_accuracy',
-    n_jobs=3,
+    n_jobs=jobs,
     verbose=2
 )
 
