@@ -142,7 +142,7 @@ if not os.path.exists(csv_file):
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
-output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_enhanced_w{window}_f{future}_atr{atr_period}_minp{min_profit_atr}.onnx")
+output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_enh_w{window}_f{future}_atr{atr_period}_minp{min_profit_atr}.onnx")
 output_filename = str(output_filename).replace("_rates", "")
 
 print(colorize("=" * 70, Colors.CYAN))

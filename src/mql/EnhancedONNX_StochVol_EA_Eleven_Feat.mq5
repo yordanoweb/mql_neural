@@ -28,7 +28,7 @@ input bool       InpEmaGate    = true;
 input group "===== Risk Management ====="
 input int        InpATRPeriod  = 14;
 input double     InpLot        = 1.0;
-input int        InpMagic      = 8812345688;
+input int        InpMagic      = 8812772188;
 input int        InpATRSL      = 6;
 input double     InpMultiplier = 1.1;
 
