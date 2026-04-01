@@ -64,8 +64,9 @@ output_filename = output_filename.replace("_rates", "")
 
 print(colorize("--- TIMEFRAME ENTRY TRAINING ---", Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
-print(f"Trading window: {colorize(f'{time_start}:00 - {time_end}:00', Colors.MAGENTA)}")
+print(f"Target window for opportunities: {colorize(f'{time_start}:00 - {time_end}:00', Colors.MAGENTA)}")
 print(f"Target move: {colorize(f'±{target_pct}%', Colors.MAGENTA)}")
+print(f"Strategy: Train on ALL candles, but label only opportunities in target time window")
 print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
 
 # 1. LOAD DATA FROM CSV
@@ -92,29 +93,49 @@ labels = np.zeros(len(df))  # 0 = no trade
 target_threshold = target_pct / 100.0  # Convert percentage to decimal
 
 for i in range(len(df) - future):
-    # Only consider entries within the specified time window
-    if pd.notna(df['datetime'].iloc[i]):
-        hour = df['datetime'].iloc[i].hour
-        # Check if hour is in range (handle wrap-around if needed)
-        if time_start <= time_end:
-            if not (time_start <= hour < time_end):
-                continue
-        else:  # Wrap around midnight (e.g., 22-2)
-            if not (hour >= time_start or hour < time_end):
-                continue
-    
     entry_price = df['close'].iloc[i]
     
-    # Look at future prices
-    future_highs = df['high'].iloc[i+1 : i+future+1]
-    future_lows = df['low'].iloc[i+1 : i+future+1]
+    # Look at future prices to see if target is reached
+    future_slice = df.iloc[i+1 : i+future+1]
     
-    # Calculate percentage moves
+    # Check if ANY candle in the future window falls in our target time range
+    opportunity_found = False
+    if pd.notna(df['datetime'].iloc[i]):
+        for j in range(len(future_slice)):
+            future_idx = i + 1 + j
+            if pd.notna(df['datetime'].iloc[future_idx]):
+                future_hour = df['datetime'].iloc[future_idx].hour
+                
+                # Check if this future candle is in our target time window
+                in_target_window = False
+                if time_start <= time_end:
+                    in_target_window = (time_start <= future_hour < time_end)
+                else:  # Wrap around midnight
+                    in_target_window = (future_hour >= time_start or future_hour < time_end)
+                
+                if in_target_window:
+                    opportunity_found = True
+                    break
+    
+    # Only label if there's an opportunity in the target time window
+    if not opportunity_found:
+        continue
+    
+    # Calculate percentage moves from entry to future prices
+    future_highs = future_slice['high']
+    future_lows = future_slice['low']
+    
     max_upward = (future_highs.max() - entry_price) / entry_price
     max_downward = (entry_price - future_lows.min()) / entry_price
     
-    # Determine trade type
-    if max_upward >= target_threshold:
+    # Determine trade type based on which target is reached first or strongest
+    if max_upward >= target_threshold and max_downward >= target_threshold:
+        # Both targets reached - choose the stronger move
+        if max_upward > max_downward:
+            labels[i] = 1  # LONG
+        else:
+            labels[i] = 2  # SHORT
+    elif max_upward >= target_threshold:
         labels[i] = 1  # LONG entry
     elif max_downward >= target_threshold:
         labels[i] = 2  # SHORT entry
@@ -129,6 +150,22 @@ print(colorize(f"Label distribution:", Colors.CYAN))
 print(f"  No trade (0): {colorize(str(label_dist.get(0, 0)), Colors.WHITE)}")
 print(f"  Long (1): {colorize(str(label_dist.get(1, 0)), Colors.GREEN)}")
 print(f"  Short (2): {colorize(str(label_dist.get(2, 0)), Colors.RED)}")
+
+# Analyze opportunities by hour
+if 'datetime' in df.columns and pd.notna(df['datetime'].iloc[0]):
+    print(colorize(f"\nOpportunities found per hour:", Colors.CYAN))
+    df_with_labels = df.copy()
+    df_with_labels['label'] = labels
+    df_with_labels['hour'] = df_with_labels['datetime'].dt.hour
+    
+    hourly_long = df_with_labels[df_with_labels['label'] == 1].groupby('hour').size()
+    hourly_short = df_with_labels[df_with_labels['label'] == 2].groupby('hour').size()
+    
+    for h in range(24):
+        longs = hourly_long.get(h, 0)
+        shorts = hourly_short.get(h, 0)
+        if longs > 0 or shorts > 0:
+            print(f"  {h:02d}:00 - Long: {colorize(str(longs), Colors.GREEN)}, Short: {colorize(str(shorts), Colors.RED)}")
 
 df.dropna(inplace=True)
 
@@ -169,7 +206,7 @@ search = RandomizedSearchCV(
     n_iter=n_iter,
     cv=tscv,
     scoring='balanced_accuracy',
-    n_jobs=4,
+    n_jobs=-1,
     verbose=2
 )
 
