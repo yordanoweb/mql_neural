@@ -15,28 +15,28 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 input group "===== AI Configuration ====="
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
 input string     InpModelFile  = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Informational only
-input float      InpMinConf    = 0.55;
-input int        InpWindow     = 20;
-input int        InpStartHour  = 0;
-input int        InpEndHour    = 23;
-input bool       InpReverse    = false; // BUY is SELL and SELL is BUY
+input float      InpMinConf    = 0.55;       // Minimum Confidence
+input int        InpWindow     = 20;         // Window Size (--window)
+input int        InpStartHour  = 0;          // Start Hour
+input int        InpEndHour    = 23;         // End Hour
+input bool       InpReverse    = false;      // BUY is SELL and SELL is BUY
 
 input group "===== EMA Filter ====="
-input int        InpEMAPeriod  = 9;
-input bool       InpEmaGate    = true;
+input int        InpEMAPeriod  = 9;          // EMA Period to filter entry
+input bool       InpEmaGate    = true;       // EMA Gate to filter entry
 
 input group "===== Risk Management ====="
-input int        InpATRPeriod  = 14;
-input double     InpLot        = 1.0;
-input int        InpMagic      = 8812772188;
-input int        InpATRSL      = 6;
-input double     InpMultiplier = 1.1;
+input int        InpATRPeriod  = 14;         // ATR Period (--atr_period)
+input double     InpLot        = 1.0;        // Order Lot Size
+input int        InpMagic      = 8812772188; // Magic Number
+input int        InpATRSL      = 6;          // ATR Period for SL
+input double     InpMultiplier = 1.1;        // ATR Multiplier for TP
 
 input group "===== Feature Parameters ====="
-input int        InpStochPeriod = 14;
-input int        InpStochK      = 3;
-input int        InpStochD      = 3;
-input int        InpVolWindow   = 20;
+input int        InpStochPeriod = 10;        // Stoch Period (--stoch_window)
+input int        InpStochK      = 3;         // Stoch K Period
+input int        InpStochD      = 3;         // Stoch D Period
+input int        InpVolWindow   = 10;        // Volume Window (--vol_window)
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
