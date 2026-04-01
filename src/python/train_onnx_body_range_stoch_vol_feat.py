@@ -73,13 +73,13 @@ atr_indicator = ta.volatility.AverageTrueRange(
 )
 df['atr'] = atr_indicator.average_true_range()
 
-stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14)
+stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=window)
 
 # Calculate features normalized by ATR
 df['feat_body'] = (df['close'] - df['open']) / df['atr']
 df['feat_range'] = (df['high'] - df['low']) / df['atr']
 df['feat_stoch'] = (stoch.stoch() - stoch.stoch_signal()) / 100.0
-df['feat_vol'] = df['tick_volume'] / df['tick_volume'].rolling(window=20).mean()
+df['feat_vol'] = df['tick_volume'] / df['tick_volume'].rolling(window=window).mean()
 
 # 2. GENERATE TARGET (Labeling based on future profit in ATR multiples)
 print(f"Generating target with future={colorize(str(future), Colors.MAGENTA)} and min_profit_atr={colorize(str(min_profit_atr), Colors.MAGENTA)}...")
