@@ -325,4 +325,4 @@ print(colorize("=" * 70, Colors.CYAN))
 
 end_time = time.time()
 print(colorize(f"\nTotal execution time: {int(end_time - start_time) // 60} minutes "
-               f"and {int(end_time - start_time) % 60} seconds", Colors.GREEN))
+               f"and {int(end_time - start_time) % 60} seconds\n\n", Colors.GREEN))
