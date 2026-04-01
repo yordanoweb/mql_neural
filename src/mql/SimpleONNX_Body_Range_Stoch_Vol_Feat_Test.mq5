@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\ndx100_rates_m5_w20_f5_atr6_minp0.5.onnx" as uchar ExtModel[];
+#resource "\\Files\\ndx100_m5_w20_f10_atr14_minp1.0.onnx" as uchar ExtModel[];
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
@@ -13,7 +13,7 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "AI Config"
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelFile  = "ndx100_rates_m5_w20_f5_atr6_minp0.5.onnx"; // Informational only
+input string     InpModelFile  = "ndx100_m5_w20_f10_atr14_minp1.0.onnx"; // Informational only
 input float      InpMinConf    = 0.55;
 input int        InpStartHour  = 0;
 input int        InpEndHour    = 23;
