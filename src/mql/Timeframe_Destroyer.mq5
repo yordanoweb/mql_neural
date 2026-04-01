@@ -35,6 +35,7 @@ long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
 const int FEATURES = 2;  // Only body and range
 datetime last_trade_time = 0;
+string program_name = MQLInfoString(MQL_PROGRAM_NAME);
 
 int OnInit()
 {
@@ -241,7 +242,7 @@ void OnTick()
          double tp = price + tp_dist;
          
          if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, 
-            "AI_LONG " + DoubleToString(confidence*100, 1) + "%"))
+            program_name + " LONG " + DoubleToString(confidence*100, 1) + "%"))
          {
             Print(">>> LONG EXECUTED | Conf: ", confidence*100, "% | SL: ", sl_dist/_Point, " pts | TP: ", tp_dist/_Point, " pts");
             trade_executed = true;
@@ -258,7 +259,7 @@ void OnTick()
          double tp = price - tp_dist;
          
          if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, 
-            "AI_SHORT " + DoubleToString(confidence*100, 1) + "%"))
+            program_name + " SHORT " + DoubleToString(confidence*100, 1) + "%"))
          {
             Print(">>> SHORT EXECUTED | Conf: ", confidence*100, "% | SL: ", sl_dist/_Point, " pts | TP: ", tp_dist/_Point, " pts");
             trade_executed = true;
