@@ -14,7 +14,7 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "===== AI Configuration ====="
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelFile  = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Informational only
+input string     InpModelFile  = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Model File (In Tester, embed and recompile)
 input float      InpMinConf    = 0.55;       // Minimum Confidence
 input int        InpWindow     = 20;         // Window Size (--window)
 input int        InpStartHour  = 0;          // Start Hour
@@ -61,7 +61,14 @@ int OnInit()
    Print("=================================================================");
    Print("Features: ", FEATURES, " | Window: ", WINDOW_SIZE, " | Total inputs: ", WINDOW_SIZE * FEATURES);
    
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   if(MQLInfoInteger(MQL_TESTER)) {
+      Print("Running in Strategy Tester");
+      onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   } else {
+      Print("Running Live/Demo | Model: ", InpModelFile);
+      onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
+   }
+
    if(onnx_handle == INVALID_HANDLE)
      {
       Print("[ERROR] Cannot load ONNX model");
