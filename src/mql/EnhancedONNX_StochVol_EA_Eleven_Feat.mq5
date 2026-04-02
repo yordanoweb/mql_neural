@@ -653,7 +653,7 @@ bool CheckSellConsistency()
       // Convention: SELL signal represented as negative value and its magnitude = confidence
       if(!(g_signals[i] < 0 && MathAbs(g_signals[i]) > _consistency))
       {
-         Print("[Sell Consistency] Signal not consistent: ", g_signals[i]);
+         Print(_Symbol, " | [Sell Consistency] Signal not consistent: ", g_signals[i]);
          return false;
       }
      }
@@ -680,12 +680,17 @@ bool CheckBuyConsistency()
       // Convention: BUY signal represented as positive value and its magnitude = confidence
       if(!(g_signals[i] > 0 && g_signals[i] > _consistency))
       {
-         Print("[Buy Consistency] Signal not consistent: ", g_signals[i]);
+         Print(_Symbol, " | [Buy Consistency] Signal not consistent: ", g_signals[i]);
          return false;
       }
      }
 
    // If the 4 signals meet the condition, return true (open long)
+   Print(_Symbol, " | [Buy Consistency] Signal is consistent | [",
+         DoubleToString(g_signals[total - 4], 2), ", ", 
+         DoubleToString(g_signals[total - 3], 2), ", ", 
+         DoubleToString(g_signals[total - 2], 2), ", ", 
+         DoubleToString(g_signals[total - 1], 2), "]");
    return true;
   }
 //+------------------------------------------------------------------+
@@ -697,6 +702,7 @@ bool CheckBuyConsistency()
 void AddSignal(bool isBuy, double confidence)
   {
    double signalValue;
+   string signalDirection = isBuy ? "BUY" : "SELL";
 
    // Assign value according to signal type
    if(isBuy)
@@ -704,7 +710,7 @@ void AddSignal(bool isBuy, double confidence)
    else
       signalValue = -confidence;  // SELL negative
 
-   Print("[AddSignal] Signal added: ", signalValue);
+   Print(_Symbol, " | [AddSignal] ", signalDirection, " Signal added: ", signalValue);
 
    // Increase array size by 1
    int oldSize = ArraySize(g_signals);
