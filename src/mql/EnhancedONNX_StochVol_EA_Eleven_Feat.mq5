@@ -659,6 +659,11 @@ bool CheckSellConsistency()
      }
 
    // If the 4 signals meet the condition, return true (open short)
+   Print(_Symbol, " | [Sell Consistency] Signal is consistent | [",
+         DoubleToString(g_signals[total - 4], 2), ", ", 
+         DoubleToString(g_signals[total - 3], 2), ", ", 
+         DoubleToString(g_signals[total - 2], 2), ", ", 
+         DoubleToString(g_signals[total - 1], 2), "]");
    return true;
   }
 //+------------------------------------------------------------------+
@@ -687,10 +692,10 @@ bool CheckBuyConsistency()
 
    // If the 4 signals meet the condition, return true (open long)
    Print(_Symbol, " | [Buy Consistency] Signal is consistent | [",
-         g_signals[total - 4], ", ", 
-         g_signals[total - 3], ", ", 
-         g_signals[total - 2], ", ", 
-         g_signals[total - 1], "]");
+         DoubleToString(g_signals[total - 4], 2), ", ", 
+         DoubleToString(g_signals[total - 3], 2), ", ", 
+         DoubleToString(g_signals[total - 2], 2), ", ", 
+         DoubleToString(g_signals[total - 1], 2), "]");
    return true;
   }
 //+------------------------------------------------------------------+
