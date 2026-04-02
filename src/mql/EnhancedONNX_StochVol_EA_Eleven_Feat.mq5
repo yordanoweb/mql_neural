@@ -15,14 +15,16 @@ enum ENUM_TRAIL_MODE { TRAIL_FIXED_POINTS, TRAIL_ATR_BASED };
 
 //--- INPUTS
 input group "===== AI Configuration ====="
-input ENUM_LOGIC InpLogic           = LOGIC_MIRROR;
-input string     InpModelFile       = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Model File (In Tester, embed and recompile)
-input float      InpMinConf         = 0.55;       // Minimum Confidence
-input int        InpWindow          = 20;         // Window Size (--window)
-input int        InpStartHour       = 0;          // Start Hour
-input int        InpEndHour         = 23;         // End Hour
-input bool       InpReverse         = false;      // BUY is SELL and SELL is BUY
-input int        InpInferenceSecs   = 60;         // Inference Interval (secs)
+input ENUM_LOGIC InpLogic                = LOGIC_MIRROR;
+input string     InpModelFile            = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Model File (In Tester, embed and recompile)
+input float      InpMinConf              = 0.55;    // Minimum Confidence
+input int        InpWindow               = 20;      // Window Size (--window)
+input int        InpStartHour            = 0;       // Start Hour
+input int        InpEndHour              = 23;      // End Hour
+input bool       InpReverse              = false;   // BUY is SELL and SELL is BUY
+input int        InpInferenceSecs        = 60;      // Inference Interval (secs)
+input bool       InpForceConsistency     = false;   // Force Confidence Consistency
+input double     InpConsistencyThreshold = 0.52;    // Consistency Threshold
 
 input group "===== EMA Filter ====="
 input int        InpEMAPeriod  = 9;          // EMA Period to filter entry
@@ -58,6 +60,7 @@ int      g_stoch_handle = INVALID_HANDLE;
 float  g_confidence = 0;
 string g_prediction_str = "WAITING...";
 bool   g_valid_time = false;
+float  g_signals[];
 
 // Inference timer tracking
 ulong g_last_inference_tick = 0;   // milliseconds timestamp of last inference
@@ -473,8 +476,12 @@ void RunInference()
    g_confidence = confidence;
    g_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
 
+   double _confidence = confidence * 100;
+   bool is_buy = (prediction_str == "BUY");
+   AddSignal(is_buy, _confidence);
+
    Print(_Symbol, " | Prediction: ", prediction_str, (InpReverse ? "(R)" : ""),
-         " | Confidence: ", DoubleToString(confidence * 100, 2), "%");
+         " | Confidence: ", DoubleToString(_confidence, 2), "%");
 
 // --- EXECUTION WITH FILTERS ---
    if(!PositionSelect(_Symbol) && g_valid_time && confidence >= InpMinConf)
@@ -490,6 +497,9 @@ void RunInference()
 
       if(is_sell)
         {
+         if(InpForceConsistency && !CheckSellConsistency())
+            return;
+
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          if(m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist,
                          "ElevenFeat SELL@" + DoubleToString(price, _Digits)))
@@ -502,6 +512,9 @@ void RunInference()
         }
       else
         {
+         if(InpForceConsistency && !CheckBuyConsistency())
+            return;
+
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          if(m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist,
                         "ElevenFeat BUY@" + DoubleToString(price, _Digits)))
@@ -626,4 +639,84 @@ void ManageTrailingStop()
       }
    }
 }
+//+------------------------------------------------------------------+
+//| Check Sell Consistency
+//| 4 SELL signals in a row with confidence > 52% -> open short (true).
+//+------------------------------------------------------------------+
+bool CheckSellConsistency()
+  {
+   double _consistency = InpConsistencyThreshold * 100;
+
+   // We need at least 4 signals to evaluate
+   if(ArraySize(g_signals) < 4) return false;
+
+   // Check the last 4 signals
+   int total = ArraySize(g_signals);
+   for(int i = total - 4; i < total; i++)
+     {
+      // If any signal is not SELL or its confidence <= 52%, there is no consistency
+      // Convention: SELL signal represented as negative value and its magnitude = confidence
+      if(!(g_signals[i] < 0 && MathAbs(g_signals[i]) > _consistency))
+      {
+         Print("[Sell Consistency] Signal not consistent: ", g_signals[i]);
+         return false;
+      }
+     }
+
+   // If the 4 signals meet the condition, return true (open short)
+   return true;
+  }
+//+------------------------------------------------------------------+
+//| Check Buy Consistency
+//| 4 BUY signals in a row with confidence > 52% -> open long (true).
+//+------------------------------------------------------------------+
+bool CheckBuyConsistency()
+  {
+   double _consistency = InpConsistencyThreshold * 100;
+
+   // We need at least 4 signals to evaluate
+   if(ArraySize(g_signals) < 4) return false;
+
+   // Check the last 4 signals
+   int total = ArraySize(g_signals);
+   for(int i = total - 4; i < total; i++)
+     {
+      // If any signal is not BUY or its confidence <= 52%, there is no consistency
+      // Convention: BUY signal represented as positive value and its magnitude = confidence
+      if(!(g_signals[i] > 0 && g_signals[i] > _consistency))
+      {
+         Print("[Buy Consistency] Signal not consistent: ", g_signals[i]);
+         return false;
+      }
+     }
+
+   // If the 4 signals meet the condition, return true (open long)
+   return true;
+  }
+//+------------------------------------------------------------------+
+//| Add new signal to g_signals                                      |
+//| Convention:                                                      |
+//|   - BUY -> positive value = confidence                           |
+//|   - SELL -> negative value = -confidence                         |
+//+------------------------------------------------------------------+
+void AddSignal(bool isBuy, double confidence)
+  {
+   double signalValue;
+
+   // Assign value according to signal type
+   if(isBuy)
+      signalValue = confidence;   // BUY positive
+   else
+      signalValue = -confidence;  // SELL negative
+
+   Print("[AddSignal] Signal added: ", signalValue);
+
+   // Increase array size by 1
+   int oldSize = ArraySize(g_signals);
+   ArrayResize(g_signals, oldSize + 1);
+
+   // Save the new signal in the last position
+   g_signals[oldSize] = signalValue;
+  }
+
 //+------------------------------------------------------------------+
