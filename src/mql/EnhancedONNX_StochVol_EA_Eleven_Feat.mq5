@@ -492,7 +492,7 @@ void RunInference()
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          if(m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist,
-                         program_name + " SELL@" + DoubleToString(price, _Digits)))
+                         "ElevenFeat SELL@" + DoubleToString(price, _Digits)))
            {
             // Reset trailing info for new position
             g_trail_info.breakeven_applied = false;
@@ -504,7 +504,7 @@ void RunInference()
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          if(m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist,
-                        program_name + " BUY@" + DoubleToString(price, _Digits)))
+                        "ElevenFeat BUY@" + DoubleToString(price, _Digits)))
            {
             // Reset trailing info for new position
             g_trail_info.breakeven_applied = false;
