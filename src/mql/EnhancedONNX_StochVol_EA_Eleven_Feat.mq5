@@ -21,7 +21,6 @@ input float      InpMinConf              = 0.55;    // Minimum Confidence
 input int        InpWindow               = 20;      // Window Size (--window)
 input int        InpStartHour            = 0;       // Start Hour
 input int        InpEndHour              = 23;      // End Hour
-input bool       InpReverse              = false;   // BUY is SELL and SELL is BUY
 input int        InpInferenceSecs        = 60;      // Inference Interval (secs)
 input bool       InpForceConsistency     = false;   // Force Confidence Consistency
 input double     InpConsistencyThreshold = 0.52;    // Consistency Threshold
@@ -467,21 +466,17 @@ void RunInference()
 
    long  prediction = output_label[0];
 
-   if(InpReverse)
-      prediction = 1 - prediction;
-
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
    string prediction_str = (prediction == 1) ? "SELL" : "BUY";
 
    g_confidence = confidence;
-   g_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
+   g_prediction_str = prediction_str;
 
    double _confidence = confidence * 100;
    bool is_buy = (prediction_str == "BUY");
    AddSignal(is_buy, _confidence);
 
-   Print(_Symbol, " | Prediction: ", prediction_str, (InpReverse ? "(R)" : ""),
-         " | Confidence: ", DoubleToString(_confidence, 2), "%");
+   Print(_Symbol, " | Prediction: ", prediction_str, " | Confidence: ", DoubleToString(_confidence, 2), "%");
 
 // --- EXECUTION WITH FILTERS ---
    if(!PositionSelect(_Symbol) && g_valid_time && confidence >= InpMinConf)
