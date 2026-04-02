@@ -36,14 +36,9 @@ input int        InpATRSL      = 6;          // ATR Period for SL
 input double     InpMultiplier = 1.1;        // ATR Multiplier for TP
 
 input group "===== TRAILING STOP Configuration ====="
-input bool       InpUseTrailing      = true;               // Enable Trailing Stop
-input ENUM_TRAIL_MODE InpTrailMode   = TRAIL_ATR_BASED;    // Trailing Mode
-input int        InpTrailStart       = 5000;               // Trailing After Points (100pts=$1, so 5000pts=$50)
-input int        InpTrailDistance    = 3000;               // Distance in Points (3000pts=$30)
-input int        InpTrailStep        = 500;                // Minimum Step to Move SL (500pts=$5)
-input bool       InpUseBreakeven     = true;               // Move to Breakeven
-input int        InpBreakevenStart   = 3000;               // Breakeven After Profit (3000pts=$30)
-input int        InpBreakevenOffset  = 200;                // Breakeven Offset (200pts=$2)
+input bool       InpUseTrailing      = true;             // Enable Trailing Stop
+input int        InpTrailTrigger     = 2000;             // Points to start trailing
+input int        InpTrailDistance    = 500;              // Distance from current price
 
 input group "===== Feature Parameters ====="
 input int        InpStochPeriod = 10;        // Stoch Period (--stoch_window)
@@ -91,24 +86,8 @@ int OnInit()
    if(InpUseTrailing)
      {
       Print("Trailing Stop: ENABLED");
-      Print("  Mode: ", (InpTrailMode == TRAIL_FIXED_POINTS ? "Fixed Points" : "ATR Based"));
-      Print("  Start After: ", InpTrailStart, " points");
+      Print("  Start After: ", InpTrailTrigger, " points");
       Print("  Trail Distance: ", InpTrailDistance, " points");
-      Print("  Trail Step: ", InpTrailStep, " points");
-
-      // Calculate approximate dollar values for logging
-      double point_value = _Point;
-      double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      double dollar_per_point = (tick_size > 0) ? (tick_value / tick_size) * point_value : 0;
-
-      Print("  Point Value: ", point_value, " | ~$", DoubleToString(dollar_per_point * InpTrailStart, 2), " to start trailing");
-      Print("  Trail Distance: ~$", DoubleToString(dollar_per_point * InpTrailDistance, 2));
-
-      if(InpUseBreakeven)
-         Print("  Breakeven: Start at ", InpBreakevenStart, " pts (~$",
-               DoubleToString(dollar_per_point * InpBreakevenStart, 2),
-               "), Offset ", InpBreakevenOffset, " pts");
      }
    else
       Print("Trailing Stop: DISABLED");
@@ -597,124 +576,54 @@ double GetPositionProfitPoints()
 //| Manage Trailing Stop                                             |
 //+------------------------------------------------------------------+
 void ManageTrailingStop()
-  {
+{
    if(!PositionSelect(_Symbol))
       return;
 
-   ulong ticket = PositionGetInteger(POSITION_TICKET);
-   ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
    double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
    double current_sl = PositionGetDouble(POSITION_SL);
-   double current_tp = PositionGetDouble(POSITION_TP);
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
-   double current_price;
-   if(pos_type == POSITION_TYPE_BUY)
-      current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   else
-      current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   long type = PositionGetInteger(POSITION_TYPE);
 
-// Calculate profit in points
-   double profit_points = GetPositionProfitPoints();
+   double profit_points;
+   double new_sl;
 
-// Calculate trailing distance based on mode
-   double trail_distance_price;
-   if(InpTrailMode == TRAIL_ATR_BASED)
-     {
-      int atr_handle = iATR(_Symbol, _Period, InpATRSL);
-      double atr_buffer[];
-      if(CopyBuffer(atr_handle, 0, 0, 1, atr_buffer) == 1)
-        {
-         // InpTrailDistance is multiplier x 10, so divide by 10
-         trail_distance_price = atr_buffer[0] * (InpTrailDistance / 10.0);
-        }
-      else
-        {
-         trail_distance_price = InpTrailDistance * _Point;
-        }
-      IndicatorRelease(atr_handle);
-     }
-   else
-     {
-      trail_distance_price = InpTrailDistance * _Point;
-     }
+   // BUY POSITION
+   if(type == POSITION_TYPE_BUY)
+   {
+      profit_points = (price - open_price) / _Point;
 
-   double trail_start_price = InpTrailStart * _Point;
-   double trail_step_price = InpTrailStep * _Point;
+      if(profit_points >= InpTrailTrigger)
+      {
+         new_sl = price - InpTrailDistance * _Point;
 
-// BREAKEVEN LOGIC
-   if(InpUseBreakeven && !g_trail_info.breakeven_applied && profit_points >= InpBreakevenStart)
-     {
-      double new_sl;
-      if(pos_type == POSITION_TYPE_BUY)
-         new_sl = open_price + (InpBreakevenOffset * _Point);
-      else
-         new_sl = open_price - (InpBreakevenOffset * _Point);
+         // Move SL only forward
+         if(new_sl > current_sl)
+         {
+            m_trade.PositionModify(_Symbol, new_sl, 0);
+            Print("[Simple Trail BUY] SL -> ", new_sl);
+         }
+      }
+   }
 
-      // Check if new SL is better than current
-      bool should_modify = false;
-      if(pos_type == POSITION_TYPE_BUY && (current_sl == 0 || new_sl > current_sl))
-         should_modify = true;
-      else
-         if(pos_type == POSITION_TYPE_SELL && (current_sl == 0 || new_sl < current_sl))
-            should_modify = true;
+   // SELL POSITION
+   if(type == POSITION_TYPE_SELL)
+   {
+      profit_points = (open_price - ask) / _Point;
 
-      if(should_modify)
-        {
-         new_sl = NormalizeDouble(new_sl, _Digits);
-         if(m_trade.PositionModify(ticket, new_sl, current_tp))
-           {
-            g_trail_info.breakeven_applied = true;
-            Print("[Breakeven] SL moved to breakeven + ", InpBreakevenOffset, " pts at ", new_sl);
-           }
-         return; // Exit after breakeven modification
-        }
-     }
+      if(profit_points >= InpTrailTrigger)
+      {
+         new_sl = ask + InpTrailDistance * _Point;
 
-// TRAILING STOP LOGIC
-   if(profit_points >= InpTrailStart)
-     {
-      double new_sl = 0;
-
-      if(pos_type == POSITION_TYPE_BUY)
-        {
-         // Update highest price seen
-         if(current_price > g_trail_info.highest_price || g_trail_info.highest_price == 0)
-            g_trail_info.highest_price = current_price;
-
-         // Calculate new SL based on highest price
-         new_sl = g_trail_info.highest_price - trail_distance_price;
-
-         // Check if new SL is better than current (higher)
-         if(current_sl == 0 || (new_sl > current_sl + trail_step_price))
-           {
-            new_sl = NormalizeDouble(new_sl, _Digits);
-            if(m_trade.PositionModify(ticket, new_sl, current_tp))
-              {
-               Print("[Trailing BUY] SL moved from ", current_sl, " to ", new_sl,
-                     " | High: ", g_trail_info.highest_price, " | Profit: ", profit_points, " pts");
-              }
-           }
-        }
-      else // SELL position
-        {
-         // Update lowest price seen
-         if(current_price < g_trail_info.lowest_price || g_trail_info.lowest_price == 0)
-            g_trail_info.lowest_price = current_price;
-
-         // Calculate new SL based on lowest price
-         new_sl = g_trail_info.lowest_price + trail_distance_price;
-
-         // Check if new SL is better than current (lower)
-         if(current_sl == 0 || (new_sl < current_sl - trail_step_price))
-           {
-            new_sl = NormalizeDouble(new_sl, _Digits);
-            if(m_trade.PositionModify(ticket, new_sl, current_tp))
-              {
-               Print("[Trailing SELL] SL moved from ", current_sl, " to ", new_sl,
-                     " | Low: ", g_trail_info.lowest_price, " | Profit: ", profit_points, " pts");
-              }
-           }
-        }
-     }
-  }
+         // Move SL only forward
+         if(current_sl == 0 || new_sl < current_sl)
+         {
+            m_trade.PositionModify(_Symbol, new_sl, 0);
+            Print("[Simple Trail SELL] SL -> ", new_sl);
+         }
+      }
+   }
+}
 //+------------------------------------------------------------------+
