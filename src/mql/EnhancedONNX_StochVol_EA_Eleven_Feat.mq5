@@ -1,6 +1,7 @@
 //+------------------------------------------------------------------+
 //|                              EnhancedONNX_StochVol_EA.mq5        |
 //|                        Enhanced Stochastic & Volume Features     |
+//|                        WITH TRAILING STOP SYSTEM                 |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -10,6 +11,7 @@
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
+enum ENUM_TRAIL_MODE { TRAIL_FIXED_POINTS, TRAIL_ATR_BASED };
 
 //--- INPUTS
 input group "===== AI Configuration ====="
@@ -32,6 +34,16 @@ input int        InpMagic      = 8812772188; // Magic Number
 input int        InpATRSL      = 6;          // ATR Period for SL
 input double     InpMultiplier = 1.1;        // ATR Multiplier for TP
 
+input group "===== TRAILING STOP Configuration ====="
+input bool       InpUseTrailing      = true;               // Enable Trailing Stop
+input ENUM_TRAIL_MODE InpTrailMode   = TRAIL_ATR_BASED;    // Trailing Mode
+input int        InpTrailStart       = 5000;               // Trailing After Points (100pts=$1, so 5000pts=$50)
+input int        InpTrailDistance    = 3000;               // Distance in Points (3000pts=$30)
+input int        InpTrailStep        = 500;                // Minimum Step to Move SL (500pts=$5)
+input bool       InpUseBreakeven     = true;               // Move to Breakeven
+input int        InpBreakevenStart   = 3000;               // Breakeven After Profit (3000pts=$30)
+input int        InpBreakevenOffset  = 200;                // Breakeven Offset (200pts=$2)
+
 input group "===== Feature Parameters ====="
 input int        InpStochPeriod = 10;        // Stoch Period (--stoch_window)
 input int        InpStochK      = 3;         // Stoch K Period
@@ -51,6 +63,15 @@ float  g_confidence = 0;
 string g_prediction_str = "WAITING...";
 bool   g_valid_time = false;
 
+// Trailing stop tracking
+struct TrailInfo
+  {
+   bool     breakeven_applied;
+   double   highest_price;  // For buy positions
+   double   lowest_price;   // For sell positions
+  };
+TrailInfo g_trail_info;
+
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
@@ -58,9 +79,35 @@ int OnInit()
   {
    Print("=================================================================");
    Print("  ENHANCED ONNX EA - Advanced Stochastic & Volume Features");
+   Print("  WITH TRAILING STOP SYSTEM");
    Print("=================================================================");
    Print("Symbol: ", _Symbol, " | Period: ", _Period);
    Print("Features: ", FEATURES, " | Window: ", WINDOW_SIZE, " | Total inputs: ", WINDOW_SIZE * FEATURES);
+   
+   if(InpUseTrailing)
+     {
+      Print("Trailing Stop: ENABLED");
+      Print("  Mode: ", (InpTrailMode == TRAIL_FIXED_POINTS ? "Fixed Points" : "ATR Based"));
+      Print("  Start After: ", InpTrailStart, " points");
+      Print("  Trail Distance: ", InpTrailDistance, " points");
+      Print("  Trail Step: ", InpTrailStep, " points");
+      
+      // Calculate approximate dollar values for logging
+      double point_value = _Point;
+      double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+      double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+      double dollar_per_point = (tick_size > 0) ? (tick_value / tick_size) * point_value : 0;
+      
+      Print("  Point Value: ", point_value, " | ~$", DoubleToString(dollar_per_point * InpTrailStart, 2), " to start trailing");
+      Print("  Trail Distance: ~$", DoubleToString(dollar_per_point * InpTrailDistance, 2));
+      
+      if(InpUseBreakeven)
+         Print("  Breakeven: Start at ", InpBreakevenStart, " pts (~$", 
+               DoubleToString(dollar_per_point * InpBreakevenStart, 2), 
+               "), Offset ", InpBreakevenOffset, " pts");
+     }
+   else
+      Print("Trailing Stop: DISABLED");
 
    if(MQLInfoInteger(MQL_TESTER)) {
       Print("Running in Strategy Tester");
@@ -103,6 +150,11 @@ int OnInit()
      }
 
    m_trade.SetExpertMagicNumber(InpMagic);
+   
+   // Initialize trailing info
+   g_trail_info.breakeven_applied = false;
+   g_trail_info.highest_price = 0;
+   g_trail_info.lowest_price = 0;
 
    EventSetTimer(60);
    OnTimer();
@@ -133,12 +185,21 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
+   
+   string trail_status = InpUseTrailing ? "ACTIVE" : "OFF";
+   if(InpUseTrailing && PositionSelect(_Symbol))
+     {
+      double profit_pts = GetPositionProfitPoints();
+      trail_status = "Active (" + DoubleToString(profit_pts, 0) + " pts profit)";
+     }
+   
    Comment("\n\n=== ENHANCED AI TRADING SYSTEM ===",
            "\nModel: ", InpModelFile,
            "\nFeatures: ", FEATURES, " x ", WINDOW_SIZE, " bars = ", FEATURES * WINDOW_SIZE,
            "\nPrediction: ", g_prediction_str,
            "\nConfidence: ", DoubleToString(g_confidence*100, 2), "% / ", DoubleToString(InpMinConf*100, 2), "%",
            "\nSchedule: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
+           "\nTrailing Stop: ", trail_status,
            "\nSession P/L: $", DoubleToString(balance_diff, 2));
   }
 
@@ -204,70 +265,63 @@ bool CalculateVolumeFeatures(const int idx,
    // Feature 1: Volume ratio
    vol_ratio = (float)((double)volumes[idx] / (vol_ma > 0 ? vol_ma : 1.0));
    
-   // Feature 2: Volume momentum (EMA fast vs slow)
-   double vol_ema_fast = 0, vol_ema_slow = 0;
-   double alpha_fast = 2.0 / (5.0 + 1.0);
-   double alpha_slow = 2.0 / (20.0 + 1.0);
-   
-   vol_ema_fast = (double)volumes[idx];
-   vol_ema_slow = (double)volumes[idx];
-   
-   for(int i = 1; i < MathMin(20, ArraySize(volumes) - idx); i++)
-     {
-      vol_ema_fast = alpha_fast * (double)volumes[idx + i] + (1 - alpha_fast) * vol_ema_fast;
-      vol_ema_slow = alpha_slow * (double)volumes[idx + i] + (1 - alpha_slow) * vol_ema_slow;
-     }
-   
-   vol_momentum = (float)((vol_ema_fast - vol_ema_slow) / (vol_ema_slow > 0 ? vol_ema_slow : 1.0));
+   // Feature 2: Volume momentum (current vs previous)
+   if(idx < ArraySize(volumes) - 1)
+      vol_momentum = (float)(((double)volumes[idx] - (double)volumes[idx + 1]) / 
+                             ((double)volumes[idx + 1] > 0 ? (double)volumes[idx + 1] : 1.0));
+   else
+      vol_momentum = 0.0;
    
    // Feature 3: Volume-Price divergence
-   if(idx < ArraySize(close) - 1 && idx < ArraySize(volumes) - 1)
-     {
-      double price_change = MathAbs((close[idx] - close[idx + 1]) / close[idx + 1]);
-      double vol_change = MathAbs((double)(volumes[idx] - volumes[idx + 1]) / (double)volumes[idx + 1]);
-      vol_price_div = (float)(vol_change - price_change);
-     }
-   else
-      vol_price_div = 0.0;
+   double price_change = 0;
+   if(idx < ArraySize(close) - 1)
+      price_change = close[idx] - close[idx + 1];
    
-   // Feature 4: Volume percentile
+   double vol_change = (double)volumes[idx] - (double)volumes[idx + 1];
+   vol_price_div = (float)((price_change * vol_change) < 0 ? 1.0 : 0.0);
+   
+   // Feature 4: Volume percentile rank
    int count_below = 0;
    for(int i = 0; i < vol_window; i++)
      {
       if(volumes[idx + i] < volumes[idx])
          count_below++;
      }
-   double percentile = (double)count_below / vol_window;
-   vol_percentile = (float)((percentile - 0.5) * 2.0);
+   vol_percentile = (float)count_below / (float)vol_window;
    
-   // Feature 5: Z-score
-   double vol_std = 0;
+   // Feature 5: Volume Z-score
+   double vol_stddev = 0;
    for(int i = 0; i < vol_window; i++)
      {
       double diff = (double)volumes[idx + i] - vol_ma;
-      vol_std += diff * diff;
+      vol_stddev += diff * diff;
      }
-   vol_std = MathSqrt(vol_std / vol_window);
+   vol_stddev = MathSqrt(vol_stddev / vol_window);
    
-   double zscore = ((double)volumes[idx] - vol_ma) / (vol_std > 0 ? vol_std : 1.0);
-   zscore = MathMax(-3.0, MathMin(3.0, zscore)); // Clip to [-3, 3]
-   vol_zscore = (float)(zscore / 3.0);
+   if(vol_stddev > 0)
+      vol_zscore = (float)(((double)volumes[idx] - vol_ma) / vol_stddev);
+   else
+      vol_zscore = 0.0;
    
    return true;
   }
 
 //+------------------------------------------------------------------+
-//| Expert tick function                                             |
+//| OnTick function                                                  |
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   // --- TIME FILTER ---
+   // Check and manage trailing stop
+   if(InpUseTrailing)
+      ManageTrailingStop();
+   
+   // Time filter
    MqlDateTime dt;
    TimeCurrent(dt);
    bool valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
    g_valid_time = valid_time;
 
-   // --- BAR CONTROL ---
+   // Check new bar
    static datetime last_bar = 0;
    datetime current_bar = iTime(_Symbol, _Period, 0);
    if(current_bar == last_bar)
@@ -429,14 +483,26 @@ void OnTick()
       if(is_sell)
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, 
-                     program_name + " SELL@" + DoubleToString(price, _Digits));
+         if(m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, 
+                     program_name + " SELL@" + DoubleToString(price, _Digits)))
+           {
+            // Reset trailing info for new position
+            g_trail_info.breakeven_applied = false;
+            g_trail_info.highest_price = 0;
+            g_trail_info.lowest_price = price;
+           }
         }
       else
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, 
-                    program_name + " BUY@" + DoubleToString(price, _Digits));
+         if(m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, 
+                    program_name + " BUY@" + DoubleToString(price, _Digits)))
+           {
+            // Reset trailing info for new position
+            g_trail_info.breakeven_applied = false;
+            g_trail_info.highest_price = price;
+            g_trail_info.lowest_price = 0;
+           }
         }
      }
   }
@@ -472,5 +538,153 @@ bool EMAGateAllows(bool is_sell)
      }
    Print("[EMA Gate] SELL blocked (Bid=", bid, " >= EMA=", ema_value, ")");
    return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Get position profit in points                                    |
+//+------------------------------------------------------------------+
+double GetPositionProfitPoints()
+  {
+   if(!PositionSelect(_Symbol))
+      return 0;
+   
+   double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+   double current_price;
+   ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   
+   if(pos_type == POSITION_TYPE_BUY)
+      current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   else
+      current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   double profit_price = (pos_type == POSITION_TYPE_BUY) ? 
+                         (current_price - open_price) : 
+                         (open_price - current_price);
+   
+   return profit_price / _Point;
+  }
+
+//+------------------------------------------------------------------+
+//| Manage Trailing Stop                                             |
+//+------------------------------------------------------------------+
+void ManageTrailingStop()
+  {
+   if(!PositionSelect(_Symbol))
+      return;
+   
+   ulong ticket = PositionGetInteger(POSITION_TICKET);
+   ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+   double current_sl = PositionGetDouble(POSITION_SL);
+   double current_tp = PositionGetDouble(POSITION_TP);
+   
+   double current_price;
+   if(pos_type == POSITION_TYPE_BUY)
+      current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   else
+      current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   
+   // Calculate profit in points
+   double profit_points = GetPositionProfitPoints();
+   
+   // Calculate trailing distance based on mode
+   double trail_distance_price;
+   if(InpTrailMode == TRAIL_ATR_BASED)
+     {
+      int atr_handle = iATR(_Symbol, _Period, InpATRSL);
+      double atr_buffer[];
+      if(CopyBuffer(atr_handle, 0, 0, 1, atr_buffer) == 1)
+        {
+         // InpTrailDistance is multiplier x 10, so divide by 10
+         trail_distance_price = atr_buffer[0] * (InpTrailDistance / 10.0);
+        }
+      else
+        {
+         trail_distance_price = InpTrailDistance * _Point;
+        }
+      IndicatorRelease(atr_handle);
+     }
+   else
+     {
+      trail_distance_price = InpTrailDistance * _Point;
+     }
+   
+   double trail_start_price = InpTrailStart * _Point;
+   double trail_step_price = InpTrailStep * _Point;
+   
+   // BREAKEVEN LOGIC
+   if(InpUseBreakeven && !g_trail_info.breakeven_applied && profit_points >= InpBreakevenStart)
+     {
+      double new_sl;
+      if(pos_type == POSITION_TYPE_BUY)
+         new_sl = open_price + (InpBreakevenOffset * _Point);
+      else
+         new_sl = open_price - (InpBreakevenOffset * _Point);
+      
+      // Check if new SL is better than current
+      bool should_modify = false;
+      if(pos_type == POSITION_TYPE_BUY && (current_sl == 0 || new_sl > current_sl))
+         should_modify = true;
+      else if(pos_type == POSITION_TYPE_SELL && (current_sl == 0 || new_sl < current_sl))
+         should_modify = true;
+      
+      if(should_modify)
+        {
+         new_sl = NormalizeDouble(new_sl, _Digits);
+         if(m_trade.PositionModify(ticket, new_sl, current_tp))
+           {
+            g_trail_info.breakeven_applied = true;
+            Print("[Breakeven] SL moved to breakeven + ", InpBreakevenOffset, " pts at ", new_sl);
+           }
+         return; // Exit after breakeven modification
+        }
+     }
+   
+   // TRAILING STOP LOGIC
+   if(profit_points >= InpTrailStart)
+     {
+      double new_sl = 0;
+      
+      if(pos_type == POSITION_TYPE_BUY)
+        {
+         // Update highest price seen
+         if(current_price > g_trail_info.highest_price || g_trail_info.highest_price == 0)
+            g_trail_info.highest_price = current_price;
+         
+         // Calculate new SL based on highest price
+         new_sl = g_trail_info.highest_price - trail_distance_price;
+         
+         // Check if new SL is better than current (higher)
+         if(current_sl == 0 || (new_sl > current_sl + trail_step_price))
+           {
+            new_sl = NormalizeDouble(new_sl, _Digits);
+            if(m_trade.PositionModify(ticket, new_sl, current_tp))
+              {
+               Print("[Trailing BUY] SL moved from ", current_sl, " to ", new_sl, 
+                     " | High: ", g_trail_info.highest_price, " | Profit: ", profit_points, " pts");
+              }
+           }
+        }
+      else // SELL position
+        {
+         // Update lowest price seen
+         if(current_price < g_trail_info.lowest_price || g_trail_info.lowest_price == 0)
+            g_trail_info.lowest_price = current_price;
+         
+         // Calculate new SL based on lowest price
+         new_sl = g_trail_info.lowest_price + trail_distance_price;
+         
+         // Check if new SL is better than current (lower)
+         if(current_sl == 0 || (new_sl < current_sl - trail_step_price))
+           {
+            new_sl = NormalizeDouble(new_sl, _Digits);
+            if(m_trade.PositionModify(ticket, new_sl, current_tp))
+              {
+               Print("[Trailing SELL] SL moved from ", current_sl, " to ", new_sl,
+                     " | Low: ", g_trail_info.lowest_price, " | Profit: ", profit_points, " pts");
+              }
+           }
+        }
+     }
   }
 //+------------------------------------------------------------------+
