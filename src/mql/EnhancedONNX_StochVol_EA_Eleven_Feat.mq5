@@ -15,13 +15,14 @@ enum ENUM_TRAIL_MODE { TRAIL_FIXED_POINTS, TRAIL_ATR_BASED };
 
 //--- INPUTS
 input group "===== AI Configuration ====="
-input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
-input string     InpModelFile  = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Model File (In Tester, embed and recompile)
-input float      InpMinConf    = 0.55;       // Minimum Confidence
-input int        InpWindow     = 20;         // Window Size (--window)
-input int        InpStartHour  = 0;          // Start Hour
-input int        InpEndHour    = 23;         // End Hour
-input bool       InpReverse    = false;      // BUY is SELL and SELL is BUY
+input ENUM_LOGIC InpLogic           = LOGIC_MIRROR;
+input string     InpModelFile       = "sp500_m5_enh_w20_f10_atr14_minp0.5.onnx"; // Model File (In Tester, embed and recompile)
+input float      InpMinConf         = 0.55;       // Minimum Confidence
+input int        InpWindow          = 20;         // Window Size (--window)
+input int        InpStartHour       = 0;          // Start Hour
+input int        InpEndHour         = 23;         // End Hour
+input bool       InpReverse         = false;      // BUY is SELL and SELL is BUY
+input int        InpInferenceSecs   = 60;         // Inference Interval (secs)
 
 input group "===== EMA Filter ====="
 input int        InpEMAPeriod  = 9;          // EMA Period to filter entry
@@ -63,12 +64,15 @@ float  g_confidence = 0;
 string g_prediction_str = "WAITING...";
 bool   g_valid_time = false;
 
+// Inference timer tracking
+ulong g_last_inference_tick = 0;   // milliseconds timestamp of last inference
+
 // Trailing stop tracking
 struct TrailInfo
   {
-   bool     breakeven_applied;
-   double   highest_price;  // For buy positions
-   double   lowest_price;   // For sell positions
+   bool              breakeven_applied;
+   double            highest_price;  // For buy positions
+   double            lowest_price;   // For sell positions
   };
 TrailInfo g_trail_info;
 
@@ -83,7 +87,7 @@ int OnInit()
    Print("=================================================================");
    Print("Symbol: ", _Symbol, " | Period: ", _Period);
    Print("Features: ", FEATURES, " | Window: ", WINDOW_SIZE, " | Total inputs: ", WINDOW_SIZE * FEATURES);
-   
+
    if(InpUseTrailing)
      {
       Print("Trailing Stop: ENABLED");
@@ -91,31 +95,34 @@ int OnInit()
       Print("  Start After: ", InpTrailStart, " points");
       Print("  Trail Distance: ", InpTrailDistance, " points");
       Print("  Trail Step: ", InpTrailStep, " points");
-      
+
       // Calculate approximate dollar values for logging
       double point_value = _Point;
       double tick_value = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
       double tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
       double dollar_per_point = (tick_size > 0) ? (tick_value / tick_size) * point_value : 0;
-      
+
       Print("  Point Value: ", point_value, " | ~$", DoubleToString(dollar_per_point * InpTrailStart, 2), " to start trailing");
       Print("  Trail Distance: ~$", DoubleToString(dollar_per_point * InpTrailDistance, 2));
-      
+
       if(InpUseBreakeven)
-         Print("  Breakeven: Start at ", InpBreakevenStart, " pts (~$", 
-               DoubleToString(dollar_per_point * InpBreakevenStart, 2), 
+         Print("  Breakeven: Start at ", InpBreakevenStart, " pts (~$",
+               DoubleToString(dollar_per_point * InpBreakevenStart, 2),
                "), Offset ", InpBreakevenOffset, " pts");
      }
    else
       Print("Trailing Stop: DISABLED");
 
-   if(MQLInfoInteger(MQL_TESTER)) {
+   if(MQLInfoInteger(MQL_TESTER))
+     {
       Print("Running in Strategy Tester");
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
-   } else {
+     }
+   else
+     {
       Print("Running Live/Demo | Model: ", InpModelFile);
       onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
-   }
+     }
 
    if(onnx_handle == INVALID_HANDLE)
      {
@@ -141,7 +148,7 @@ int OnInit()
       Print("[ERROR] Cannot create EMA indicator");
       return INIT_FAILED;
      }
-   
+
    g_stoch_handle = iStochastic(_Symbol, _Period, InpStochPeriod, InpStochK, InpStochD, MODE_SMA, STO_LOWHIGH);
    if(g_stoch_handle == INVALID_HANDLE)
      {
@@ -150,15 +157,16 @@ int OnInit()
      }
 
    m_trade.SetExpertMagicNumber(InpMagic);
-   
-   // Initialize trailing info
+
+// Initialize trailing info
    g_trail_info.breakeven_applied = false;
    g_trail_info.highest_price = 0;
    g_trail_info.lowest_price = 0;
 
    EventSetTimer(60);
+   g_last_inference_tick = 0; // Force immediate inference on first timer tick
    OnTimer();
-   
+
    Print("[SUCCESS] EA initialized successfully");
 
    return(INIT_SUCCEEDED);
@@ -184,20 +192,41 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+// --- INFERENCE TIMER CHECK ---
+   ulong now_ms = GetTickCount64();
+   ulong inference_interval_ms = (ulong)InpInferenceSecs * 1000;
+   bool run_inference = (g_last_inference_tick == 0 || (now_ms - g_last_inference_tick) >= inference_interval_ms);
+
+   if(run_inference)
+     {
+      // Time filter
+      MqlDateTime dt;
+      TimeCurrent(dt);
+      g_valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
+
+      RunInference();
+      g_last_inference_tick = now_ms;
+     }
+
+// --- HUD UPDATE (every 60s timer tick) ---
    double balance_diff = AccountInfoDouble(ACCOUNT_BALANCE) - session_start_balance;
-   
+
    string trail_status = InpUseTrailing ? "ACTIVE" : "OFF";
    if(InpUseTrailing && PositionSelect(_Symbol))
      {
       double profit_pts = GetPositionProfitPoints();
       trail_status = "Active (" + DoubleToString(profit_pts, 0) + " pts profit)";
      }
-   
+
+   ulong elapsed_since_inf = (g_last_inference_tick > 0) ? (GetTickCount64() - g_last_inference_tick) / 1000 : 0;
+   ulong next_inf_in = (elapsed_since_inf < (ulong)InpInferenceSecs) ? ((ulong)InpInferenceSecs - elapsed_since_inf) : 0;
+
    Comment("\n\n=== ENHANCED AI TRADING SYSTEM ===",
            "\nModel: ", InpModelFile,
            "\nFeatures: ", FEATURES, " x ", WINDOW_SIZE, " bars = ", FEATURES * WINDOW_SIZE,
            "\nPrediction: ", g_prediction_str,
            "\nConfidence: ", DoubleToString(g_confidence*100, 2), "% / ", DoubleToString(InpMinConf*100, 2), "%",
+           "\nNext Inference: ", next_inf_in, "s  (every ", InpInferenceSecs, "s)",
            "\nSchedule: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nTrailing Stop: ", trail_status,
            "\nSession P/L: $", DoubleToString(balance_diff, 2));
@@ -206,24 +235,24 @@ void OnTimer()
 //+------------------------------------------------------------------+
 //| Calculate enhanced stochastic features                           |
 //+------------------------------------------------------------------+
-bool CalculateStochasticFeatures(const int idx, 
-                                  const double &stoch_main[], 
-                                  const double &stoch_signal[],
-                                  float &momentum, 
-                                  float &position, 
-                                  float &velocity, 
-                                  float &divergence)
+bool CalculateStochasticFeatures(const int idx,
+                                 const double &stoch_main[],
+                                 const double &stoch_signal[],
+                                 float &momentum,
+                                 float &position,
+                                 float &velocity,
+                                 float &divergence)
   {
    double k = stoch_main[idx];
    double d = stoch_signal[idx];
-   
-   // Feature 1: Momentum (K - D) normalized to [-1, 1]
+
+// Feature 1: Momentum (K - D) normalized to [-1, 1]
    momentum = (float)((k - d) / 100.0);
-   
-   // Feature 2: Position - where is K in its range (centered around 50)
+
+// Feature 2: Position - where is K in its range (centered around 50)
    position = (float)((k - 50.0) / 50.0);
-   
-   // Feature 3: Velocity (rate of change of K)
+
+// Feature 3: Velocity (rate of change of K)
    if(idx < ArraySize(stoch_main) - 1)
      {
       double k_prev = stoch_main[idx + 1];
@@ -231,12 +260,12 @@ bool CalculateStochasticFeatures(const int idx,
      }
    else
       velocity = 0.0;
-   
-   // Feature 4: Divergence pressure zones
+
+// Feature 4: Divergence pressure zones
    float overbought_pressure = (k > 80) ? (float)(-(k - 80) / 20.0) : 0.0;
    float oversold_pressure = (k < 20) ? (float)((20 - k) / 20.0) : 0.0;
    divergence = overbought_pressure + oversold_pressure;
-   
+
    return true;
   }
 
@@ -244,43 +273,43 @@ bool CalculateStochasticFeatures(const int idx,
 //| Calculate enhanced volume features                               |
 //+------------------------------------------------------------------+
 bool CalculateVolumeFeatures(const int idx,
-                              const long &volumes[],
-                              const double &close[],
-                              const int vol_window,
-                              float &vol_ratio,
-                              float &vol_momentum,
-                              float &vol_price_div,
-                              float &vol_percentile,
-                              float &vol_zscore)
+                             const long &volumes[],
+                             const double &close[],
+                             const int vol_window,
+                             float &vol_ratio,
+                             float &vol_momentum,
+                             float &vol_price_div,
+                             float &vol_percentile,
+                             float &vol_zscore)
   {
    if(idx + vol_window >= ArraySize(volumes))
       return false;
-   
-   // Calculate volume MA
+
+// Calculate volume MA
    double vol_sum = 0;
    for(int i = 0; i < vol_window; i++)
       vol_sum += (double)volumes[idx + i];
    double vol_ma = vol_sum / vol_window;
-   
-   // Feature 1: Volume ratio
+
+// Feature 1: Volume ratio
    vol_ratio = (float)((double)volumes[idx] / (vol_ma > 0 ? vol_ma : 1.0));
-   
-   // Feature 2: Volume momentum (current vs previous)
+
+// Feature 2: Volume momentum (current vs previous)
    if(idx < ArraySize(volumes) - 1)
-      vol_momentum = (float)(((double)volumes[idx] - (double)volumes[idx + 1]) / 
+      vol_momentum = (float)(((double)volumes[idx] - (double)volumes[idx + 1]) /
                              ((double)volumes[idx + 1] > 0 ? (double)volumes[idx + 1] : 1.0));
    else
       vol_momentum = 0.0;
-   
-   // Feature 3: Volume-Price divergence
+
+// Feature 3: Volume-Price divergence
    double price_change = 0;
    if(idx < ArraySize(close) - 1)
       price_change = close[idx] - close[idx + 1];
-   
+
    double vol_change = (double)volumes[idx] - (double)volumes[idx + 1];
    vol_price_div = (float)((price_change * vol_change) < 0 ? 1.0 : 0.0);
-   
-   // Feature 4: Volume percentile rank
+
+// Feature 4: Volume percentile rank
    int count_below = 0;
    for(int i = 0; i < vol_window; i++)
      {
@@ -288,8 +317,8 @@ bool CalculateVolumeFeatures(const int idx,
          count_below++;
      }
    vol_percentile = (float)count_below / (float)vol_window;
-   
-   // Feature 5: Volume Z-score
+
+// Feature 5: Volume Z-score
    double vol_stddev = 0;
    for(int i = 0; i < vol_window; i++)
      {
@@ -297,12 +326,12 @@ bool CalculateVolumeFeatures(const int idx,
       vol_stddev += diff * diff;
      }
    vol_stddev = MathSqrt(vol_stddev / vol_window);
-   
+
    if(vol_stddev > 0)
       vol_zscore = (float)(((double)volumes[idx] - vol_ma) / vol_stddev);
    else
       vol_zscore = 0.0;
-   
+
    return true;
   }
 
@@ -311,24 +340,24 @@ bool CalculateVolumeFeatures(const int idx,
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   // Check and manage trailing stop
+// Trailing stop management runs on every tick for responsiveness
    if(InpUseTrailing)
       ManageTrailingStop();
-   
-   // Time filter
+
+// Time filter kept updated on tick so HUD stays current
    MqlDateTime dt;
    TimeCurrent(dt);
-   bool valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
-   g_valid_time = valid_time;
+   g_valid_time = (dt.hour >= InpStartHour && dt.hour <= InpEndHour);
+  }
 
-   // Check new bar
-   static datetime last_bar = 0;
-   datetime current_bar = iTime(_Symbol, _Period, 0);
-   if(current_bar == last_bar)
-      return;
-   last_bar = current_bar;
+//+------------------------------------------------------------------+
+//| Run ONNX inference and execute trade signals                     |
+//+------------------------------------------------------------------+
+void RunInference()
+  {
+   Print(_Symbol, " | [Inference] Running at ", TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS));
 
-   // --- PREPARE DATA ARRAYS ---
+// --- PREPARE DATA ARRAYS ---
    double close[], open[], high[], low[];
    ArraySetAsSeries(close, true);
    ArraySetAsSeries(open, true);
@@ -336,7 +365,7 @@ void OnTick()
    ArraySetAsSeries(low, true);
 
    int required_bars = WINDOW_SIZE + InpVolWindow + 10;
-   
+
    if(CopyClose(_Symbol, _Period, 0, required_bars, close) < required_bars ||
       CopyOpen(_Symbol, _Period, 0, required_bars, open) < required_bars ||
       CopyHigh(_Symbol, _Period, 0, required_bars, high) < required_bars ||
@@ -346,7 +375,7 @@ void OnTick()
       return;
      }
 
-   // --- ATR FOR NORMALIZATION ---
+// --- ATR FOR NORMALIZATION ---
    int atr_handle = iATR(_Symbol, _Period, InpATRPeriod);
    double atr_buffer[];
    ArraySetAsSeries(atr_buffer, true);
@@ -355,15 +384,15 @@ void OnTick()
       IndicatorRelease(atr_handle);
       return;
      }
-   
-   // --- ATR FOR SL/TP ---
+
+// --- ATR FOR SL/TP ---
    int atr_sl_handle = iATR(_Symbol, _Period, InpATRSL);
    double atr_sl_buffer[];
    ArraySetAsSeries(atr_sl_buffer, true);
    CopyBuffer(atr_sl_handle, 0, 0, 1, atr_sl_buffer);
    double current_atr = atr_sl_buffer[0];
-   
-   // --- STOCHASTIC ---
+
+// --- STOCHASTIC ---
    double stoch_main[], stoch_signal[];
    ArraySetAsSeries(stoch_main, true);
    ArraySetAsSeries(stoch_signal, true);
@@ -375,8 +404,8 @@ void OnTick()
       IndicatorRelease(atr_sl_handle);
       return;
      }
-   
-   // --- VOLUME ---
+
+// --- VOLUME ---
    long volumes[];
    ArraySetAsSeries(volumes, true);
    if(CopyTickVolume(_Symbol, _Period, 0, required_bars, volumes) < required_bars)
@@ -387,21 +416,21 @@ void OnTick()
       return;
      }
 
-   // --- BUILD INPUT BUFFER WITH ENHANCED FEATURES ---
+// --- BUILD INPUT BUFFER WITH ENHANCED FEATURES ---
    float input_buffer[];
    ArrayResize(input_buffer, WINDOW_SIZE * FEATURES);
-   
+
    for(int i = 0; i < WINDOW_SIZE; i++)
      {
       int mql_idx = WINDOW_SIZE - 1 - i;
-      
+
       // Prevent division by zero
       double current_bar_atr = (atr_buffer[mql_idx] > 0) ? atr_buffer[mql_idx] : 0.0001;
-      
+
       // BASIC FEATURES (2)
       float feat_body = (float)((close[mql_idx] - open[mql_idx]) / current_bar_atr);
       float feat_range = (float)((high[mql_idx] - low[mql_idx]) / current_bar_atr);
-      
+
       // STOCHASTIC FEATURES (4)
       float stoch_momentum, stoch_position, stoch_velocity, stoch_divergence;
       if(!CalculateStochasticFeatures(mql_idx, stoch_main, stoch_signal,
@@ -412,7 +441,7 @@ void OnTick()
          IndicatorRelease(atr_sl_handle);
          return;
         }
-      
+
       // VOLUME FEATURES (5)
       float vol_ratio, vol_momentum, vol_price_div, vol_percentile, vol_zscore;
       if(!CalculateVolumeFeatures(mql_idx, volumes, close, InpVolWindow,
@@ -423,7 +452,7 @@ void OnTick()
          IndicatorRelease(atr_sl_handle);
          return;
         }
-      
+
       // PACK ALL FEATURES (must match Python order!)
       int base_idx = i * FEATURES;
       input_buffer[base_idx + 0] = feat_body;              // 1
@@ -442,12 +471,12 @@ void OnTick()
    IndicatorRelease(atr_handle);
    IndicatorRelease(atr_sl_handle);
 
-   // --- ONNX INFERENCE ---
+// --- ONNX INFERENCE ---
    long output_label[];
    float output_probs[];
    ArrayResize(output_label, 1);
    ArrayResize(output_probs, 2);
-   
+
    if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_probs))
      {
       Print("[ERROR] ONNX inference failed");
@@ -455,26 +484,26 @@ void OnTick()
      }
 
    long  prediction = output_label[0];
-   
+
    if(InpReverse)
       prediction = 1 - prediction;
-      
+
    float confidence  = (prediction == 1) ? output_probs[1] : output_probs[0];
    string prediction_str = (prediction == 1) ? "SELL" : "BUY";
-   
+
    g_confidence = confidence;
    g_prediction_str = prediction_str + (InpReverse ? "(R)" : "");
-   
-   Print(_Symbol, " | Prediction: ", prediction_str, (InpReverse ? "(R)" : ""), 
+
+   Print(_Symbol, " | Prediction: ", prediction_str, (InpReverse ? "(R)" : ""),
          " | Confidence: ", DoubleToString(confidence * 100, 2), "%");
 
-   // --- EXECUTION WITH FILTERS ---
-   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
+// --- EXECUTION WITH FILTERS ---
+   if(!PositionSelect(_Symbol) && g_valid_time && confidence >= InpMinConf)
      {
       double sl_dist = current_atr * InpMultiplier;
       double tp_dist = sl_dist * 1.5;
 
-      bool is_sell = (InpLogic == LOGIC_MIRROR && prediction == 1) || 
+      bool is_sell = (InpLogic == LOGIC_MIRROR && prediction == 1) ||
                      (InpLogic == LOGIC_NORMAL && prediction == 0);
 
       if(InpEmaGate && !EMAGateAllows(is_sell))
@@ -483,8 +512,8 @@ void OnTick()
       if(is_sell)
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         if(m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, 
-                     program_name + " SELL@" + DoubleToString(price, _Digits)))
+         if(m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist,
+                         program_name + " SELL@" + DoubleToString(price, _Digits)))
            {
             // Reset trailing info for new position
             g_trail_info.breakeven_applied = false;
@@ -495,8 +524,8 @@ void OnTick()
       else
         {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         if(m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, 
-                    program_name + " BUY@" + DoubleToString(price, _Digits)))
+         if(m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist,
+                        program_name + " BUY@" + DoubleToString(price, _Digits)))
            {
             // Reset trailing info for new position
             g_trail_info.breakeven_applied = false;
@@ -515,7 +544,7 @@ bool EMAGateAllows(bool is_sell)
    double ema_gate[];
    if(CopyBuffer(g_ema_handle, 0, 0, 1, ema_gate) != 1)
       return false;
-   
+
    double ema_value = ema_gate[0];
 
    if(!is_sell)
@@ -529,7 +558,7 @@ bool EMAGateAllows(bool is_sell)
       Print("[EMA Gate] BUY blocked (Ask=", ask, " <= EMA=", ema_value, ")");
       return false;
      }
-   
+
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    if(bid < ema_value)
      {
@@ -547,20 +576,20 @@ double GetPositionProfitPoints()
   {
    if(!PositionSelect(_Symbol))
       return 0;
-   
+
    double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
    double current_price;
    ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-   
+
    if(pos_type == POSITION_TYPE_BUY)
       current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    else
       current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
-   double profit_price = (pos_type == POSITION_TYPE_BUY) ? 
-                         (current_price - open_price) : 
+
+   double profit_price = (pos_type == POSITION_TYPE_BUY) ?
+                         (current_price - open_price) :
                          (open_price - current_price);
-   
+
    return profit_price / _Point;
   }
 
@@ -571,23 +600,23 @@ void ManageTrailingStop()
   {
    if(!PositionSelect(_Symbol))
       return;
-   
+
    ulong ticket = PositionGetInteger(POSITION_TICKET);
    ENUM_POSITION_TYPE pos_type = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
    double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
    double current_sl = PositionGetDouble(POSITION_SL);
    double current_tp = PositionGetDouble(POSITION_TP);
-   
+
    double current_price;
    if(pos_type == POSITION_TYPE_BUY)
       current_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    else
       current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
-   // Calculate profit in points
+
+// Calculate profit in points
    double profit_points = GetPositionProfitPoints();
-   
-   // Calculate trailing distance based on mode
+
+// Calculate trailing distance based on mode
    double trail_distance_price;
    if(InpTrailMode == TRAIL_ATR_BASED)
      {
@@ -608,11 +637,11 @@ void ManageTrailingStop()
      {
       trail_distance_price = InpTrailDistance * _Point;
      }
-   
+
    double trail_start_price = InpTrailStart * _Point;
    double trail_step_price = InpTrailStep * _Point;
-   
-   // BREAKEVEN LOGIC
+
+// BREAKEVEN LOGIC
    if(InpUseBreakeven && !g_trail_info.breakeven_applied && profit_points >= InpBreakevenStart)
      {
       double new_sl;
@@ -620,14 +649,15 @@ void ManageTrailingStop()
          new_sl = open_price + (InpBreakevenOffset * _Point);
       else
          new_sl = open_price - (InpBreakevenOffset * _Point);
-      
+
       // Check if new SL is better than current
       bool should_modify = false;
       if(pos_type == POSITION_TYPE_BUY && (current_sl == 0 || new_sl > current_sl))
          should_modify = true;
-      else if(pos_type == POSITION_TYPE_SELL && (current_sl == 0 || new_sl < current_sl))
-         should_modify = true;
-      
+      else
+         if(pos_type == POSITION_TYPE_SELL && (current_sl == 0 || new_sl < current_sl))
+            should_modify = true;
+
       if(should_modify)
         {
          new_sl = NormalizeDouble(new_sl, _Digits);
@@ -639,28 +669,28 @@ void ManageTrailingStop()
          return; // Exit after breakeven modification
         }
      }
-   
-   // TRAILING STOP LOGIC
+
+// TRAILING STOP LOGIC
    if(profit_points >= InpTrailStart)
      {
       double new_sl = 0;
-      
+
       if(pos_type == POSITION_TYPE_BUY)
         {
          // Update highest price seen
          if(current_price > g_trail_info.highest_price || g_trail_info.highest_price == 0)
             g_trail_info.highest_price = current_price;
-         
+
          // Calculate new SL based on highest price
          new_sl = g_trail_info.highest_price - trail_distance_price;
-         
+
          // Check if new SL is better than current (higher)
          if(current_sl == 0 || (new_sl > current_sl + trail_step_price))
            {
             new_sl = NormalizeDouble(new_sl, _Digits);
             if(m_trade.PositionModify(ticket, new_sl, current_tp))
               {
-               Print("[Trailing BUY] SL moved from ", current_sl, " to ", new_sl, 
+               Print("[Trailing BUY] SL moved from ", current_sl, " to ", new_sl,
                      " | High: ", g_trail_info.highest_price, " | Profit: ", profit_points, " pts");
               }
            }
@@ -670,10 +700,10 @@ void ManageTrailingStop()
          // Update lowest price seen
          if(current_price < g_trail_info.lowest_price || g_trail_info.lowest_price == 0)
             g_trail_info.lowest_price = current_price;
-         
+
          // Calculate new SL based on lowest price
          new_sl = g_trail_info.lowest_price + trail_distance_price;
-         
+
          // Check if new SL is better than current (lower)
          if(current_sl == 0 || (new_sl < current_sl - trail_step_price))
            {
