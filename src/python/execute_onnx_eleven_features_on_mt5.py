@@ -30,8 +30,7 @@ parser.add_argument("--model", required=True)
 parser.add_argument("--symbol", default="EURUSD")
 parser.add_argument("--timeframe", default="M1")
 
-parser.add_argument("--confidence_buy", type=float, default=0.55)
-parser.add_argument("--confidence_sell", type=float, default=0.55)
+parser.add_argument("--confidence", type=float, default=0.55)
 parser.add_argument("--window", type=int, default=20)
 
 parser.add_argument("--start_hour", type=int, default=9)
@@ -100,12 +99,14 @@ if not os.path.exists(args.log_file):
     with open(args.log_file, "w") as f:
         f.write("timestamp,symbol,timeframe,candle_time,prob,raw_signal,buffer,signal,action,price,sl,tp,atr,balance,equity\n")
 
+SIGNAL_LABEL = {1: "BUY", -1: "SELL", 0: "HOLD", None: "NONE"}
+
 def log_event(action, prob, raw_signal, history, signal, price, sl, tp, atr, balance, equity, candle_time):
     with open(args.log_file, "a") as f:
         f.write(
             f"{time.strftime('%Y-%m-%d %H:%M:%S')},"
             f"{args.symbol},{args.timeframe},{candle_time},"
-            f"{prob:.5f},{raw_signal},{history},{signal},{action},"
+            f"{prob:.5f},{SIGNAL_LABEL[raw_signal]},{history},{SIGNAL_LABEL[signal]},{action},"
             f"{price},{sl},{tp},{atr},{balance},{equity}\n"
         )
 
@@ -205,7 +206,7 @@ def send_buy(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat BUY@{str(price)} {str(prob)}"
+        "comment": "11_Feat BUY"
     }
     return mt5.order_send(request)
 
@@ -221,7 +222,7 @@ def send_sell(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat SELL@{str(price)} {str(prob)}"
+        "comment": "11_Feat SELL"
     }
     return mt5.order_send(request)
 
@@ -273,15 +274,12 @@ while True:
     outputs = session.run(None, {input_name: X})
     prob = extract_probability(outputs)
 
-    # Symmetric threshold: confidence_sell defines the mirror of the sell side.
-    # With confidence_buy=0.55 and confidence_sell=0.55:
-    #   BUY  if prob >= 0.55
-    #   SELL if prob <= (1 - 0.55) = 0.45
-    #   FLAT if 0.45 < prob < 0.55
-    sell_threshold = 1.0 - args.confidence_sell
-    if prob >= args.confidence_buy:
+    buy_conf  = prob
+    sell_conf = 1.0 - prob
+
+    if buy_conf >= args.confidence:
         raw_signal = 1
-    elif prob <= sell_threshold:
+    elif sell_conf >= args.confidence:
         raw_signal = -1
     else:
         raw_signal = 0
