@@ -284,6 +284,11 @@ while True:
     else:
         raw_signal = 0
 
+    if buy_conf >= sell_conf:
+        display_conf = buy_conf
+    else:
+        display_conf = -sell_conf
+
     history.append(raw_signal)
     if len(history) > args.consistency_bars:
         history.pop(0)
@@ -317,8 +322,9 @@ while True:
     atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
     print(c("--------------------------------------------------", Fore.BLUE))
-    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {prob:.3f}")
-    print(f"Buffer: {history} | Signal: {signal} | Positions: {pos_count}")
+    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f}")
+    buffer_display = [SIGNAL_LABEL[s] for s in history]
+    print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
 
     # ================= ENTRY BUY =================
     if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
