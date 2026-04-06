@@ -51,7 +51,7 @@ parser.add_argument("--tp_mult", type=float, default=2.0)
 parser.add_argument("--stoch_period", type=int, default=5)
 parser.add_argument("--vol_window", type=int, default=10)
 
-parser.add_argument("--h1_trend", action="store_true", default=True)
+parser.add_argument("--h1_trend", action="store_true", default=False)
 parser.add_argument("--log_file", default="trading_log.csv")
 parser.add_argument("--cooldown", type=int, default=5)
 
