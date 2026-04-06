@@ -193,7 +193,7 @@ def get_buy_positions():
 def get_sell_positions():
     return [p for p in get_positions() if p.type == mt5.ORDER_TYPE_SELL]
 
-def send_buy(price, sl, tp):
+def send_buy(price, sl, tp, prob):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -205,11 +205,11 @@ def send_buy(price, sl, tp):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"ElevenFeat BUY@{price}"
+        "comment": f"11_Feat BUY@{str(price)} {str(prob)}"
     }
     return mt5.order_send(request)
 
-def send_sell(price, sl, tp):
+def send_sell(price, sl, tp, prob):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -221,7 +221,7 @@ def send_sell(price, sl, tp):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"ElevenFeat SELL@{price}"
+        "comment": f"11_Feat SELL@{str(price)} {str(prob)}"
     }
     return mt5.order_send(request)
 
@@ -273,10 +273,15 @@ while True:
     outputs = session.run(None, {input_name: X})
     prob = extract_probability(outputs)
 
-    # prob >= confidence_buy → 1 (buy), prob <= confidence_sell → -1 (sell), else 0 (flat)
+    # Symmetric threshold: confidence_sell defines the mirror of the sell side.
+    # With confidence_buy=0.55 and confidence_sell=0.55:
+    #   BUY  if prob >= 0.55
+    #   SELL if prob <= (1 - 0.55) = 0.45
+    #   FLAT if 0.45 < prob < 0.55
+    sell_threshold = 1.0 - args.confidence_sell
     if prob >= args.confidence_buy:
         raw_signal = 1
-    elif prob <= args.confidence_sell:
+    elif prob <= sell_threshold:
         raw_signal = -1
     else:
         raw_signal = 0
@@ -329,7 +334,7 @@ while True:
         sl = price - atr * args.sl_mult
         tp = price + atr * args.tp_mult
 
-        result = send_buy(price, sl, tp)
+        result = send_buy(price, sl, tp, prob)
 
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
             print(c("[BUY ENTRY OK]", Fore.GREEN))
@@ -350,7 +355,7 @@ while True:
         sl = price + atr * args.sl_mult
         tp = price - atr * args.tp_mult
 
-        result = send_sell(price, sl, tp)
+        result = send_sell(price, sl, tp, prob)
 
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
             print(c("[SELL ENTRY OK]", Fore.CYAN))
