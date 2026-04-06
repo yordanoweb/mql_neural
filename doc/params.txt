@@ -1,3 +1,6 @@
+# Wine command for Eleven Features
+python src\python\execute_onnx_eleven_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\sp500_m5_enh_w20_f8_atr8_minp0.5.onnx --symbol US500 --timeframe M5 --confidence_buy 0.55 --confidence_sell 0.55 --window 20 --force_consistency --consistency_bars 4 --lot 2 --start_hour 0 
+
 # Wine command line
 python src\python\monitor_ema_entry.py --symbol US500 --timeframe M1 --ema_period 9 --atr_period 14 --sl_multiplier 1.0 --tp_multiplier 2.0 --volume 2 --entry_points 1 --interval 5 --forecast_horizon 2 --use_candle_gate --stoch_k 5 --stoch_oversold 70 --stoch_overbought 30 --adx_period 8 --adx_limit 24 --use_h1_candle_gate
 

@@ -30,7 +30,8 @@ parser.add_argument("--model", required=True)
 parser.add_argument("--symbol", default="EURUSD")
 parser.add_argument("--timeframe", default="M1")
 
-parser.add_argument("--confidence", type=float, default=0.55)
+parser.add_argument("--confidence_buy", type=float, default=0.55)
+parser.add_argument("--confidence_sell", type=float, default=0.55)
 parser.add_argument("--window", type=int, default=20)
 
 parser.add_argument("--start_hour", type=int, default=9)
@@ -181,7 +182,13 @@ def get_positions():
         return []
     return [p for p in positions if p.magic == args.magic]
 
-def send_order(price, sl, tp):
+def get_buy_positions():
+    return [p for p in get_positions() if p.type == mt5.ORDER_TYPE_BUY]
+
+def get_sell_positions():
+    return [p for p in get_positions() if p.type == mt5.ORDER_TYPE_SELL]
+
+def send_buy(price, sl, tp):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -197,13 +204,36 @@ def send_order(price, sl, tp):
     }
     return mt5.order_send(request)
 
+def send_sell(price, sl, tp):
+    request = {
+        "action": mt5.TRADE_ACTION_DEAL,
+        "symbol": args.symbol,
+        "volume": args.lot,
+        "type": mt5.ORDER_TYPE_SELL,
+        "price": price,
+        "sl": sl,
+        "tp": tp,
+        "magic": args.magic,
+        "deviation": 10,
+        "type_filling": mt5.ORDER_FILLING_IOC,
+        "comment": f"Eleven Feat SELL@{price}"
+    }
+    return mt5.order_send(request)
+
 def close_position(pos):
-    price = mt5.symbol_info_tick(args.symbol).bid
+    tick = mt5.symbol_info_tick(args.symbol)
+    if pos.type == mt5.ORDER_TYPE_BUY:
+        close_type = mt5.ORDER_TYPE_SELL
+        price = tick.bid
+    else:
+        close_type = mt5.ORDER_TYPE_BUY
+        price = tick.ask
+
     return mt5.order_send({
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
         "volume": pos.volume,
-        "type": mt5.ORDER_TYPE_SELL,
+        "type": close_type,
         "position": pos.ticket,
         "price": price,
         "magic": args.magic,
@@ -238,28 +268,43 @@ while True:
     outputs = session.run(None, {input_name: X})
     prob = extract_probability(outputs)
 
-    raw_signal = 1 if prob >= args.confidence else 0
+    # prob >= confidence_buy → 1 (buy), prob <= confidence_sell → -1 (sell), else 0 (flat)
+    if prob >= args.confidence_buy:
+        raw_signal = 1
+    elif prob <= args.confidence_sell:
+        raw_signal = -1
+    else:
+        raw_signal = 0
 
     history.append(raw_signal)
     if len(history) > args.consistency_bars:
         history.pop(0)
 
-    consistent_buy = len(history) == args.consistency_bars and all(s == 1 for s in history)
-    consistent_flat = len(history) == args.consistency_bars and all(s == 0 for s in history)
+    consistent_buy  = len(history) == args.consistency_bars and all(s == 1  for s in history)
+    consistent_sell = len(history) == args.consistency_bars and all(s == -1 for s in history)
+    consistent_flat = len(history) == args.consistency_bars and all(s == 0  for s in history)
 
     if args.force_consistency:
-        signal = 1 if consistent_buy else 0 if consistent_flat else -1
+        if consistent_buy:
+            signal = 1
+        elif consistent_sell:
+            signal = -1
+        elif consistent_flat:
+            signal = 0
+        else:
+            signal = None  # buffer not yet consistent, hold
     else:
         signal = raw_signal
 
-    positions = get_positions()
-    pos_count = len(positions)
+    buy_positions  = get_buy_positions()
+    sell_positions = get_sell_positions()
+    pos_count = len(buy_positions) + len(sell_positions)
 
     tick = mt5.symbol_info_tick(args.symbol)
 
     account = mt5.account_info()
     balance = account.balance if account else 0
-    equity = account.equity if account else 0
+    equity  = account.equity  if account else 0
 
     atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
@@ -267,25 +312,51 @@ while True:
     print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {prob:.3f}")
     print(f"Buffer: {history} | Signal: {signal} | Positions: {pos_count}")
 
-    # ================= ENTRY =================
-    if signal == 1 and pos_count == 0 and (time.time() - last_trade_time > args.cooldown):
+    # ================= ENTRY BUY =================
+    if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
+        # Close any open sell before buying
+        for p in sell_positions:
+            result = close_position(p)
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(c(f"[CLOSE SELL before BUY] {p.ticket}", Fore.YELLOW))
+
         price = tick.ask
         sl = price - atr * args.sl_mult
         tp = price + atr * args.tp_mult
 
-        result = send_order(price, sl, tp)
+        result = send_buy(price, sl, tp)
 
         if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(c("[ENTRY OK]", Fore.GREEN))
+            print(c("[BUY ENTRY OK]", Fore.GREEN))
             last_trade_time = time.time()
-
             log_event("BUY", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
         else:
-            print(c("[ENTRY ERROR]", Fore.RED))
+            print(c("[BUY ENTRY ERROR]", Fore.RED))
 
-    # ================= EXIT =================
+    # ================= ENTRY SELL =================
+    elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
+        # Close any open buy before selling
+        for p in buy_positions:
+            result = close_position(p)
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(c(f"[CLOSE BUY before SELL] {p.ticket}", Fore.YELLOW))
+
+        price = tick.bid
+        sl = price + atr * args.sl_mult
+        tp = price - atr * args.tp_mult
+
+        result = send_sell(price, sl, tp)
+
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(c("[SELL ENTRY OK]", Fore.CYAN))
+            last_trade_time = time.time()
+            log_event("SELL", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+        else:
+            print(c("[SELL ENTRY ERROR]", Fore.RED))
+
+    # ================= EXIT ALL =================
     elif signal == 0 and pos_count > 0:
-        for p in positions:
+        for p in buy_positions + sell_positions:
             result = close_position(p)
             if result and result.retcode == mt5.TRADE_RETCODE_DONE:
                 print(c(f"[EXIT OK] {p.ticket}", Fore.MAGENTA))
