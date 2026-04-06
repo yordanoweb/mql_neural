@@ -6,6 +6,7 @@ import MetaTrader5 as mt5
 import onnxruntime as ort
 import ta
 import os
+import sys
 
 # =========================
 # COLORS
@@ -57,6 +58,95 @@ parser.add_argument("--cooldown", type=int, default=5)
 args = parser.parse_args()
 
 # =========================
+# DISPLAY PARAMETERS
+# =========================
+def print_parameters():
+    """Display all parameters with indication of defaults vs CLI overrides"""
+    print(c("\n" + "="*60, Fore.CYAN))
+    print(c("           TRADING PARAMETERS CONFIGURATION", Fore.CYAN))
+    print(c("="*60, Fore.CYAN))
+    
+    # Track which arguments were explicitly provided via CLI
+    # We need to check sys.argv for this
+    cli_args = set()
+    for arg in sys.argv[1:]:
+        if arg.startswith('--'):
+            cli_args.add(arg.split('=')[0].replace('--', ''))
+    
+    # Define all parameters with their descriptions
+    params = [
+        ("MODEL", args.model, "model", "ONNX model file path"),
+        ("SYMBOL", args.symbol, "symbol", "Trading symbol"),
+        ("TIMEFRAME", args.timeframe, "timeframe", "Chart timeframe"),
+        ("", "", "", ""),  # Separator
+        ("CONFIDENCE THRESHOLD", f"{args.confidence:.2f}", "confidence", "Min probability to trigger signal"),
+        ("WINDOW SIZE", args.window, "window", "Feature calculation window"),
+        ("", "", "", ""),  # Separator
+        ("TRADING HOURS", f"{args.start_hour:02d}:00 - {args.end_hour:02d}:00", "start_hour/end_hour", "Active trading window"),
+        ("CHECK INTERVAL", f"{args.interval}s", "interval", "Seconds between checks"),
+        ("", "", "", ""),  # Separator
+        ("FORCE CONSISTENCY", str(args.force_consistency), "force_consistency", "Require consecutive signals"),
+        ("CONSISTENCY BARS", args.consistency_bars, "consistency_bars", "Consecutive bars for confirmation"),
+        ("", "", "", ""),  # Separator
+        ("LOT SIZE", args.lot, "lot", "Position volume"),
+        ("MAGIC NUMBER", args.magic, "magic", "Order identifier"),
+        ("", "", "", ""),  # Separator
+        ("ATR PERIOD", args.atr_period, "atr_period", "ATR calculation lookback"),
+        ("SL MULTIPLIER", args.sl_mult, "sl_mult", "Stop-loss = ATR * multiplier"),
+        ("TP MULTIPLIER", args.tp_mult, "tp_mult", "Take-profit = ATR * multiplier"),
+        ("", "", "", ""),  # Separator
+        ("STOCH PERIOD", args.stoch_period, "stoch_period", "Stochastic oscillator period"),
+        ("VOL WINDOW", args.vol_window, "vol_window", "Volume analysis window"),
+        ("", "", "", ""),  # Separator
+        ("H1 TREND FILTER", str(args.h1_trend), "h1_trend", "Filter trades by H1 trend"),
+        ("LOG FILE", args.log_file, "log_file", "Trade log filename"),
+        ("COOLDOWN", f"{args.cooldown}s", "cooldown", "Seconds between trades"),
+    ]
+    
+    for label, value, arg_name, description in params:
+        if label == "":  # Separator
+            print(c("-" * 60, Fore.BLUE))
+            continue
+            
+        # Determine if this was set via CLI or is default
+        # Handle special cases for composite fields
+        is_cli = False
+        if arg_name in cli_args:
+            is_cli = True
+        elif '/' in arg_name:
+            parts = arg_name.split('/')
+            if any(p in cli_args for p in parts):
+                is_cli = True
+        
+        source = c("[CLI]", Fore.GREEN) if is_cli else c("[DEFAULT]", Fore.YELLOW)
+        
+        # Format the line
+        label_col = f"{label:<25}"
+        value_col = f"{str(value):<15}"
+        desc_col = f"{description:<25}"
+        
+        print(f"{source} {label_col} {value_col} {desc_col}")
+    
+    # Additional derived parameters
+    print(c("-" * 60, Fore.BLUE))
+    print(c(f"[DERIVED] {'TIMEFRAME CODE':<25} {str(TF_MAP.get(args.timeframe, 'N/A')):<15} {'MT5 internal code':<25}", Fore.MAGENTA))
+    
+    print(c("="*60, Fore.CYAN))
+    
+    # Summary box
+    cli_count = len(cli_args)
+    default_count = len([p for p in params if p[0] != "" and p[0] not in ["MODEL"]]) - cli_count
+    
+    print(f"\n{c('SUMMARY:', Fore.WHITE)} {cli_count} parameters from CLI | Defaults active for remaining")
+    
+    if cli_count == 0:
+        print(c("⚠️  WARNING: Using ALL default values. No command-line arguments detected.", Fore.RED))
+    else:
+        print(f"{c('✓', Fore.GREEN)} Explicitly set: {', '.join(cli_args)}")
+    
+    print(c("="*60 + "\n", Fore.CYAN))
+
+# =========================
 # TIMEFRAME
 # =========================
 TF_MAP = {
@@ -72,9 +162,13 @@ TF_MAP = {
 }
 TIMEFRAME = TF_MAP[args.timeframe]
 
+# Display parameters BEFORE MT5 init
+print_parameters()
+
 # =========================
 # MT5 INIT
 # =========================
+print(c("[INIT] Initializing MetaTrader 5...", Fore.CYAN))
 if not mt5.initialize():
     raise RuntimeError("MT5 init failed")
 
@@ -90,15 +184,23 @@ print(f"Initial balance: {c(f'{start_balance:.2f}', Fore.YELLOW)}\n")
 # =========================
 # ONNX
 # =========================
+print(c(f"[LOAD] Loading ONNX model: {args.model}", Fore.CYAN))
+if not os.path.exists(args.model):
+    raise FileNotFoundError(f"Model file not found: {args.model}")
+
 session = ort.InferenceSession(args.model)
 input_name = session.get_inputs()[0].name
+print(c(f"[OK] Model loaded. Input name: {input_name}", Fore.GREEN))
 
 # =========================
 # LOG INIT
 # =========================
 if not os.path.exists(args.log_file):
+    print(c(f"[INIT] Creating log file: {args.log_file}", Fore.CYAN))
     with open(args.log_file, "w") as f:
         f.write("timestamp,symbol,timeframe,candle_time,prob,raw_signal,buffer,signal,action,price,sl,tp,atr,balance,equity\n")
+else:
+    print(c(f"[INFO] Appending to existing log: {args.log_file}", Fore.CYAN))
 
 SIGNAL_LABEL = {1: "BUY", -1: "SELL", 0: "HOLD", None: "NONE"}
 
@@ -266,6 +368,8 @@ def close_position(pos):
 # =========================
 history = []
 last_trade_time = 0
+
+print(c("[READY] Starting trading loop...\n", Fore.GREEN))
 
 while True:
     now = time.localtime()
