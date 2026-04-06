@@ -50,6 +50,7 @@ parser.add_argument("--tp_mult", type=float, default=2.0)
 parser.add_argument("--stoch_period", type=int, default=5)
 parser.add_argument("--vol_window", type=int, default=10)
 
+parser.add_argument("--h1_trend", action="store_true", default=True)
 parser.add_argument("--log_file", default="trading_log.csv")
 parser.add_argument("--cooldown", type=int, default=5)
 
@@ -158,6 +159,20 @@ FEATURES = [
     'feat_vol_price_div','feat_vol_percentile',
     'feat_vol_zscore'
 ]
+
+# =========================
+# H1 TREND FILTER
+# =========================
+def h1_trend_allows(direction):
+    bars = mt5.copy_rates_from_pos(args.symbol, mt5.TIMEFRAME_H1, 1, 1)
+    if bars is None or len(bars) == 0:
+        return True
+    candle = bars[0]
+    bullish = candle['close'] > candle['open']
+    if direction == 1:
+        return bullish
+    else:
+        return not bullish
 
 # =========================
 # ONNX OUTPUT PARSER
@@ -305,7 +320,7 @@ while True:
         elif consistent_flat:
             signal = 0
         else:
-            signal = None  # buffer not yet consistent, hold
+            signal = None
     else:
         signal = raw_signal
 
@@ -328,45 +343,51 @@ while True:
 
     # ================= ENTRY BUY =================
     if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
-        # Close any open sell before buying
-        for p in sell_positions:
-            result = close_position(p)
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                print(c(f"[CLOSE SELL before BUY] {p.ticket}", Fore.YELLOW))
-
-        price = tick.ask
-        sl = price - atr * args.sl_mult
-        tp = price + atr * args.tp_mult
-
-        result = send_buy(price, sl, tp, prob)
-
-        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(c("[BUY ENTRY OK]", Fore.GREEN))
-            last_trade_time = time.time()
-            log_event("BUY", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+        if args.h1_trend and not h1_trend_allows(1):
+            print(c("[BUY BLOCKED by H1 trend]", Fore.YELLOW))
+            log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
         else:
-            print(c("[BUY ENTRY ERROR]", Fore.RED))
+            for p in sell_positions:
+                result = close_position(p)
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                    print(c(f"[CLOSE SELL before BUY] {p.ticket}", Fore.YELLOW))
+
+            price = tick.ask
+            sl = price - atr * args.sl_mult
+            tp = price + atr * args.tp_mult
+
+            result = send_buy(price, sl, tp, prob)
+
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(c("[BUY ENTRY OK]", Fore.GREEN))
+                last_trade_time = time.time()
+                log_event("BUY", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+            else:
+                print(c("[BUY ENTRY ERROR]", Fore.RED))
 
     # ================= ENTRY SELL =================
     elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
-        # Close any open buy before selling
-        for p in buy_positions:
-            result = close_position(p)
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                print(c(f"[CLOSE BUY before SELL] {p.ticket}", Fore.YELLOW))
-
-        price = tick.bid
-        sl = price + atr * args.sl_mult
-        tp = price - atr * args.tp_mult
-
-        result = send_sell(price, sl, tp, prob)
-
-        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-            print(c("[SELL ENTRY OK]", Fore.CYAN))
-            last_trade_time = time.time()
-            log_event("SELL", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+        if args.h1_trend and not h1_trend_allows(-1):
+            print(c("[SELL BLOCKED by H1 trend]", Fore.YELLOW))
+            log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
         else:
-            print(c("[SELL ENTRY ERROR]", Fore.RED))
+            for p in buy_positions:
+                result = close_position(p)
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                    print(c(f"[CLOSE BUY before SELL] {p.ticket}", Fore.YELLOW))
+
+            price = tick.bid
+            sl = price + atr * args.sl_mult
+            tp = price - atr * args.tp_mult
+
+            result = send_sell(price, sl, tp, prob)
+
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(c("[SELL ENTRY OK]", Fore.CYAN))
+                last_trade_time = time.time()
+                log_event("SELL", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+            else:
+                print(c("[SELL ENTRY ERROR]", Fore.RED))
 
     # ================= EXIT ALL =================
     elif signal == 0 and pos_count > 0:
