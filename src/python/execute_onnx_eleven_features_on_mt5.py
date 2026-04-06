@@ -62,8 +62,13 @@ args = parser.parse_args()
 TF_MAP = {
     "M1": mt5.TIMEFRAME_M1,
     "M5": mt5.TIMEFRAME_M5,
+    "M10": mt5.TIMEFRAME_M10,
     "M15": mt5.TIMEFRAME_M15,
+    "M30": mt5.TIMEFRAME_M30,
     "H1": mt5.TIMEFRAME_H1,
+    "H2": mt5.TIMEFRAME_H2,
+    "H3": mt5.TIMEFRAME_H3,
+    "H4": mt5.TIMEFRAME_H4,
 }
 TIMEFRAME = TF_MAP[args.timeframe]
 
@@ -200,7 +205,7 @@ def send_buy(price, sl, tp):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"Eleven Feat BUY@{price}"
+        "comment": f"ElevenFeat BUY@{price}"
     }
     return mt5.order_send(request)
 
@@ -216,7 +221,7 @@ def send_sell(price, sl, tp):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"Eleven Feat SELL@{price}"
+        "comment": f"ElevenFeat SELL@{price}"
     }
     return mt5.order_send(request)
 
