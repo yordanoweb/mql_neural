@@ -5,6 +5,7 @@ import pandas as pd
 import MetaTrader5 as mt5
 import onnxruntime as ort
 import ta
+import os
 
 # =========================
 # COLORS
@@ -49,7 +50,8 @@ parser.add_argument("--tp_mult", type=float, default=2.0)
 parser.add_argument("--stoch_period", type=int, default=5)
 parser.add_argument("--vol_window", type=int, default=10)
 
-parser.add_argument("--debug_onnx", action="store_true")
+parser.add_argument("--log_file", default="trading_log.csv")
+parser.add_argument("--cooldown", type=int, default=5)
 
 args = parser.parse_args()
 
@@ -86,28 +88,36 @@ session = ort.InferenceSession(args.model)
 input_name = session.get_inputs()[0].name
 
 # =========================
+# LOG INIT
+# =========================
+if not os.path.exists(args.log_file):
+    with open(args.log_file, "w") as f:
+        f.write("timestamp,symbol,timeframe,candle_time,prob,raw_signal,buffer,signal,action,price,sl,tp,atr,balance,equity\n")
+
+def log_event(action, prob, raw_signal, history, signal, price, sl, tp, atr, balance, equity, candle_time):
+    with open(args.log_file, "a") as f:
+        f.write(
+            f"{time.strftime('%Y-%m-%d %H:%M:%S')},"
+            f"{args.symbol},{args.timeframe},{candle_time},"
+            f"{prob:.5f},{raw_signal},{history},{signal},{action},"
+            f"{price},{sl},{tp},{atr},{balance},{equity}\n"
+        )
+
+# =========================
 # FEATURES
 # =========================
 def safe(s):
     return s.replace([np.inf, -np.inf], np.nan).fillna(0)
 
 def build_features(df):
-    atr = ta.volatility.AverageTrueRange(
-        df['high'], df['low'], df['close'], window=args.atr_period
-    ).average_true_range()
-
+    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range()
     atr_safe = atr.replace(0, np.nan).ffill().fillna(1)
 
     df['feat_body'] = safe((df['close'] - df['open']) / atr_safe)
     df['feat_range'] = safe((df['high'] - df['low']) / atr_safe)
 
-    stoch = ta.momentum.StochasticOscillator(
-        df['high'], df['low'], df['close'],
-        window=args.stoch_period
-    )
-
-    k = stoch.stoch()
-    d = stoch.stoch_signal()
+    stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=args.stoch_period)
+    k, d = stoch.stoch(), stoch.stoch_signal()
 
     df['feat_stoch_momentum'] = safe((k - d) / 100.0)
     df['feat_stoch_position'] = safe((k - 50.0) / 50.0)
@@ -115,7 +125,6 @@ def build_features(df):
 
     overbought = np.where(k > 80, -(k - 80)/20.0, 0)
     oversold   = np.where(k < 20, (20 - k)/20.0, 0)
-
     df['feat_stoch_divergence'] = safe(pd.Series(overbought + oversold))
 
     vol = df['tick_volume']
@@ -123,22 +132,14 @@ def build_features(df):
     vol_std = vol.rolling(args.vol_window).std()
 
     df['feat_vol_ratio'] = safe(vol / vol_ma.replace(0,1))
-    df['feat_vol_momentum'] = safe(
-        (vol.ewm(span=5).mean() - vol.ewm(span=20).mean()) / vol_ma.replace(0,1)
-    )
+    df['feat_vol_momentum'] = safe((vol.ewm(span=5).mean() - vol.ewm(span=20).mean()) / vol_ma.replace(0,1))
 
     price_change = safe(df['close'].pct_change().abs())
     vol_change = safe(vol.pct_change().abs())
 
     df['feat_vol_price_div'] = safe(vol_change - price_change)
-
-    df['feat_vol_percentile'] = safe(
-        vol.rolling(args.vol_window).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1])
-    )
-
-    df['feat_vol_zscore'] = safe(
-        (vol - vol_ma) / vol_std.replace(0,1)
-    )
+    df['feat_vol_percentile'] = safe(vol.rolling(args.vol_window).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1]))
+    df['feat_vol_zscore'] = safe((vol - vol_ma) / vol_std.replace(0,1))
 
     return df
 
@@ -172,23 +173,15 @@ def extract_probability(outputs):
     raise ValueError(f"Unexpected ONNX output: {pred}")
 
 # =========================
-# HELPERS
+# POSITION HANDLING
 # =========================
-def get_data(n):
-    rates = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, n)
-    return pd.DataFrame(rates)
+def get_positions():
+    positions = mt5.positions_get(symbol=args.symbol)
+    if positions is None:
+        return []
+    return [p for p in positions if p.magic == args.magic]
 
-def get_position():
-    pos = mt5.positions_get(symbol=args.symbol)
-    if pos:
-        for p in pos:
-            if p.magic == args.magic:
-                return p
-    return None
-
-def send_order(direction, price, sl, tp):
-    print(c(f"[ENTRY] BUY @ {price:.5f}", Fore.GREEN))
-
+def send_order(price, sl, tp):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -199,19 +192,14 @@ def send_order(direction, price, sl, tp):
         "tp": tp,
         "magic": args.magic,
         "deviation": 10,
-        "type_filling": mt5.ORDER_FILLING_IOC
+        "type_filling": mt5.ORDER_FILLING_IOC,
+        "comment": f"Eleven Feat BUY@{price}"
     }
-
-    result = mt5.order_send(request)
-    print(c("[OK]" if result and result.retcode == mt5.TRADE_RETCODE_DONE else "[ERROR]", 
-            Fore.GREEN if result and result.retcode == mt5.TRADE_RETCODE_DONE else Fore.RED))
+    return mt5.order_send(request)
 
 def close_position(pos):
-    print(c(f"[EXIT] Closing position {pos.ticket}", Fore.MAGENTA))
-
     price = mt5.symbol_info_tick(args.symbol).bid
-
-    result = mt5.order_send({
+    return mt5.order_send({
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
         "volume": pos.volume,
@@ -222,13 +210,11 @@ def close_position(pos):
         "deviation": 10,
     })
 
-    print(c("[OK]" if result and result.retcode == mt5.TRADE_RETCODE_DONE else "[ERROR]",
-            Fore.GREEN if result and result.retcode == mt5.TRADE_RETCODE_DONE else Fore.RED))
-
 # =========================
 # LOOP
 # =========================
 history = []
+last_trade_time = 0
 
 while True:
     now = time.localtime()
@@ -237,21 +223,19 @@ while True:
         time.sleep(1)
         continue
 
-    df = get_data(args.window + 50)
-    df = build_features(df).dropna()
+    df = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, args.window + 50)
+    df = pd.DataFrame(df)
 
+    df = build_features(df).dropna()
     if len(df) < args.window:
         time.sleep(1)
         continue
 
-    X = df[FEATURES].iloc[-args.window:].values.flatten().astype(np.float32)
-    X = X.reshape(1, -1)
+    candle_time = df.iloc[-1]['time']
+
+    X = df[FEATURES].iloc[-args.window:].values.flatten().astype(np.float32).reshape(1, -1)
 
     outputs = session.run(None, {input_name: X})
-
-    if args.debug_onnx:
-        print("RAW ONNX:", outputs)
-
     prob = extract_probability(outputs)
 
     raw_signal = 1 if prob >= args.confidence else 0
@@ -264,46 +248,51 @@ while True:
     consistent_flat = len(history) == args.consistency_bars and all(s == 0 for s in history)
 
     if args.force_consistency:
-        if consistent_buy:
-            signal = 1
-        elif consistent_flat:
-            signal = 0
-        else:
-            signal = -1
+        signal = 1 if consistent_buy else 0 if consistent_flat else -1
     else:
         signal = raw_signal
 
-    pos = get_position()
+    positions = get_positions()
+    pos_count = len(positions)
+
     tick = mt5.symbol_info_tick(args.symbol)
 
     account = mt5.account_info()
     balance = account.balance if account else 0
-    equity  = account.equity if account else 0
+    equity = account.equity if account else 0
+
+    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
     print(c("--------------------------------------------------", Fore.BLUE))
-    print(f"Time: {time.strftime('%H:%M:%S')}")
-    print(f"Prob: {c(f'{prob:.3f}', Fore.CYAN)}")
-    print(f"Raw: {raw_signal} | Buffer: {history}")
-    print(f"Consistency BUY: {consistent_buy} | FLAT: {consistent_flat}")
+    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {prob:.3f}")
+    print(f"Buffer: {history} | Signal: {signal} | Positions: {pos_count}")
 
-    if pos:
-        print(c(f"Open position | Profit: {pos.profit:.2f}", Fore.MAGENTA))
-    else:
-        print("No position")
-
-    print(f"Balance: {c(f'{balance:.2f}', Fore.YELLOW)} | Equity: {c(f'{equity:.2f}', Fore.CYAN)}")
-
-    atr = ta.volatility.AverageTrueRange(
-        df['high'], df['low'], df['close'], window=args.atr_period
-    ).average_true_range().iloc[-1]
-
-    if signal == 1 and pos is None:
+    # ================= ENTRY =================
+    if signal == 1 and pos_count == 0 and (time.time() - last_trade_time > args.cooldown):
         price = tick.ask
         sl = price - atr * args.sl_mult
         tp = price + atr * args.tp_mult
-        send_order(1, price, sl, tp)
 
-    elif signal == 0 and pos is not None:
-        close_position(pos)
+        result = send_order(price, sl, tp)
+
+        if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+            print(c("[ENTRY OK]", Fore.GREEN))
+            last_trade_time = time.time()
+
+            log_event("BUY", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+        else:
+            print(c("[ENTRY ERROR]", Fore.RED))
+
+    # ================= EXIT =================
+    elif signal == 0 and pos_count > 0:
+        for p in positions:
+            result = close_position(p)
+            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                print(c(f"[EXIT OK] {p.ticket}", Fore.MAGENTA))
+
+        log_event("CLOSE", prob, raw_signal, history.copy(), signal, tick.bid, 0, 0, atr, balance, equity, candle_time)
+
+    else:
+        log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
 
     time.sleep(args.interval)
