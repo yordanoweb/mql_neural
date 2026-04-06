@@ -323,7 +323,7 @@ def send_buy(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": "11_Feat BUY"
+        "comment": f"11_Feat BUY@{prob:.2f}"
     }
     return mt5.order_send(request)
 
@@ -339,7 +339,7 @@ def send_sell(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": "11_Feat SELL"
+        "comment": f"11_Feat SELL@{prob:.2f}"
     }
     return mt5.order_send(request)
 
