@@ -53,7 +53,7 @@ parser.add_argument("--vol_window", type=int, default=10)
 
 parser.add_argument("--h1_trend", action="store_true", default=False)
 parser.add_argument("--log_file", default="trading_log.csv")
-parser.add_argument("--cooldown", type=int, default=5)
+parser.add_argument("--cooldown", type=int, default=60)
 
 args = parser.parse_args()
 
@@ -323,7 +323,7 @@ def send_buy(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat BUY@{prob:.2f}"
+        "comment": f"11_Feat BUY@{prob:.5f}"
     }
     return mt5.order_send(request)
 
@@ -339,7 +339,7 @@ def send_sell(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat SELL@{prob:.2f}"
+        "comment": f"11_Feat SELL@{prob:.5f}"
     }
     return mt5.order_send(request)
 
