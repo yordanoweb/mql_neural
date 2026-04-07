@@ -419,7 +419,7 @@ try:
         if not (args.start_hour <= current_hour <= args.end_hour):
             if time.time() - last_outside_hours_msg >= 60:
                 local_time = time.strftime('%H:%M:%S')
-                print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00-{args.end_hour:02d}:00 | MT5:{current_hour:02d}:00 | Local:{local_time} | Waiting...", Fore.YELLOW))
+                print(c(f"[WAIT] {args.start_hour:02d}:00-{args.end_hour:02d}:00 | MT5: {current_hour:02d}:00 | Local: {local_time}", Fore.YELLOW))
                 last_outside_hours_msg = time.time()
             time.sleep(1)
             continue
@@ -554,5 +554,5 @@ try:
 
 except KeyboardInterrupt:
     print(c("\n[SHUTDOWN] Trading loop stopped by user (Ctrl+C)", Fore.MAGENTA))
-    print(c("[INFO] Graceful exit completed", Fore.CYAN))
+    print(c("[INFO] Exit completed", Fore.CYAN))
     sys.exit(0)
