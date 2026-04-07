@@ -368,17 +368,26 @@ def close_position(pos):
 # =========================
 history = []
 last_trade_time = 0
+last_outside_hours_msg = 0
 
 print(c("[READY] Starting trading loop...\n", Fore.GREEN))
 
 while True:
-    now = time.localtime()
+    # Get MT5 server time from latest candle
+    df = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, args.window + 50)
+    if df is None or len(df) == 0:
+        time.sleep(1)
+        continue
+    server_time = pd.to_datetime(df[-1]['time'], unit='s')
+    current_hour = server_time.hour
 
-    if not (args.start_hour <= now.tm_hour <= args.end_hour):
+    if not (args.start_hour <= current_hour <= args.end_hour):
+        if time.time() - last_outside_hours_msg >= 60:
+            print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00 - {args.end_hour:02d}:00 | Current (MT5): {current_hour:02d}:00 | Waiting...", Fore.YELLOW))
+            last_outside_hours_msg = time.time()
         time.sleep(1)
         continue
 
-    df = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, args.window + 50)
     df = pd.DataFrame(df)
 
     df = build_features(df).dropna()
@@ -441,7 +450,7 @@ while True:
     atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
     print(c("--------------------------------------------------", Fore.BLUE))
-    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f} | Expected: {args.confidence:.2f}")
+    print(f"Hour: {server_time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f} | Expected: {args.confidence:.2f}")
     buffer_display = [SIGNAL_LABEL[s] for s in history]
     print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
 
