@@ -311,7 +311,7 @@ def get_buy_positions():
 def get_sell_positions():
     return [p for p in get_positions() if p.type == mt5.ORDER_TYPE_SELL]
 
-def send_buy(price, sl, tp, prob):
+def send_buy(price, sl, tp, buy_conf):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -323,11 +323,11 @@ def send_buy(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat BUY@{prob:.5f}"
+        "comment": f"11_Feat BUY@{buy_conf:.5f}"
     }
     return mt5.order_send(request)
 
-def send_sell(price, sl, tp, prob):
+def send_sell(price, sl, tp, sell_conf):
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -339,7 +339,7 @@ def send_sell(price, sl, tp, prob):
         "magic": args.magic,
         "deviation": 10,
         "type_filling": mt5.ORDER_FILLING_IOC,
-        "comment": f"11_Feat SELL@{prob:.5f}"
+        "comment": f"11_Feat SELL@{sell_conf:.5f}"
     }
     return mt5.order_send(request)
 
@@ -460,12 +460,12 @@ while True:
             sl = price - atr * args.sl_mult
             tp = price + atr * args.tp_mult
 
-            result = send_buy(price, sl, tp, prob)
+            result = send_buy(price, sl, tp, buy_conf)
 
             if result and result.retcode == mt5.TRADE_RETCODE_DONE:
                 print(c("[BUY ENTRY OK]", Fore.GREEN))
                 last_trade_time = time.time()
-                log_event("BUY", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                log_event("BUY", buy_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
             else:
                 print(c("[BUY ENTRY ERROR]", Fore.RED))
 
@@ -484,12 +484,12 @@ while True:
             sl = price + atr * args.sl_mult
             tp = price - atr * args.tp_mult
 
-            result = send_sell(price, sl, tp, prob)
+            result = send_sell(price, sl, tp, sell_conf)
 
             if result and result.retcode == mt5.TRADE_RETCODE_DONE:
                 print(c("[SELL ENTRY OK]", Fore.CYAN))
                 last_trade_time = time.time()
-                log_event("SELL", prob, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                log_event("SELL", sell_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
             else:
                 print(c("[SELL ENTRY ERROR]", Fore.RED))
 
