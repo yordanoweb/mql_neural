@@ -441,7 +441,7 @@ while True:
     atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
     print(c("--------------------------------------------------", Fore.BLUE))
-    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f}")
+    print(f"Hour: {time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f} | Expected: {args.confidence:.2f}")
     buffer_display = [SIGNAL_LABEL[s] for s in history]
     print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
 
