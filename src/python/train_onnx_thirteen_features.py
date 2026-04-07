@@ -158,7 +158,7 @@ parser.add_argument("--n_iter",          type=int,   default=10,    help="Number
 parser.add_argument("--min_profit_atr",  type=float, default=1.5,   help="Minimum profit in ATR multiples (default: 1.5)")
 parser.add_argument("--stoch_window",    type=int,   default=14,    help="Stochastic period (default: 14)")
 parser.add_argument("--vol_window",      type=int,   default=20,    help="Volume analysis window (default: 20)")
-parser.add_argument("--adx_period",      type=int,   default=14,    help="ADX period (default: 14)")
+parser.add_argument("--adx_period",      type=int,   default=8,     help="ADX period (default: 8)")
 parser.add_argument("--adx_min",         type=float, default=20.0,  help="ADX minimum threshold for trend strength (default: 20.0)")
 parser.add_argument("--jobs",            type=int,   default=3,     help="Number of parallel jobs (default: 3)")
 
