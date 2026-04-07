@@ -406,147 +406,153 @@ last_outside_hours_msg = 0
 
 print(c("[READY] Starting trading loop...\n", Fore.GREEN))
 
-while True:
-    # Get MT5 server time from latest candle
-    df = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, args.window + 50)
-    if df is None or len(df) == 0:
-        time.sleep(1)
-        continue
-    server_time = pd.to_datetime(df[-1]['time'], unit='s')
-    current_hour = server_time.hour
+try:
+    while True:
+        # Get MT5 server time from latest candle
+        df = mt5.copy_rates_from_pos(args.symbol, TIMEFRAME, 0, args.window + 50)
+        if df is None or len(df) == 0:
+            time.sleep(1)
+            continue
+        server_time = pd.to_datetime(df[-1]['time'], unit='s')
+        current_hour = server_time.hour
 
-    if not (args.start_hour <= current_hour <= args.end_hour):
-        if time.time() - last_outside_hours_msg >= 60:
-            local_time = time.strftime('%H:%M:%S')
-            print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00-{args.end_hour:02d}:00 | MT5:{current_hour:02d}:00 | Local:{local_time} | Waiting...", Fore.YELLOW))
-            last_outside_hours_msg = time.time()
-        time.sleep(1)
-        continue
+        if not (args.start_hour <= current_hour <= args.end_hour):
+            if time.time() - last_outside_hours_msg >= 60:
+                local_time = time.strftime('%H:%M:%S')
+                print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00-{args.end_hour:02d}:00 | MT5:{current_hour:02d}:00 | Local:{local_time} | Waiting...", Fore.YELLOW))
+                last_outside_hours_msg = time.time()
+            time.sleep(1)
+            continue
 
-    df = pd.DataFrame(df)
+        df = pd.DataFrame(df)
 
-    df = build_features(df).dropna()
-    if len(df) < args.window:
-        time.sleep(1)
-        continue
+        df = build_features(df).dropna()
+        if len(df) < args.window:
+            time.sleep(1)
+            continue
 
-    candle_time = df.iloc[-1]['time']
+        candle_time = df.iloc[-1]['time']
 
-    X = df[FEATURES].iloc[-args.window:].values.flatten().astype(np.float32).reshape(1, -1)
+        X = df[FEATURES].iloc[-args.window:].values.flatten().astype(np.float32).reshape(1, -1)
 
-    outputs = session.run(None, {input_name: X})
-    prob = extract_probability(outputs)
+        outputs = session.run(None, {input_name: X})
+        prob = extract_probability(outputs)
 
-    buy_conf  = prob
-    sell_conf = 1.0 - prob
+        buy_conf  = prob
+        sell_conf = 1.0 - prob
 
-    if buy_conf >= args.confidence:
-        raw_signal = 1
-    elif sell_conf >= args.confidence:
-        raw_signal = -1
-    else:
-        raw_signal = 0
-
-    if buy_conf >= sell_conf:
-        display_conf = buy_conf
-    else:
-        display_conf = -sell_conf
-
-    history.append(raw_signal)
-    if len(history) > args.consistency_bars:
-        history.pop(0)
-
-    consistent_buy  = len(history) == args.consistency_bars and all(s == 1  for s in history)
-    consistent_sell = len(history) == args.consistency_bars and all(s == -1 for s in history)
-    consistent_flat = len(history) == args.consistency_bars and all(s == 0  for s in history)
-
-    if args.force_consistency:
-        if consistent_buy:
-            signal = 1
-        elif consistent_sell:
-            signal = -1
-        elif consistent_flat:
-            signal = 0
+        if buy_conf >= args.confidence:
+            raw_signal = 1
+        elif sell_conf >= args.confidence:
+            raw_signal = -1
         else:
-            signal = None
-    else:
-        signal = raw_signal
+            raw_signal = 0
 
-    buy_positions  = get_buy_positions()
-    sell_positions = get_sell_positions()
-    pos_count = len(buy_positions) + len(sell_positions)
-
-    tick = mt5.symbol_info_tick(args.symbol)
-
-    account = mt5.account_info()
-    balance = account.balance if account else 0
-    equity  = account.equity  if account else 0
-
-    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
-
-    print(c("--------------------------------------------------", Fore.BLUE))
-    print(f"Hour: {server_time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f} | Expected: {args.confidence:.2f}")
-    buffer_display = [SIGNAL_LABEL[s] for s in history]
-    print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
-
-    # ================= ENTRY BUY =================
-    if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
-        if args.h1_trend and not h1_trend_allows(1):
-            print(c("[BUY BLOCKED by H1 trend]", Fore.YELLOW))
-            log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
+        if buy_conf >= sell_conf:
+            display_conf = buy_conf
         else:
-            for p in sell_positions:
+            display_conf = -sell_conf
+
+        history.append(raw_signal)
+        if len(history) > args.consistency_bars:
+            history.pop(0)
+
+        consistent_buy  = len(history) == args.consistency_bars and all(s == 1  for s in history)
+        consistent_sell = len(history) == args.consistency_bars and all(s == -1 for s in history)
+        consistent_flat = len(history) == args.consistency_bars and all(s == 0  for s in history)
+
+        if args.force_consistency:
+            if consistent_buy:
+                signal = 1
+            elif consistent_sell:
+                signal = -1
+            elif consistent_flat:
+                signal = 0
+            else:
+                signal = None
+        else:
+            signal = raw_signal
+
+        buy_positions  = get_buy_positions()
+        sell_positions = get_sell_positions()
+        pos_count = len(buy_positions) + len(sell_positions)
+
+        tick = mt5.symbol_info_tick(args.symbol)
+
+        account = mt5.account_info()
+        balance = account.balance if account else 0
+        equity  = account.equity  if account else 0
+
+        atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
+
+        print(c("--------------------------------------------------", Fore.BLUE))
+        print(f"Hour: {server_time.strftime('%H:%M:%S')} | Prob: {display_conf:+.3f} | Expected: {args.confidence:.2f}")
+        buffer_display = [SIGNAL_LABEL[s] for s in history]
+        print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
+
+        # ================= ENTRY BUY =================
+        if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
+            if args.h1_trend and not h1_trend_allows(1):
+                print(c("[BUY BLOCKED by H1 trend]", Fore.YELLOW))
+                log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
+            else:
+                for p in sell_positions:
+                    result = close_position(p)
+                    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                        print(c(f"[CLOSE SELL before BUY] {p.ticket}", Fore.YELLOW))
+
+                price = tick.ask
+                sl = price - atr * args.sl_mult
+                tp = price + atr * args.tp_mult
+
+                result = send_buy(price, sl, tp, buy_conf)
+
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                    print(c("[BUY ENTRY OK]", Fore.GREEN))
+                    last_trade_time = time.time()
+                    log_event("BUY", buy_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                else:
+                    print(c("[BUY ENTRY ERROR]", Fore.RED))
+
+        # ================= ENTRY SELL =================
+        elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
+            if args.h1_trend and not h1_trend_allows(-1):
+                print(c("[SELL BLOCKED by H1 trend]", Fore.YELLOW))
+                log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
+            else:
+                for p in buy_positions:
+                    result = close_position(p)
+                    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                        print(c(f"[CLOSE BUY before SELL] {p.ticket}", Fore.YELLOW))
+
+                price = tick.bid
+                sl = price + atr * args.sl_mult
+                tp = price - atr * args.tp_mult
+
+                result = send_sell(price, sl, tp, sell_conf)
+
+                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                    print(c("[SELL ENTRY OK]", Fore.CYAN))
+                    last_trade_time = time.time()
+                    log_event("SELL", sell_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                else:
+                    print(c("[SELL ENTRY ERROR]", Fore.RED))
+
+        # ================= EXIT ALL =================
+        elif signal == 0 and pos_count > 0:
+            for p in buy_positions + sell_positions:
                 result = close_position(p)
                 if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                    print(c(f"[CLOSE SELL before BUY] {p.ticket}", Fore.YELLOW))
+                    print(c(f"[EXIT OK] {p.ticket}", Fore.MAGENTA))
 
-            price = tick.ask
-            sl = price - atr * args.sl_mult
-            tp = price + atr * args.tp_mult
+            log_event("CLOSE", prob, raw_signal, history.copy(), signal, tick.bid, 0, 0, atr, balance, equity, candle_time)
 
-            result = send_buy(price, sl, tp, buy_conf)
-
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                print(c("[BUY ENTRY OK]", Fore.GREEN))
-                last_trade_time = time.time()
-                log_event("BUY", buy_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
-            else:
-                print(c("[BUY ENTRY ERROR]", Fore.RED))
-
-    # ================= ENTRY SELL =================
-    elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
-        if args.h1_trend and not h1_trend_allows(-1):
-            print(c("[SELL BLOCKED by H1 trend]", Fore.YELLOW))
-            log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
         else:
-            for p in buy_positions:
-                result = close_position(p)
-                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                    print(c(f"[CLOSE BUY before SELL] {p.ticket}", Fore.YELLOW))
+            log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
 
-            price = tick.bid
-            sl = price + atr * args.sl_mult
-            tp = price - atr * args.tp_mult
+        time.sleep(args.interval)
 
-            result = send_sell(price, sl, tp, sell_conf)
-
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                print(c("[SELL ENTRY OK]", Fore.CYAN))
-                last_trade_time = time.time()
-                log_event("SELL", sell_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
-            else:
-                print(c("[SELL ENTRY ERROR]", Fore.RED))
-
-    # ================= EXIT ALL =================
-    elif signal == 0 and pos_count > 0:
-        for p in buy_positions + sell_positions:
-            result = close_position(p)
-            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                print(c(f"[EXIT OK] {p.ticket}", Fore.MAGENTA))
-
-        log_event("CLOSE", prob, raw_signal, history.copy(), signal, tick.bid, 0, 0, atr, balance, equity, candle_time)
-
-    else:
-        log_event("HOLD", prob, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
-
-    time.sleep(args.interval)
+except KeyboardInterrupt:
+    print(c("\n[SHUTDOWN] Trading loop stopped by user (Ctrl+C)", Fore.MAGENTA))
+    print(c("[INFO] Graceful exit completed", Fore.CYAN))
+    sys.exit(0)
