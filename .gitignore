@@ -103,3 +103,4 @@ onnx/**
 data/
 csv/**
 
+*.html
