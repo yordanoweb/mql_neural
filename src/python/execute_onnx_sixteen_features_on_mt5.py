@@ -417,7 +417,8 @@ while True:
 
     if not (args.start_hour <= current_hour <= args.end_hour):
         if time.time() - last_outside_hours_msg >= 60:
-            print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00 - {args.end_hour:02d}:00 | Current (MT5): {current_hour:02d}:00 | Waiting...", Fore.YELLOW))
+            local_time = time.strftime('%H:%M:%S')
+            print(c(f"[OUTSIDE TRADING HOURS] {args.start_hour:02d}:00-{args.end_hour:02d}:00 | MT5:{current_hour:02d}:00 | Local:{local_time} | Waiting...", Fore.YELLOW))
             last_outside_hours_msg = time.time()
         time.sleep(1)
         continue
