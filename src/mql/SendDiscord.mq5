@@ -88,7 +88,7 @@ string FormatTradeMessage(ENUM_DEAL_TYPE deal_type, ENUM_DEAL_ENTRY deal_entry, 
    string title = "";
    
    // Get EA title (custom or default)
-   string ea_title = (InpNotificationTitle == "") ? MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
+   string ea_title = (InpNotificationTitle == "") ? AccountInfoString(ACCOUNT_COMPANY) + " | " + MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
    
    // Differentiate between opening and closing
    if(deal_entry == DEAL_ENTRY_IN)
@@ -181,7 +181,7 @@ int OnInit()
    
       if(SEND_TEST_ON_START)
       {
-         string ea_title = (InpNotificationTitle == "") ? MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
+         string ea_title = (InpNotificationTitle == "") ? AccountInfoString(ACCOUNT_COMPANY) + " | " + MQLInfoString(MQL_PROGRAM_NAME) : InpNotificationTitle;
          string start_msg = "------------------------------\n🟢 **MT5 Trade Bot online!**\n🤖 **" + ea_title + "**\nMonitoring orders... ✅";
          SendDiscord(start_msg, DISCORD_CHANNEL_ID);
       }
