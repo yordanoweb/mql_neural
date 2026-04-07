@@ -256,15 +256,31 @@ def build_features(df):
     df['feat_vol_percentile'] = safe(vol.rolling(args.vol_window).apply(lambda x: pd.Series(x).rank(pct=True).iloc[-1]))
     df['feat_vol_zscore'] = safe((vol - vol_ma) / vol_std.replace(0,1))
 
-    # ADX features
+    # ADX features (5 features)
     adx_indicator = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=args.adx_period)
     adx = adx_indicator.adx()
     di_plus = adx_indicator.adx_pos()
     di_minus = adx_indicator.adx_neg()
+    di_sum = di_plus + di_minus
+    di_sum_safe = di_sum.replace(0, np.nan).fillna(1.0)
 
+    # Feature 1: ADX strength - normalized around adx_min
     df['feat_adx_strength'] = safe((adx - args.adx_min) / (100.0 - args.adx_min))
+    
+    # Feature 2: DI signal
     df['feat_di_signal'] = safe(pd.Series(np.where(di_plus > di_minus, 1.0,
                                                    np.where(di_minus > di_plus, -1.0, 0.0))))
+    
+    # Feature 3: DI separation - directional conviction
+    df['feat_di_separation'] = safe((di_plus - di_minus) / di_sum_safe)
+    
+    # Feature 4: ADX momentum - rate of change
+    df['feat_adx_momentum'] = safe(adx.diff() / 100.0)
+    
+    # Feature 5: ADX regime - categorical (0=no trend, 0.5=developing, 1=strong)
+    regime = np.where(adx < args.adx_min, 0.0,
+             np.where(adx < 40.0, 0.5, 1.0))
+    df['feat_adx_regime'] = safe(pd.Series(regime))
 
     return df
 
@@ -275,7 +291,9 @@ FEATURES = [
     'feat_vol_ratio','feat_vol_momentum',
     'feat_vol_price_div','feat_vol_percentile',
     'feat_vol_zscore',
-    'feat_adx_strength','feat_di_signal'
+    'feat_adx_strength','feat_di_signal',
+    'feat_di_separation','feat_adx_momentum',
+    'feat_adx_regime'
 ]
 
 # =========================

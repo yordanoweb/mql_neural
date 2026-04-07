@@ -123,9 +123,12 @@ def calculate_volume_features(tick_volume, close, window=20):
 
 def calculate_adx_features(high, low, close, window=14, adx_min=20.0):
     """
-    Calculate ADX trend strength features:
-    1. ADX strength (normalized ADX value)
+    Calculate enhanced ADX trend features (5 features):
+    1. ADX strength (normalized ADX value centered around adx_min)
     2. DI signal (1 when DI+ > DI-, -1 when DI- > DI+, 0 otherwise)
+    3. DI separation - directional conviction strength (DI+ - DI-) / (DI+ + DI-)
+    4. ADX momentum - rate of change of trend strength (adx.diff())
+    5. ADX regime - categorical: 0 (no trend), 1 (developing), 2 (strong trend)
     """
     adx_indicator = ta.trend.ADXIndicator(high=high, low=low, close=close, window=window)
     
@@ -133,8 +136,7 @@ def calculate_adx_features(high, low, close, window=14, adx_min=20.0):
     di_plus = adx_indicator.adx_pos()
     di_minus = adx_indicator.adx_neg()
     
-    # Feature 1: ADX strength - normalized to [-1, 1], considering adx_min threshold
-    # ADX ranges 0-100, we center around adx_min and scale
+    # Feature 1: ADX strength - normalized to [-1, 1], centered around adx_min
     feat_adx_strength = safe_series((adx - adx_min) / (100.0 - adx_min), clip=1.0)
     
     # Feature 2: DI signal - buy when DI+ > DI-, sell when DI- > DI+
@@ -142,9 +144,26 @@ def calculate_adx_features(high, low, close, window=14, adx_min=20.0):
                         np.where(di_minus > di_plus, -1.0, 0.0))
     feat_di_signal = safe_series(pd.Series(di_signal, index=adx.index))
     
+    # Feature 3: DI separation - normalized directional conviction
+    di_sum = di_plus + di_minus
+    di_sum_safe = di_sum.replace(0, np.nan).fillna(1.0)
+    feat_di_separation = safe_series((di_plus - di_minus) / di_sum_safe, clip=1.0)
+    
+    # Feature 4: ADX momentum - rate of change of trend strength
+    feat_adx_momentum = safe_series(adx.diff() / 100.0, clip=1.0)
+    
+    # Feature 5: ADX regime - categorical trend classification
+    # 0 = no trend (ADX < adx_min), 1 = developing (adx_min ≤ ADX < 40), 2 = strong (ADX ≥ 40)
+    regime = np.where(adx < adx_min, 0.0,
+             np.where(adx < 40.0, 0.5, 1.0))
+    feat_adx_regime = safe_series(pd.Series(regime, index=adx.index), clip=1.0)
+    
     return {
         'feat_adx_strength': feat_adx_strength,
-        'feat_di_signal': feat_di_signal
+        'feat_di_signal': feat_di_signal,
+        'feat_di_separation': feat_di_separation,
+        'feat_adx_momentum': feat_adx_momentum,
+        'feat_adx_regime': feat_adx_regime
     }
 
 # --- CONFIGURATION ---
@@ -268,7 +287,10 @@ features = [
     'feat_vol_percentile',    # 10
     'feat_vol_zscore',        # 11
     'feat_adx_strength',      # 12
-    'feat_di_signal'          # 13
+    'feat_di_signal',         # 13
+    'feat_di_separation',     # 14
+    'feat_adx_momentum',      # 15
+    'feat_adx_regime'         # 16
 ]
 
 print(f"\nTotal features: {colorize(str(len(features)), Colors.MAGENTA)}")
