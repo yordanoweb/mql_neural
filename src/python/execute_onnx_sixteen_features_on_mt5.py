@@ -57,6 +57,7 @@ parser.add_argument("--adx_min", type=float, default=20.0)
 parser.add_argument("--h1_trend", action="store_true", default=False)
 parser.add_argument("--log_file", default="trading_log.csv")
 parser.add_argument("--cooldown", type=int, default=60)
+parser.add_argument("--trailing", action="store_true", default=True)
 
 args = parser.parse_args()
 
@@ -106,6 +107,8 @@ def print_parameters():
         ("H1 TREND FILTER", str(args.h1_trend), "h1_trend", "Filter trades by H1 trend"),
         ("LOG FILE", args.log_file, "log_file", "Trade log filename"),
         ("COOLDOWN", f"{args.cooldown}s", "cooldown", "Seconds between trades"),
+        ("", "", "", ""),  # Separator
+        ("TRAILING STOP", str(args.trailing), "trailing", "Use trailing stop (no TP, close on opposite M1 candle)"),
     ]
     
     for label, value, arg_name, description in params:
@@ -397,12 +400,38 @@ def close_position(pos):
         "deviation": 10,
     })
 
+def check_m1_opposite_candle(direction):
+    """Check if latest M1 candle is opposite to the given direction."""
+    m1_bars = mt5.copy_rates_from_pos(args.symbol, mt5.TIMEFRAME_M1, 0, 1)
+    if m1_bars is None or len(m1_bars) == 0:
+        return False
+    candle = m1_bars[0]
+    bullish = candle['close'] > candle['open']
+    if direction == 1:  # BUY position - check for bearish candle
+        return not bullish
+    else:  # SELL position - check for bullish candle
+        return bullish
+
+def should_close_trailing_position(pos, tp_price):
+    """Check if trailing position should be closed based on TP hit + opposite candle."""
+    tick = mt5.symbol_info_tick(args.symbol)
+    if pos.type == mt5.ORDER_TYPE_BUY:
+        # For BUY: check if price reached TP and now opposite M1 candle
+        if tick.bid >= tp_price:
+            return check_m1_opposite_candle(1)
+    else:
+        # For SELL: check if price reached TP and now opposite M1 candle
+        if tick.ask <= tp_price:
+            return check_m1_opposite_candle(-1)
+    return False
+
 # =========================
 # LOOP
 # =========================
 history = []
 last_trade_time = 0
 last_outside_hours_msg = 0
+trailing_positions = {}  # ticket -> {'tp_price': float, 'tp_reached': bool}
 
 print(c("[READY] Starting trading loop...\n", Fore.GREEN))
 
@@ -477,6 +506,30 @@ try:
         sell_positions = get_sell_positions()
         pos_count = len(buy_positions) + len(sell_positions)
 
+        # Check trailing positions
+        if args.trailing and pos_count > 0:
+            for pos in buy_positions + sell_positions:
+                if pos.ticket in trailing_positions:
+                    tp_data = trailing_positions[pos.ticket]
+                    if not tp_data['tp_reached']:
+                        # Check if TP level reached
+                        tick = mt5.symbol_info_tick(args.symbol)
+                        if pos.type == mt5.ORDER_TYPE_BUY and tick.bid >= tp_data['tp_price']:
+                            tp_data['tp_reached'] = True
+                            print(c(f"[TRAILING] BUY {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
+                        elif pos.type == mt5.ORDER_TYPE_SELL and tick.ask <= tp_data['tp_price']:
+                            tp_data['tp_reached'] = True
+                            print(c(f"[TRAILING] SELL {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
+                    else:
+                        # TP reached, check for opposite M1 candle
+                        direction = 1 if pos.type == mt5.ORDER_TYPE_BUY else -1
+                        if check_m1_opposite_candle(direction):
+                            result = close_position(pos)
+                            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                                print(c(f"[TRAILING EXIT] {pos.ticket} closed on opposite M1 candle", Fore.MAGENTA))
+                                del trailing_positions[pos.ticket]
+                                log_event("CLOSE", display_conf, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, 0, atr, balance, equity, candle_time)
+
         tick = mt5.symbol_info_tick(args.symbol)
 
         account = mt5.account_info()
@@ -505,12 +558,22 @@ try:
                 sl = price - atr * args.sl_mult
                 tp = price + atr * args.tp_mult
 
-                result = send_buy(price, sl, tp, buy_conf)
+            # Determine TP and trailing mode
+            if args.trailing:
+                entry_tp = 0  # No TP set
+                tp_for_log = price + atr * args.tp_mult  # For logging only
+            else:
+                entry_tp = tp
+                tp_for_log = tp
+
+                result = send_buy(price, sl, entry_tp, buy_conf)
 
                 if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                    print(c("[BUY ENTRY OK]", Fore.GREEN))
+                    print(c("[BUY ENTRY OK]" + (" [TRAILING]" if args.trailing else ""), Fore.GREEN))
                     last_trade_time = time.time()
-                    log_event("BUY", buy_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                    if args.trailing:
+                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
+                    log_event("BUY", buy_conf, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
                     print(c("[BUY ENTRY ERROR]", Fore.RED))
 
@@ -529,12 +592,22 @@ try:
                 sl = price + atr * args.sl_mult
                 tp = price - atr * args.tp_mult
 
-                result = send_sell(price, sl, tp, sell_conf)
+            # Determine TP and trailing mode
+            if args.trailing:
+                entry_tp = 0  # No TP set
+                tp_for_log = price - atr * args.tp_mult  # For logging only
+            else:
+                entry_tp = tp
+                tp_for_log = tp
+
+                result = send_sell(price, sl, entry_tp, sell_conf)
 
                 if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                    print(c("[SELL ENTRY OK]", Fore.CYAN))
+                    print(c("[SELL ENTRY OK]" + (" [TRAILING]" if args.trailing else ""), Fore.CYAN))
                     last_trade_time = time.time()
-                    log_event("SELL", sell_conf, raw_signal, history.copy(), signal, price, sl, tp, atr, balance, equity, candle_time)
+                    if args.trailing:
+                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
+                    log_event("SELL", sell_conf, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
                     print(c("[SELL ENTRY ERROR]", Fore.RED))
 
