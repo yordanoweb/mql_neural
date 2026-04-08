@@ -23,6 +23,7 @@ class SgradtStrategy(Strategy):
     trade_end_hour = args.trade_end_hour
     cooldown_mins = args.cooldown
     debug = args.debug
+    entry_price = 0.0
     
     def init(self):
         close = self.data.Close
@@ -45,21 +46,28 @@ class SgradtStrategy(Strategy):
         
         # EXIT LOGIC: Close on FIRST opposing candle after entry
         if self.position:
+            increase_one_percent = self.data.Open[-1] > (self.entry_price + (self.entry_price * 0.02))
+            if increase_one_percent:
+                self.log(f"Price increase 1% | {self.data.Open[-1]} -> {self.entry_price}")
+            decrease_one_percent = self.data.Open[-1] < (self.entry_price - (self.entry_price * 0.02))
+            if decrease_one_percent:
+                self.log(f"Price decrease 1% | {self.data.Open[-1]} -> {self.entry_price}")
+
             # Long position: exit immediately when EMA starts falling
-            if self.entry_direction == 1 and ema_falling:
+            if increase_one_percent or (self.entry_direction == 1 and ema_falling):
                 self.log(f"Long exit (first reversal): EMA fell at {current_time}")
                 self.position.close()
                 self.entry_direction = None
             
             # Short position: exit immediately when EMA starts rising  
-            elif self.entry_direction == -1 and ema_rising:
+            elif decrease_one_percent or (self.entry_direction == -1 and ema_rising):
                 self.log(f"Short exit (first reversal): EMA rose at {current_time}")
                 self.position.close()
                 self.entry_direction = None
 
         # DO NOT TRADE OUTSIDE TRADING HOURS
-        if (current_time.hour < self.trade_start_hour or 
-            current_time.hour >= self.trade_end_hour):
+        if (current_time.hour < self.trade_start_hour or # pyright: ignore 
+            current_time.hour >= self.trade_end_hour):   # pyright: ignore
             return
         
         # ENTRY LOGIC: Require 3 consecutive candles in same direction
@@ -68,12 +76,14 @@ class SgradtStrategy(Strategy):
             if len(self.entry_pattern) >= 3 and self.entry_pattern[-3:] == [1, 1, 1]:
                 self.log(f"Long entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.buy()
+                self.entry_price = self.data.Open[-1]
                 self.entry_direction = 1  # Mark as long entry
             
             # Short entry: 3 consecutive falling EMAs
             elif len(self.entry_pattern) >= 3 and self.entry_pattern[-3:] == [-1, -1, -1]:
                 self.log(f"Short entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.sell()
+                self.entry_price = self.data.Open[-1]
                 self.entry_direction = -1  # Mark as short entry
 
     def log(self, o):
