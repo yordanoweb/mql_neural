@@ -11,6 +11,7 @@ def parse_args():
     parser.add_argument('--trade-start-hour', type=int, default=14, help='Start hour for trading (0-23)')
     parser.add_argument('--trade-end-hour', type=int, default=22, help='End hour for trading (0-23)')
     parser.add_argument('--cooldown', type=int, default=120, help='Cooldown period in minutes')
+    parser.add_argument('--exit_percent', type=int, default=1, help='Price increase/decrease to close')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode')
     return parser.parse_args()
 
@@ -24,6 +25,7 @@ class SgradtStrategy(Strategy):
     cooldown_mins = args.cooldown
     debug = args.debug
     entry_price = 0.0
+    exit_percent = args.exit_percent / 100
     
     def init(self):
         close = self.data.Close
@@ -46,21 +48,22 @@ class SgradtStrategy(Strategy):
         
         # EXIT LOGIC: Close on FIRST opposing candle after entry
         if self.position:
-            increase_one_percent = self.data.Open[-1] > (self.entry_price + (self.entry_price * 0.02))
-            if increase_one_percent:
+            price_inc_percent = self.data.Open[-1] > (self.entry_price + (self.entry_price * self.exit_percent))
+            if price_inc_percent:
                 self.log(f"Price increase 1% | {self.data.Open[-1]} -> {self.entry_price}")
-            decrease_one_percent = self.data.Open[-1] < (self.entry_price - (self.entry_price * 0.02))
-            if decrease_one_percent:
+
+            price_dec_percent = self.data.Open[-1] < (self.entry_price - (self.entry_price * self.exit_percent))
+            if price_dec_percent:
                 self.log(f"Price decrease 1% | {self.data.Open[-1]} -> {self.entry_price}")
 
             # Long position: exit immediately when EMA starts falling
-            if increase_one_percent or (self.entry_direction == 1 and ema_falling):
+            if price_inc_percent or (self.entry_direction == 1 and ema_falling):
                 self.log(f"Long exit (first reversal): EMA fell at {current_time}")
                 self.position.close()
                 self.entry_direction = None
             
             # Short position: exit immediately when EMA starts rising  
-            elif decrease_one_percent or (self.entry_direction == -1 and ema_rising):
+            elif price_dec_percent or (self.entry_direction == -1 and ema_rising):
                 self.log(f"Short exit (first reversal): EMA rose at {current_time}")
                 self.position.close()
                 self.entry_direction = None
