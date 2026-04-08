@@ -122,8 +122,53 @@ def calculate_volume_features(tick_volume, close, window=20):
         'feat_vol_zscore':     feat_vol_zscore
     }
 
+def calculate_adx_features(high, low, close, window=14, adx_min=20.0):
+    """
+    Calculate enhanced ADX trend features (5 features):
+    1. ADX strength (normalized ADX value centered around adx_min)
+    2. DI signal (1 when DI+ > DI-, -1 when DI- > DI+, 0 otherwise)
+    3. DI separation - directional conviction strength (DI+ - DI-) / (DI+ + DI-)
+    4. ADX momentum - rate of change of trend strength (adx.diff())
+    5. ADX regime - categorical: 0 (no trend), 1 (developing), 2 (strong trend)
+    """
+    adx_indicator = ta.trend.ADXIndicator(high=high, low=low, close=close, window=window)
+    
+    adx = adx_indicator.adx()
+    di_plus = adx_indicator.adx_pos()
+    di_minus = adx_indicator.adx_neg()
+    
+    # Feature 1: ADX strength - normalized to [-1, 1], centered around adx_min
+    feat_adx_strength = safe_series((adx - adx_min) / (100.0 - adx_min), clip=1.0)
+    
+    # Feature 2: DI signal - buy when DI+ > DI-, sell when DI- > DI+
+    di_signal = np.where(di_plus > di_minus, 1.0,
+                        np.where(di_minus > di_plus, -1.0, 0.0))
+    feat_di_signal = safe_series(pd.Series(di_signal, index=adx.index))
+    
+    # Feature 3: DI separation - normalized directional conviction
+    di_sum = di_plus + di_minus
+    di_sum_safe = di_sum.replace(0, np.nan).fillna(1.0)
+    feat_di_separation = safe_series((di_plus - di_minus) / di_sum_safe, clip=1.0)
+    
+    # Feature 4: ADX momentum - rate of change of trend strength
+    feat_adx_momentum = safe_series(adx.diff() / 100.0, clip=1.0)
+    
+    # Feature 5: ADX regime - categorical trend classification
+    # 0 = no trend (ADX < adx_min), 1 = developing (adx_min ≤ ADX < 40), 2 = strong (ADX ≥ 40)
+    regime = np.where(adx < adx_min, 0.0,
+             np.where(adx < 40.0, 0.5, 1.0))
+    feat_adx_regime = safe_series(pd.Series(regime, index=adx.index), clip=1.0)
+    
+    return {
+        'feat_adx_strength': feat_adx_strength,
+        'feat_di_signal': feat_di_signal,
+        'feat_di_separation': feat_di_separation,
+        'feat_adx_momentum': feat_adx_momentum,
+        'feat_adx_regime': feat_adx_regime
+    }
+
 # --- CONFIGURATION ---
-parser = argparse.ArgumentParser(description="Train ONNX model with ENHANCED features")
+parser = argparse.ArgumentParser(description="Train ONNX model with ENHANCED features including ADX")
 parser.add_argument("--input_csv",       type=str,   required=True, help="Path to the input CSV file (required)")
 parser.add_argument("--output_dir",      type=str,   default=".",   help="Directory to save the ONNX model (default: .)")
 parser.add_argument("--atr_period",      type=int,   default=14,    help="Period for ATR calculation (default: 14)")
@@ -133,6 +178,8 @@ parser.add_argument("--n_iter",          type=int,   default=10,    help="Number
 parser.add_argument("--min_profit_atr",  type=float, default=1.5,   help="Minimum profit in ATR multiples (default: 1.5)")
 parser.add_argument("--stoch_window",    type=int,   default=14,    help="Stochastic period (default: 14)")
 parser.add_argument("--vol_window",      type=int,   default=20,    help="Volume analysis window (default: 20)")
+parser.add_argument("--adx_period",      type=int,   default=8,     help="ADX period (default: 8)")
+parser.add_argument("--adx_min",         type=float, default=20.0,  help="ADX minimum threshold for trend strength (default: 20.0)")
 parser.add_argument("--jobs",            type=int,   default=3,     help="Number of parallel jobs (default: 3)")
 
 args = parser.parse_args()
@@ -146,6 +193,8 @@ n_iter         = args.n_iter
 min_profit_atr = args.min_profit_atr
 stoch_window   = args.stoch_window
 vol_window     = args.vol_window
+adx_period     = args.adx_period
+adx_min        = args.adx_min
 jobs           = args.jobs
 
 start_time = time.time()
@@ -159,12 +208,12 @@ if not os.path.exists(output_dir):
 
 output_filename = os.path.join(
     output_dir,
-    Path(csv_file).stem + f"_enh_w{window}_f{future}_atr{atr_period}_minp{min_profit_atr}.onnx"
+    Path(csv_file).stem + f"_adx_w{window}_f{future}_atr{atr_period}_minp{min_profit_atr}_adx{adx_period}_adxm{adx_min}.onnx"
 )
 output_filename = str(output_filename).replace("_rates", "")
 
 print(colorize("=" * 70, Colors.CYAN))
-print(colorize("ENHANCED TRAINING WITH ADVANCED STOCHASTIC & VOLUME FEATURES", Colors.CYAN))
+print(colorize("ENHANCED TRAINING WITH ADVANCED STOCHASTIC, VOLUME & ADX FEATURES", Colors.CYAN))
 print(colorize("=" * 70, Colors.CYAN))
 print(f"Loading rates from: {colorize(csv_file, Colors.WHITE)}")
 print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
@@ -174,34 +223,41 @@ df = pd.read_csv(csv_file)
 print(f"Rows loaded: {colorize(str(len(df)), Colors.GREEN)}")
 
 # 2. CALCULATE ATR FOR NORMALIZATION
-print(colorize("\n[1/6] Calculating ATR for normalization...", Colors.BLUE))
+print(colorize("\n[1/7] Calculating ATR for normalization...", Colors.BLUE))
 atr_indicator = ta.volatility.AverageTrueRange(
     high=df['high'], low=df['low'], close=df['close'], window=atr_period
 )
 df['atr'] = atr_indicator.average_true_range()
 
 # 3. CALCULATE BASIC FEATURES (Body & Range)
-print(colorize("[2/6] Calculating basic price features (body, range)...", Colors.BLUE))
+print(colorize("[2/7] Calculating basic price features (body, range)...", Colors.BLUE))
 atr_safe = df['atr'].replace(0, np.nan).fillna(method='ffill').fillna(1.0)
 df['feat_body']  = safe_series((df['close'] - df['open']) / atr_safe)
 df['feat_range'] = safe_series((df['high']  - df['low'])  / atr_safe)
 
 # 4. CALCULATE ENHANCED STOCHASTIC FEATURES
-print(colorize(f"[3/6] Calculating enhanced stochastic features (window={stoch_window})...", Colors.BLUE))
+print(colorize(f"[3/7] Calculating enhanced stochastic features (window={stoch_window})...", Colors.BLUE))
 stoch_features = calculate_stochastic_features(df['high'], df['low'], df['close'], window=stoch_window)
 for key, value in stoch_features.items():
     df[key] = value
     print(f"  ✓ {key}")
 
 # 5. CALCULATE ENHANCED VOLUME FEATURES
-print(colorize(f"[4/6] Calculating enhanced volume features (window={vol_window})...", Colors.BLUE))
+print(colorize(f"[4/7] Calculating enhanced volume features (window={vol_window})...", Colors.BLUE))
 volume_features = calculate_volume_features(df['tick_volume'], df['close'], window=vol_window)
 for key, value in volume_features.items():
     df[key] = value
     print(f"  ✓ {key}")
 
-# 6. GENERATE TARGET
-print(colorize(f"[5/6] Generating target labels (future={future}, min_profit_atr={min_profit_atr})...", Colors.BLUE))
+# 6. CALCULATE ADX FEATURES
+print(colorize(f"[5/7] Calculating ADX features (period={adx_period}, min={adx_min})...", Colors.BLUE))
+adx_features = calculate_adx_features(df['high'], df['low'], df['close'], window=adx_period, adx_min=adx_min)
+for key, value in adx_features.items():
+    df[key] = value
+    print(f"  ✓ {key}")
+
+# 7. GENERATE TARGET
+print(colorize(f"[6/7] Generating target labels (future={future}, min_profit_atr={min_profit_atr})...", Colors.BLUE))
 labels = np.zeros(len(df))
 for i in range(len(df) - future):
     if pd.isna(df['atr'].iloc[i]) or df['atr'].iloc[i] == 0:
@@ -216,8 +272,8 @@ for i in range(len(df) - future):
 df['target'] = labels
 df.dropna(inplace=True)
 
-# 7. PREPARE TRAINING DATA
-print(colorize("[6/6] Preparing training windows...", Colors.BLUE))
+# 8. PREPARE TRAINING DATA
+print(colorize("[7/7] Preparing training windows...", Colors.BLUE))
 
 features = [
     'feat_body',              # 1
@@ -230,7 +286,12 @@ features = [
     'feat_vol_momentum',      # 8
     'feat_vol_price_div',     # 9
     'feat_vol_percentile',    # 10
-    'feat_vol_zscore'         # 11
+    'feat_vol_zscore',        # 11
+    'feat_adx_strength',      # 12
+    'feat_di_signal',         # 13
+    'feat_di_separation',     # 14
+    'feat_adx_momentum',      # 15
+    'feat_adx_regime'         # 16
 ]
 
 print(f"\nTotal features: {colorize(str(len(features)), Colors.MAGENTA)}")
@@ -256,7 +317,7 @@ print(f"\n{colorize('Training samples:', Colors.WHITE)} {colorize(str(len(X)), C
 print(f"{colorize('Positive samples:', Colors.WHITE)} {colorize(str(int(y.sum())), Colors.GREEN)} ({colorize(f'{(y.sum()/len(y)*100):.2f}%', Colors.YELLOW)})")
 print(f"{colorize('Input shape:', Colors.WHITE)} {colorize(str(X.shape), Colors.GREEN)}")
 
-# 8. HYPERPARAMETER OPTIMIZATION
+# 9. HYPERPARAMETER OPTIMIZATION
 print(colorize("\n" + "=" * 70, Colors.CYAN))
 print(colorize("STARTING HYPERPARAMETER OPTIMIZATION", Colors.CYAN))
 print(colorize("=" * 70, Colors.CYAN))
@@ -302,7 +363,7 @@ importance_df = pd.DataFrame({
 print(colorize("\nTop 10 Most Important Features:", Colors.CYAN))
 print(importance_df.head(10).to_string(index=False))
 
-# 9. EXPORT TO ONNX
+# 10. EXPORT TO ONNX
 print(colorize("\n" + "=" * 70, Colors.CYAN))
 print(colorize("EXPORTING TO ONNX", Colors.CYAN))
 print(colorize("=" * 70, Colors.CYAN))

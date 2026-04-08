@@ -8,6 +8,7 @@ from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 import onnx
+import onnx.helper
 import argparse
 import ta
 
@@ -193,15 +194,8 @@ onx = convert_sklearn(
 
 onnx.checker.check_model(onx)
 
-<<<<<<< Updated upstream
 with open(output_filename, "wb") as f:
     f.write(onx.SerializeToString())
-=======
-output_path = os.path.join(
-    args.output_dir,
-    Path(args.input_csv).stem + "_time_window_atr.onnx"
-)
->>>>>>> Stashed changes
 
 onnx.save(onx, output_path)
 

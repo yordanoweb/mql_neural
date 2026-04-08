@@ -9,6 +9,7 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 import ta
 import onnx
+import onnx.helper
 import argparse
 
 # ---------- Color setup ----------
@@ -131,8 +132,12 @@ onx = convert_sklearn(model, initial_types=initial_type, target_opset=12, option
 # Validate ONNX model before saving
 onnx.checker.check_model(onx)
 
-with open(output_filename, "wb") as f:
-    f.write(onx.SerializeToString())
+# Add feature names metadata
+feature_names_str = ",".join(features)
+entry = onx.metadata_props.add()
+entry.key = "feature_names"
+entry.value = feature_names_str
+onnx.save(onx, output_filename)
 
 print(colorize(f"Model saved at: {output_filename}", Colors.GREEN))
 print(colorize("--- PROCESS COMPLETED ---", Colors.CYAN))
