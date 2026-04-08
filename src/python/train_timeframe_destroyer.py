@@ -8,6 +8,7 @@ from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 import onnx
+import onnx.helper
 import argparse
 from datetime import datetime
 
@@ -224,8 +225,10 @@ onx = convert_sklearn(model, initial_types=initial_type, target_opset=12, option
 # Validate ONNX model before saving
 onnx.checker.check_model(onx)
 
-with open(output_filename, "wb") as f:
-    f.write(onx.SerializeToString())
+# Add feature names metadata
+feature_names_str = ",".join(features)
+onx.metadata_props.append(onnx.helper.make_string_string_entry("feature_names", feature_names_str))
+onnx.save(onx, output_filename)
 
 print(colorize(f"Model saved at: {output_filename}", Colors.GREEN))
 print(colorize("--- PROCESS COMPLETED ---", Colors.CYAN))
