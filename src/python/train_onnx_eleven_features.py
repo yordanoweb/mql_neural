@@ -315,7 +315,9 @@ onnx.checker.check_model(onx)
 
 # Add feature names metadata
 feature_names_str = ",".join(features)
-onx.metadata_props.append(onnx.helper.make_string_string_entry("feature_names", feature_names_str))
+entry = onx.metadata_props.add()
+entry.key = "feature_names"
+entry.value = feature_names_str
 onnx.save(onx, output_filename)
 
 print(colorize(f"\n✓ Model saved at:   {output_filename}", Colors.GREEN))
