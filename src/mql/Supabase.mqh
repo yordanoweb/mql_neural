@@ -388,7 +388,7 @@ bool BuildAndSendTradeData(ulong dealTicket, ENUM_DEAL_ENTRY entry)
    json += "\"reason\":\"" + StringFormat("%s %s", entry == DEAL_ENTRY_IN ? "ENTRY" : "EXIT",
                                                    cmd == 0 ? "BUY" : "SELL") + "\",";
    json += "\"position_id\":" + (string)position_id + ",";
-   json += "\"robot\":\"" + StringEscapeJSON(robotName) + "\"";
+   json += "\"robot\":\"" + StringEscapeJSON(AccountInfoString(ACCOUNT_COMPANY)) + " - " + StringEscapeJSON(robotName) + "\"";
    
    json += "}";
    
