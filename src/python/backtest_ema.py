@@ -114,7 +114,9 @@ if __name__ == "__main__":
     print(run_stats)
 
     if args.optimize:
-        optim = bt.optimize(ema_fast=range(6, 50, 1), maximize='Equity Final [$]')
+        optim = bt.optimize(ema_line=range(6, 50, 1),
+                            exit_percent=range(1, 5, 1),
+                            maximize=args.opt_params)
         print("OPTIMIZATION RESULT:")
         print(optim)
 
