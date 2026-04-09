@@ -7,7 +7,7 @@ Filters: trading hours, optional cooldown between trades
 
 import time
 import argparse
-import MetaTrader5 as mt5
+import MetaTrader5 as mt5 # pyright: ignore
 import pandas as pd
 import ta
 
@@ -128,7 +128,7 @@ def get_candles(count):
 def compute_ema(df, period):
     if df is None or len(df) < period:
         return None
-    return ta.trend.EMAIndicator(df['close'], window=period).ema_indicator()
+    return ta.trend.EMAIndicator(df['close'], window=period).ema_indicator() # pyright: ignore
 
 def get_open_position():
     positions = mt5.positions_get(symbol=SYMBOL)
