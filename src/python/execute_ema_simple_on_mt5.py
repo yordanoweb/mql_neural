@@ -325,15 +325,15 @@ try:
             # Check if last 3 directions (dir3, dir2, dir1) are all 1 (rising) or all -1 (falling)
             if dir1 != 0 and dir2 != 0 and dir3 != 0:
                 if dir1 == 1 and dir2 == 1 and dir3 == 1:
-                    print(colorize(f"3 consecutive rising EMAs detected -> LONG entry", Colors.GREEN))
-                    order_ok = send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, comment=f"EMA long@{ask}")
+                    print(colorize("3 consecutive rising EMAs detected -> LONG entry", Colors.GREEN))
+                    order_ok = send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, comment=f"EMA {args.ema_period} long@{ask}")
                     if order_ok:
                         entry_price = ask
                         entry_direction = 1
                         # reset pattern to avoid re-entry immediately? Not needed because position exists
                 elif dir1 == -1 and dir2 == -1 and dir3 == -1:
-                    print(colorize(f"3 consecutive falling EMAs detected -> SHORT entry", Colors.GREEN))
-                    order_ok = send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, comment=f"EMA short@{bid}")
+                    print(colorize("3 consecutive falling EMAs detected -> SHORT entry", Colors.GREEN))
+                    order_ok = send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, comment=f"EMA {args.ema_period} short@{bid}")
                     if order_ok:
                         entry_price = bid
                         entry_direction = -1
