@@ -601,9 +601,11 @@ try:
         atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
         print(c("--------------------------------------------------", Fore.BLUE))
-        print(f"Hour: {server_time.strftime('%H:%M:%S')} | Class: {predicted_class} | H:{hold_prob:.3f} B:{buy_prob:.3f} S:{sell_prob:.3f}")
+        print(f"Hour: {server_time.strftime('%H:%M:%S')} | Class: {c(predicted_class, Fore.MAGENTA)} | Expected: {c(args.confidence, Fore.MAGENTA)}")
+        print(f"HOLD:{c(f'{hold_prob:.3f}', Fore.YELLOW)} | BUY:{c(f'{buy_prob:.3f}', Fore.GREEN)} | SELL:{c(f'{sell_prob:.3f}', Fore.RED)}")
         buffer_display = [SIGNAL_LABEL[s] for s in history]
-        print(f"Buffer: {buffer_display} | Signal: {SIGNAL_LABEL[signal]} | Positions: {pos_count}")
+        print(f"Buffer: {c(buffer_display, Fore.CYAN)}")
+        print(f"Signal: {c(SIGNAL_LABEL[signal], Fore.MAGENTA)} | Positions: {c(pos_count, Fore.RED)}")
 
         # ================= ENTRY BUY =================
         if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
