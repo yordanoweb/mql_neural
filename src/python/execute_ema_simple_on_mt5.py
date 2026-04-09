@@ -67,6 +67,7 @@ parser.add_argument("--exit_percent", type=float, default=1.0, help="Price chang
 parser.add_argument("--magic", type=int, default=int(time.time()), help="Magic number")
 parser.add_argument("--volume", type=float, default=0.1, help="Order volume in lots")
 parser.add_argument("--interval", type=float, default=5.0, help="Seconds between processing steps")
+parser.add_argument("--required_candles", type=int, default=3, help="Candles to wait before first entry")
 parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
 args = parser.parse_args()
@@ -209,7 +210,7 @@ MAX_PATTERN_LEN = 10
 
 # Startup delay: require 3 complete candles before allowing entries
 candles_since_start = 0
-STARTUP_CANDLES_REQUIRED = 3
+STARTUP_CANDLES_REQUIRED = args.required_candles
 
 try:
     while True:
