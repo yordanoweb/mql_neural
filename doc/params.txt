@@ -2,14 +2,17 @@
 
 # NASDAQ
 
+python src\python\execute_onnx_sixteen_features_on_mt5_balanced.py --model Z:\home\yordano\MQL5\Files\ndx100_m5_3class_w20_f10_atr14_minp1.5_adx8_adxm20.0.onnx --symbol USTEC --timeframe M5 --confidence 0.55 --window 20 --force_consistency --consistency_bars 4 --lot 0.5 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 1 --tp_mult 2
+
 python src\python\execute_onnx_sixteen_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\ndx100_m5_adx_w20_f8_atr14_minp1.5_adx8_adxm20.0.onnx --symbol USTEC --timeframe M5 --confidence 0.71 --window 20 --force_consistency --consistency_bars 4 --lot 0.5 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 0.5 --tp_mult 1.2
 
 python src\python\execute_onnx_sixteen_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\ndx100_m5_adx_w20_f8_atr14_minp1.5_adx8_adxm20.0.onnx --symbol USTEC --timeframe M5 --confidence 0.55 --window 20 --force_consistency --consistency_bars 4 --lot 0.5 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 0.5 --tp_mult 1.0
 
 # SP500
 
-python src\python\execute_onn
-x_sixteen_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\sp500_m5_adx_w20_f8_atr14_minp1.5_adx8_adxm20.0.onnx --symbol US500 --timeframe M5 --confidence 0.6 --window 20 --force_consistency --consistency_bars 4 --lot 2.0 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 0.5 --tp_mult 1.2
+python src\python\execute_onnx_sixteen_features_on_mt5_balanced.py --model Z:\home\yordano\MQL5\Files\sp500_m5_3class_w20_f10_atr14_minp1.5_adx8_adxm20.0.onnx --symbol US500 --timeframe M5 --confidence 0.55 --window 20 --force_consistency --consistency_bars 4 --lot 2.0 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 1 --tp_mult 2
+
+python src\python\execute_onnx_sixteen_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\sp500_m5_adx_w20_f8_atr14_minp1.5_adx8_adxm20.0.onnx --symbol US500 --timeframe M5 --confidence 0.6 --window 20 --force_consistency --consistency_bars 4 --lot 2.0 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 0.5 --tp_mult 1.2
 
 python src\python\execute_onnx_sixteen_features_on_mt5.py --model Z:\home\yordano\MQL5\Files\sp500_m5_adx_w20_f8_atr14_minp1.5_adx8_adxm20.0.onnx --symbol US500 --timeframe M5 --confidence 0.57 --window 20 --force_consistency --consistency_bars 4 --lot 2.0 --start_hour 0 --end_hour 22 --interval 10 --sl_mult 0.5 --tp_mult 1.0
 
