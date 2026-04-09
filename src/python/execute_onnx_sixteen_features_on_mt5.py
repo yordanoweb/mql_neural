@@ -336,6 +336,24 @@ def extract_probability(outputs):
 # =========================
 # POSITION HANDLING
 # =========================
+def get_filling_mode():
+    """Detect the correct filling mode for the symbol."""
+    info = mt5.symbol_info(args.symbol)
+    if info is None:
+        return mt5.ORDER_FILLING_IOC
+    
+    # Filling mode bitmask: FOK=1, IOC=2, RETURN=4
+    filling_mode = info.filling_mode
+    if filling_mode & 1:  # SYMBOL_TRADE_FILLING_FOK
+        return mt5.ORDER_FILLING_FOK
+    elif filling_mode & 2:  # SYMBOL_TRADE_FILLING_IOC
+        return mt5.ORDER_FILLING_IOC
+    else:
+        return mt5.ORDER_FILLING_IOC
+
+FILLING_MODE = get_filling_mode()
+print(c(f"[INFO] Order filling mode: {FILLING_MODE}", Fore.CYAN))
+
 def get_positions():
     positions = mt5.positions_get(symbol=args.symbol)
     if positions is None:
@@ -359,10 +377,14 @@ def send_buy(price, sl, tp, buy_conf):
         "tp": tp,
         "magic": args.magic,
         "deviation": 10,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": FILLING_MODE,
         "comment": f"16_Feat BUY@{buy_conf:.5f}"
     }
-    return mt5.order_send(request)
+    result = mt5.order_send(request)
+    if result is None:
+        error_code, error_msg = mt5.last_error()
+        print(c(f"[MT5 ERROR] {error_code}: {error_msg}", Fore.RED))
+    return result
 
 def send_sell(price, sl, tp, sell_conf):
     request = {
@@ -375,10 +397,14 @@ def send_sell(price, sl, tp, sell_conf):
         "tp": tp,
         "magic": args.magic,
         "deviation": 10,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": FILLING_MODE,
         "comment": f"16_Feat SELL@{sell_conf:.5f}"
     }
-    return mt5.order_send(request)
+    result = mt5.order_send(request)
+    if result is None:
+        error_code, error_msg = mt5.last_error()
+        print(c(f"[MT5 ERROR] {error_code}: {error_msg}", Fore.RED))
+    return result
 
 def close_position(pos):
     tick = mt5.symbol_info_tick(args.symbol)
@@ -398,6 +424,7 @@ def close_position(pos):
         "price": price,
         "magic": args.magic,
         "deviation": 10,
+        "type_filling": FILLING_MODE,
     })
 
 def check_m1_opposite_candle(direction):
