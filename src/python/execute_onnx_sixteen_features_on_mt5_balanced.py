@@ -604,7 +604,10 @@ try:
                         trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
                     log_event("BUY", probs, predicted_class, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
-                    print(c("[BUY ENTRY ERROR]", Fore.RED))
+                    error_code = result.retcode if result else "No result"
+                    error_msg = result.comment if result else "Unknown error"
+                    print(c(f"[BUY ENTRY ERROR] Code: {error_code} | {error_msg}", Fore.RED))
+                    print(c(f"  Details: price={price:.5f} sl={sl:.5f} tp={entry_tp:.5f} lot={args.lot}", Fore.RED))
 
         # ================= ENTRY SELL =================
         elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
@@ -638,7 +641,10 @@ try:
                         trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
                     log_event("SELL", probs, predicted_class, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
-                    print(c("[SELL ENTRY ERROR]", Fore.RED))
+                    error_code = result.retcode if result else "No result"
+                    error_msg = result.comment if result else "Unknown error"
+                    print(c(f"[SELL ENTRY ERROR] Code: {error_code} | {error_msg}", Fore.RED))
+                    print(c(f"  Details: price={price:.5f} sl={sl:.5f} tp={entry_tp:.5f} lot={args.lot}", Fore.RED))
 
         # ================= EXIT ALL (HOLD SIGNAL) =================
         elif signal == 0 and pos_count > 0:
