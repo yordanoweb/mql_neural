@@ -1,4 +1,4 @@
-from backtesting import Backtest, Strategy
+from backtesting import Strategy
 from backtesting.lib import FractionalBacktest
 import talib
 import pandas as pd
@@ -11,16 +11,16 @@ def parse_args():
     parser.add_argument('--trade-start-hour', type=int, default=14, help='Start hour for trading (0-23)')
     parser.add_argument('--trade-end-hour', type=int, default=22, help='End hour for trading (0-23)')
     parser.add_argument('--cooldown', type=int, default=120, help='Cooldown period in minutes')
-    parser.add_argument('--exit_percent', type=int, default=1, help='Price increase/decrease to close')
+    parser.add_argument('--exit-percent', type=int, default=1, help='Price increase/decrease to close')
     parser.add_argument('--debug', action='store_true', default=False, help='Debug mode')
     parser.add_argument('--optimize', action='store_true', default=False, help='Execute optimization')
-    parser.add_argument('--opt_params', type=str, default='Equity Final [$]', help='Parameters to optimize')
+    parser.add_argument('--opt-params', type=str, default='Equity Final [$]', help='Parameters to optimize')
     return parser.parse_args()
 
 args = parse_args()
 CSV_FILE = args.csv
 
-class SgradtStrategy(Strategy):
+class SimpleEMAStrategy(Strategy):
     ema_period = args.ema_period
     trade_start_hour = args.trade_start_hour
     trade_end_hour = args.trade_end_hour
@@ -108,17 +108,19 @@ if __name__ == "__main__":
     df['Close'] = df['close']
     df['Volume'] = df['tick_volume']
 
-    bt = FractionalBacktest(df, SgradtStrategy, cash=10000, commission=0.0)
+    bt = FractionalBacktest(df, SimpleEMAStrategy, cash=10000, commission=0.0)
 
     run_stats = bt.run()
     print(run_stats)
 
     if args.optimize:
-        optim = bt.optimize(ema_period=range(6, 50, 1),
+        optim = bt.optimize(ema_period=range(6, 20, 1),
                             exit_percent=range(1, 5, 1),
                             maximize=args.opt_params)
-        print("OPTIMIZATION RESULT:")
+        print("\nOPTIMIZATION RESULT:")
         print(optim)
+        print("\nOptimized:")
+        print(optim._strategy) # pyright: ignore
 
     bt.plot(resample=False)
 
