@@ -572,15 +572,9 @@ try:
                         tick = mt5.symbol_info_tick(args.symbol)
                         if pos.type == mt5.ORDER_TYPE_BUY and tick.bid >= tp_data['tp_price']:
                             tp_data['tp_reached'] = True
-                            # Initialize last_m1_time to current completed candle so we don't exit immediately
-                            m1_candle = get_last_completed_m1_candle()
-                            tp_data['last_m1_time'] = m1_candle['time'] if m1_candle else 0
                             print(c(f"[TRAILING] BUY {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
                         elif pos.type == mt5.ORDER_TYPE_SELL and tick.ask <= tp_data['tp_price']:
                             tp_data['tp_reached'] = True
-                            # Initialize last_m1_time to current completed candle so we don't exit immediately
-                            m1_candle = get_last_completed_m1_candle()
-                            tp_data['last_m1_time'] = m1_candle['time'] if m1_candle else 0
                             print(c(f"[TRAILING] SELL {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
                     else:
                         # TP reached, check for NEW opposite M1 candle only
