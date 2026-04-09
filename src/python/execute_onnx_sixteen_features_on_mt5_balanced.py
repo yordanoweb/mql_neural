@@ -57,7 +57,7 @@ parser.add_argument("--adx_min", type=float, default=20.0)
 parser.add_argument("--h1_trend", action="store_true", default=False)
 parser.add_argument("--log_file", default="trading_log.csv")
 parser.add_argument("--cooldown", type=int, default=60)
-parser.add_argument("--trailing", action="store_true", default=True)
+parser.add_argument("--trailing", action="store_true", default=False)
 
 args = parser.parse_args()
 
@@ -459,30 +459,22 @@ def close_position(pos):
         "type_filling": FILLING_MODE,
     })
 
-def check_m1_opposite_candle(direction):
-    """Check if latest M1 candle is opposite to the given direction."""
-    m1_bars = mt5.copy_rates_from_pos(args.symbol, mt5.TIMEFRAME_M1, 0, 1)
-    if m1_bars is None or len(m1_bars) == 0:
+def get_last_completed_m1_candle():
+    """Get the last completed M1 candle (index 1, not the forming one at index 0)."""
+    m1_bars = mt5.copy_rates_from_pos(args.symbol, mt5.TIMEFRAME_M1, 0, 2)
+    if m1_bars is None or len(m1_bars) < 2:
+        return None
+    return m1_bars[1]  # Index 1 is the last completed candle
+
+def is_m1_candle_opposite(candle, direction):
+    """Check if a completed M1 candle is opposite to the position direction."""
+    if candle is None:
         return False
-    candle = m1_bars[0]
     bullish = candle['close'] > candle['open']
     if direction == 1:  # BUY position - check for bearish candle
         return not bullish
     else:  # SELL position - check for bullish candle
         return bullish
-
-def should_close_trailing_position(pos, tp_price):
-    """Check if trailing position should be closed based on TP hit + opposite candle."""
-    tick = mt5.symbol_info_tick(args.symbol)
-    if pos.type == mt5.ORDER_TYPE_BUY:
-        # For BUY: check if price reached TP and now opposite M1 candle
-        if tick.bid >= tp_price:
-            return check_m1_opposite_candle(1)
-    else:
-        # For SELL: check if price reached TP and now opposite M1 candle
-        if tick.ask <= tp_price:
-            return check_m1_opposite_candle(-1)
-    return False
 
 # =========================
 # LOOP
@@ -490,7 +482,7 @@ def should_close_trailing_position(pos, tp_price):
 history = []
 last_trade_time = 0
 last_outside_hours_msg = 0
-trailing_positions = {}  # ticket -> {'tp_price': float, 'tp_reached': bool}
+trailing_positions = {}  # ticket -> {'tp_price': float, 'tp_reached': bool, 'last_m1_time': int}
 
 print(c("[READY] Starting 3-class trading loop...\n", Fore.GREEN))
 print(c("Model outputs: 0=HOLD | 1=BUY | 2=SELL\n", Fore.YELLOW))
@@ -580,19 +572,31 @@ try:
                         tick = mt5.symbol_info_tick(args.symbol)
                         if pos.type == mt5.ORDER_TYPE_BUY and tick.bid >= tp_data['tp_price']:
                             tp_data['tp_reached'] = True
+                            # Initialize last_m1_time to current completed candle so we don't exit immediately
+                            m1_candle = get_last_completed_m1_candle()
+                            tp_data['last_m1_time'] = m1_candle['time'] if m1_candle else 0
                             print(c(f"[TRAILING] BUY {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
                         elif pos.type == mt5.ORDER_TYPE_SELL and tick.ask <= tp_data['tp_price']:
                             tp_data['tp_reached'] = True
+                            # Initialize last_m1_time to current completed candle so we don't exit immediately
+                            m1_candle = get_last_completed_m1_candle()
+                            tp_data['last_m1_time'] = m1_candle['time'] if m1_candle else 0
                             print(c(f"[TRAILING] SELL {pos.ticket} TP level reached, monitoring for exit", Fore.MAGENTA))
                     else:
-                        # TP reached, check for opposite M1 candle
-                        direction = 1 if pos.type == mt5.ORDER_TYPE_BUY else -1
-                        if check_m1_opposite_candle(direction):
-                            result = close_position(pos)
-                            if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                                print(c(f"[TRAILING EXIT] {pos.ticket} closed on opposite M1 candle", Fore.MAGENTA))
-                                del trailing_positions[pos.ticket]
-                                log_event("CLOSE", probs, predicted_class, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, 0, atr, balance, equity, candle_time)
+                        # TP reached, check for NEW opposite M1 candle only
+                        m1_candle = get_last_completed_m1_candle()
+                        if m1_candle is not None and m1_candle['time'] != tp_data.get('last_m1_time', 0):
+                            # New M1 candle completed, update tracking
+                            tp_data['last_m1_time'] = m1_candle['time']
+                            direction = 1 if pos.type == mt5.ORDER_TYPE_BUY else -1
+                            if is_m1_candle_opposite(m1_candle, direction):
+                                result = close_position(pos)
+                                if result and result.retcode == mt5.TRADE_RETCODE_DONE:
+                                    m1_time_str = pd.to_datetime(m1_candle['time'], unit='s').strftime('%H:%M:%S')
+                                    print(c(f"[TRAILING EXIT] {pos.ticket} closed on opposite M1 candle at {m1_time_str}", Fore.MAGENTA))
+                                    del trailing_positions[pos.ticket]
+                                    tick = mt5.symbol_info_tick(args.symbol)
+                                    log_event("CLOSE", probs, predicted_class, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, 0, atr, balance, equity, candle_time)
 
         tick = mt5.symbol_info_tick(args.symbol)
 
@@ -636,7 +640,7 @@ try:
                     print(c("[BUY ENTRY OK]" + (" [TRAILING]" if args.trailing else ""), Fore.GREEN))
                     last_trade_time = time.time()
                     if args.trailing:
-                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
+                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False, 'last_m1_time': 0}
                     log_event("BUY", probs, predicted_class, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
                     error_code = result.retcode if result else "No result"
@@ -673,7 +677,7 @@ try:
                     print(c("[SELL ENTRY OK]" + (" [TRAILING]" if args.trailing else ""), Fore.CYAN))
                     last_trade_time = time.time()
                     if args.trailing:
-                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False}
+                        trailing_positions[result.order] = {'tp_price': tp_for_log, 'tp_reached': False, 'last_m1_time': 0}
                     log_event("SELL", probs, predicted_class, raw_signal, history.copy(), signal, price, sl, tp_for_log, atr, balance, equity, candle_time)
                 else:
                     error_code = result.retcode if result else "No result"
