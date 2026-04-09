@@ -391,6 +391,10 @@ def get_sell_positions():
     return [p for p in get_positions() if p.type == mt5.ORDER_TYPE_SELL]
 
 def send_buy(price, sl, tp, buy_prob):
+    # Some brokers reject tp=0, use distant TP for trailing mode
+    if tp == 0:
+        tp = price + 1000.0  # Very distant TP for trailing
+    
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,
@@ -411,6 +415,10 @@ def send_buy(price, sl, tp, buy_prob):
     return result
 
 def send_sell(price, sl, tp, sell_prob):
+    # Some brokers reject tp=0, use distant TP for trailing mode
+    if tp == 0:
+        tp = price - 1000.0  # Very distant TP for trailing
+    
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": args.symbol,

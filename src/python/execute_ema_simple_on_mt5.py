@@ -207,6 +207,10 @@ entry_direction = None  # 1 for long, -1 for short
 pattern = []  # 1 for rising EMA, -1 for falling EMA
 MAX_PATTERN_LEN = 10
 
+# Startup delay: require 3 complete candles before allowing entries
+candles_since_start = 0
+STARTUP_CANDLES_REQUIRED = 3
+
 try:
     while True:
         now = time.time()
@@ -279,7 +283,8 @@ try:
         # Current candle time for logging
         current_candle_time = df.iloc[-2]['time']
         if last_candle_time != current_candle_time:
-            print(colorize(f"\n--- New candle: {current_candle_time} ---", Colors.CYAN))
+            candles_since_start += 1
+            print(colorize(f"\n--- New candle: {current_candle_time} ({candles_since_start}/{STARTUP_CANDLES_REQUIRED}) ---", Colors.CYAN))
             last_candle_time = current_candle_time
 
         # Log EMA directions
@@ -321,9 +326,13 @@ try:
 
         # ---------- ENTRY LOGIC (no position) ----------
         if position is None:
+            # Startup delay: require minimum candles before allowing entry
+            if candles_since_start < STARTUP_CANDLES_REQUIRED:
+                if DEBUG:
+                    print(colorize(f"Startup delay: {candles_since_start}/{STARTUP_CANDLES_REQUIRED} candles, no entry yet", Colors.YELLOW))
             # Need at least 3 consecutive directions
             # Check if last 3 directions (dir3, dir2, dir1) are all 1 (rising) or all -1 (falling)
-            if dir1 != 0 and dir2 != 0 and dir3 != 0:
+            elif dir1 != 0 and dir2 != 0 and dir3 != 0:
                 if dir1 == 1 and dir2 == 1 and dir3 == 1:
                     print(colorize("3 consecutive rising EMAs detected -> LONG entry", Colors.GREEN))
                     order_ok = send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, comment=f"EMA {args.ema_period} long@{ask}")
