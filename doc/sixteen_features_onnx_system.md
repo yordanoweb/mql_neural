@@ -138,4 +138,29 @@ Buffer: ['HOLD', 'HOLD', 'HOLD', 'HOLD'] | Signal: HOLD | Positions: 0
 ```
 
 ### Logging
-CSV log with columns: timestamp, symbol, timeframe, candle_time, prob, raw_signal, buffer, signal, action, price, sl, tp, atr, balance, equity
+
+CSV structure for `execute_onnx_sixteen_features_on_mt5_balanced.py`:
+
+```
+| Column            | Description                                         |
+| ----------------- | --------------------------------------------------- |
+| `timestamp`       | Event time (YYYY-MM-DD HH:MM:SS)                    |
+| `symbol`          | Trading symbol                                      |
+| `timeframe`       | Chart timeframe                                     |
+| `candle_time`     | Candle timestamp                                    |
+| `hold_prob`       | Probability for HOLD class                          |
+| `buy_prob`        | Probability for BUY class                           |
+| `sell_prob`       | Probability for SELL class                          |
+| `predicted_class` | Model prediction (0=HOLD, 1=BUY, 2=SELL)            |
+| `raw_signal`      | Raw signal label (HOLD/BUY/SELL)                    |
+| `buffer`          | Signal history array                                |
+| `signal`          | Final signal after consistency (HOLD/BUY/SELL/NONE) |
+| `action`          | Action taken (HOLD/BUY/SELL/CLOSE)                  |
+| `price`           | Entry/exit price                                    |
+| `sl`              | Stop loss                                           |
+| `tp`              | Take profit                                         |
+| `atr`             | ATR value                                           |
+| `balance`         | Account balance                                     |
+| `equity`          | Account equity                                      |
+```
+
