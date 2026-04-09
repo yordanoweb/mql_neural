@@ -50,6 +50,10 @@ class SimpleEMAStrategy(Strategy):
         
         # EXIT LOGIC: Close on FIRST opposing candle after entry
         if self.position:
+            # Close any position that still opened at day close
+            if (current_time.hour >= self.trade_end_hour):   # pyright: ignore
+                self.position.close()
+                return
 
             if self.position.is_long:
                 # Check if price has increased from last entry
