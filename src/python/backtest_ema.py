@@ -48,25 +48,28 @@ class SgradtStrategy(Strategy):
         
         # EXIT LOGIC: Close on FIRST opposing candle after entry
         if self.position:
-            price_inc_percent = self.data.Open[-1] > (self.entry_price + (self.entry_price * self.exit_percent))
-            if price_inc_percent:
-                self.log(f"Price increase 1% | {self.data.Open[-1]} -> {self.entry_price}")
 
-            price_dec_percent = self.data.Open[-1] < (self.entry_price - (self.entry_price * self.exit_percent))
-            if price_dec_percent:
-                self.log(f"Price decrease 1% | {self.data.Open[-1]} -> {self.entry_price}")
-
-            # Long position: exit immediately when EMA starts falling
-            if price_inc_percent or (self.entry_direction == 1 and ema_falling):
-                self.log(f"Long exit (first reversal): EMA fell at {current_time}")
-                self.position.close()
-                self.entry_direction = None
-            
-            # Short position: exit immediately when EMA starts rising  
-            elif price_dec_percent or (self.entry_direction == -1 and ema_rising):
-                self.log(f"Short exit (first reversal): EMA rose at {current_time}")
-                self.position.close()
-                self.entry_direction = None
+            if self.position.is_long:
+                # Check if price has increased from last entry
+                price_inc_percent = self.data.Open[-1] > (self.entry_price + (self.entry_price * self.exit_percent))
+                if price_inc_percent:
+                    self.log(f"Price increase {self.exit_percent}% | {self.data.Open[-1]} -> {self.entry_price}")
+                # Long position: exit immediately when conditions are met
+                if price_inc_percent or (self.entry_direction == 1 and ema_falling):
+                    self.log(f"Long exit (first reversal): EMA fell at {current_time}")
+                    self.position.close()
+                    self.entry_direction = None
+ 
+            elif self.position.is_short:
+                # Check if price has decreased from last entry
+                price_dec_percent = self.data.Open[-1] < (self.entry_price - (self.entry_price * self.exit_percent))
+                if price_dec_percent:
+                    self.log(f"Price decrease {self.exit_percent}% | {self.data.Open[-1]} -> {self.entry_price}")
+                # Short position: exit immediately when conditions are met
+                elif price_dec_percent or (self.entry_direction == -1 and ema_rising):
+                    self.log(f"Short exit (first reversal): EMA rose at {current_time}")
+                    self.position.close()
+                    self.entry_direction = None
 
         # DO NOT TRADE OUTSIDE TRADING HOURS
         if (current_time.hour < self.trade_start_hour or # pyright: ignore 
