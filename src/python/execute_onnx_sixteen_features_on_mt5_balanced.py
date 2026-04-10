@@ -605,12 +605,6 @@ try:
                 print(c("[BUY BLOCKED by H1 trend]", Fore.YELLOW))
                 log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
             else:
-                for p in sell_positions:
-                    result = close_position(p)
-                    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                        reason = "Opposite signal (BUY)"
-                        print(c(f"[CLOSE SELL before BUY] {p.ticket}. Cause: {reason}", Fore.YELLOW))
-
                 price = tick.ask
                 sl = price - atr * args.sl_mult
                 tp = price + atr * args.tp_mult
@@ -643,12 +637,6 @@ try:
                 print(c("[SELL BLOCKED by H1 trend]", Fore.YELLOW))
                 log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
             else:
-                for p in buy_positions:
-                    result = close_position(p)
-                    if result and result.retcode == mt5.TRADE_RETCODE_DONE:
-                        reason = "Opposite signal (SELL)"
-                        print(c(f"[CLOSE BUY before SELL] {p.ticket}. Cause: {reason}", Fore.YELLOW))
-
                 price = tick.bid
                 sl = price + atr * args.sl_mult
                 tp = price - atr * args.tp_mult
