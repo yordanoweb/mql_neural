@@ -268,8 +268,14 @@ try:
             print(colorize(f"\n--- New candle: {current_candle_time} ({candles_since_start}/{STARTUP_CANDLES_REQUIRED}) ---", Colors.CYAN))
             last_candle_time = current_candle_time
 
+        # === CANDLE DIRECTION FILTER ===
+        prev_candle = df.iloc[-2]  # last completed candle
+        prev_is_bullish = prev_candle['close'] > prev_candle['open']
+        prev_is_bearish = prev_candle['close'] < prev_candle['open']
+        
         # Log EMA directions
         if DEBUG:
+            print(f"Candle filter → {colorize('bullish', Colors.GREEN) if prev_is_bullish else colorize('bearish', Colors.RED)}")
             print(f"EMA directions: [{dir3}, {dir2}, {dir1}]")
 
         # ---------- EXIT LOGIC (if position exists) ----------
@@ -326,14 +332,14 @@ try:
             # Need at least 3 consecutive directions
             # Check if last 3 directions (dir3, dir2, dir1) are all 1 (rising) or all -1 (falling)
             elif dir1 != 0 and dir2 != 0 and dir3 != 0:
-                if dir1 == 1 and dir2 == 1 and dir3 == 1:
+                if dir1 == 1 and dir2 == 1 and dir3 == 1 and prev_is_bullish:
                     print(colorize("3 consecutive rising EMAs detected -> LONG entry", Colors.GREEN))
                     order_ok = send_order(mt5.ORDER_TYPE_BUY, VOLUME, ask, comment=f"EMA {args.ema_period} long@{ask}")
                     if order_ok:
                         entry_price = ask
                         entry_direction = 1
                         # reset pattern to avoid re-entry immediately? Not needed because position exists
-                elif dir1 == -1 and dir2 == -1 and dir3 == -1:
+                elif dir1 == -1 and dir2 == -1 and dir3 == -1 and prev_is_bearish:
                     print(colorize("3 consecutive falling EMAs detected -> SHORT entry", Colors.GREEN))
                     order_ok = send_order(mt5.ORDER_TYPE_SELL, VOLUME, bid, comment=f"EMA {args.ema_period} short@{bid}")
                     if order_ok:
