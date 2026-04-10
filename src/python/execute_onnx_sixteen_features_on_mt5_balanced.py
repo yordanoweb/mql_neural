@@ -591,7 +591,7 @@ try:
                                     print(c(f"[TRAILING EXIT] {pos.ticket} closed. Cause: {reason} (Candle time: {m1_time_str})", Fore.MAGENTA))
                                     del trailing_positions[pos.ticket]
                                     tick = mt5.symbol_info_tick(args.symbol)
-                                    log_event("CLOSE", probs, predicted_class, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, 0, atr, balance, equity, candle_time)
+                                    log_event("CLOSE", probs, predicted_class, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, atr, balance, equity, candle_time)
 
         tick = mt5.symbol_info_tick(args.symbol)
 
@@ -612,7 +612,7 @@ try:
         if signal == 1 and len(buy_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
             if args.h1_trend and not h1_trend_allows(1):
                 print(c("[BUY BLOCKED by H1 trend]", Fore.YELLOW))
-                log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, 0, atr, balance, equity, candle_time)
+                log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
             else:
                 for p in sell_positions:
                     result = close_position(p)
@@ -650,7 +650,7 @@ try:
         elif signal == -1 and len(sell_positions) == 0 and (time.time() - last_trade_time > args.cooldown):
             if args.h1_trend and not h1_trend_allows(-1):
                 print(c("[SELL BLOCKED by H1 trend]", Fore.YELLOW))
-                log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, 0, atr, balance, equity, candle_time)
+                log_event("HOLD", probs, predicted_class, raw_signal, history.copy(), signal, 0, 0, 0, atr, balance, equity, candle_time)
             else:
                 for p in buy_positions:
                     result = close_position(p)

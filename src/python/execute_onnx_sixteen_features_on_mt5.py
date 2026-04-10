@@ -567,7 +567,7 @@ try:
                                     print(c(f"[TRAILING EXIT] {pos.ticket} closed. Cause: {reason} (Candle time: {m1_time_str})", Fore.MAGENTA))
                                     del trailing_positions[pos.ticket]
                                     tick = mt5.symbol_info_tick(args.symbol)
-                                    log_event("CLOSE", display_conf, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, 0, atr, balance, equity, candle_time)
+                                    log_event("CLOSE", display_conf, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, atr, balance, equity, candle_time)
 
         tick = mt5.symbol_info_tick(args.symbol)
 
