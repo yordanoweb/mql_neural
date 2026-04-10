@@ -273,11 +273,6 @@ try:
         prev_is_bullish = prev_candle['close'] > prev_candle['open']
         prev_is_bearish = prev_candle['close'] < prev_candle['open']
         
-        # Log EMA directions
-        if DEBUG:
-            print(f"Candle filter → {colorize('bullish', Colors.GREEN) if prev_is_bullish else colorize('bearish', Colors.RED)}")
-            print(f"EMA directions: [{dir3}, {dir2}, {dir1}]")
-
         # ---------- EXIT LOGIC (if position exists) ----------
         if position is not None:
             should_exit = False
@@ -373,6 +368,10 @@ try:
         trend = "rising" if dir1 == 1 else "falling" if dir1 == -1 else "flat"
         trend_color = Colors.GREEN if dir1 == 1 else Colors.RED if dir1 == -1 else Colors.WHITE
         print(f"EMA direction: {colorize(trend, trend_color)} (last 3: {dir3},{dir2},{dir1})")
+        # Log EMA directions
+        if DEBUG:
+            print(f"Candle filter → {colorize('bullish', Colors.GREEN) if prev_is_bullish else colorize('bearish', Colors.RED)} | "
+                  f"EMA directions: [{dir3}, {dir2}, {dir1}]")
 
         print(colorize("-" * 50, Colors.CYAN))
         time.sleep(0.05)
