@@ -13,18 +13,7 @@ import onnx.helper
 import argparse
 
 # ---------- Color setup ----------
-class Colors:
-    RESET   = '\033[0m'
-    RED     = '\033[91m'
-    GREEN   = '\033[92m'
-    YELLOW  = '\033[93m'
-    BLUE    = '\033[94m'
-    MAGENTA = '\033[95m'
-    CYAN    = '\033[96m'
-    WHITE   = '\033[97m'
-
-def colorize(text, color):
-    return f"{color}{text}{Colors.RESET}"
+from utils.colors import Colors, colorize
 
 # --- CONFIGURATION ---
 parser = argparse.ArgumentParser(description="Train ONNX model from CSV data with features (body, range, Stoch, Vol) using ATR normalization")

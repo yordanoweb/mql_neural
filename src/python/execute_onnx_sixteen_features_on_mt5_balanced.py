@@ -11,16 +11,7 @@ import sys
 # =========================
 # COLORS
 # =========================
-try:
-    from colorama import Fore, Style, init
-    init(autoreset=True)
-except:
-    class Dummy:
-        RESET_ALL=""
-    Fore = Style = Dummy()
-
-def c(text, color):
-    return f"{color}{text}{Style.RESET_ALL}"
+from utils.colors import Fore, Style, c
 
 # =========================
 # ARGUMENTS

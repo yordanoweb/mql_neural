@@ -12,30 +12,7 @@ import pandas as pd
 import ta
 
 # ---------- Color setup ----------
-try:
-    import colorama
-    colorama.init(autoreset=True)
-    COLORS_SUPPORTED = True
-except ImportError:
-    COLORS_SUPPORTED = False
-
-class Colors:
-    if COLORS_SUPPORTED:
-        RESET   = '\033[0m'
-        RED     = '\033[91m'
-        GREEN   = '\033[92m'
-        YELLOW  = '\033[93m'
-        BLUE    = '\033[94m'
-        MAGENTA = '\033[95m'
-        CYAN    = '\033[96m'
-        WHITE   = '\033[97m'
-    else:
-        RESET = RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = ""
-
-def colorize(text, color):
-    if COLORS_SUPPORTED:
-        return f"{color}{text}{Colors.RESET}"
-    return text
+from utils.colors import Colors, colorize
 
 # ---------- Timeframe mapping ----------
 TIMEFRAME_MAP = {
@@ -63,7 +40,8 @@ parser.add_argument("--ema_period", type=int, default=20, help="EMA period")
 parser.add_argument("--trade_start_hour", type=int, default=14, help="Start hour (0-23)")
 parser.add_argument("--trade_end_hour", type=int, default=22, help="End hour (0-23)")
 parser.add_argument("--cooldown", type=int, default=120, help="Cooldown in minutes after exit before new entry")
-parser.add_argument("--exit_percent", type=float, default=1.0, help="Price change percent to exit (e.g., 1.0 = 1%%)")
+parser.add_argument("--exit_percent", type=float, default=1.0, help="Price change percent to exit (e.g., 1.0 = 1%)")
+parser.add_argument("--sl_percent", type=float, default=0.5, help="Price drop percent to exit as Stop Loss (e.g., 0.5 = 0.5%)")
 parser.add_argument("--magic", type=int, default=int(time.time()), help="Magic number")
 parser.add_argument("--volume", type=float, default=0.1, help="Order volume in lots")
 parser.add_argument("--interval", type=float, default=5.0, help="Seconds between processing steps")
@@ -79,6 +57,7 @@ TRADE_START_HOUR = args.trade_start_hour
 TRADE_END_HOUR = args.trade_end_hour
 COOLDOWN_MINUTES = args.cooldown
 EXIT_PERCENT = args.exit_percent / 100.0  # convert to decimal
+SL_PERCENT = args.sl_percent / 100.0  # convert to decimal
 MAGIC = args.magic
 VOLUME = args.volume
 INTERVAL = args.interval
@@ -108,7 +87,8 @@ print(colorize("MT5 initialized", Colors.GREEN) +
 print(f"Magic: {MAGIC}, Volume: {VOLUME}")
 print(f"Trading hours: {TRADE_START_HOUR}:00 - {TRADE_END_HOUR}:59")
 print(f"Cooldown: {COOLDOWN_MINUTES} minutes after exit")
-print(f"Exit percent: {EXIT_PERCENT*100}%")
+print(f"Take Profit: {EXIT_PERCENT*100}%")
+print(f"Stop Loss: {SL_PERCENT*100}%")
 print(f"Checking every {INTERVAL} seconds\n")
 
 # ---------- Helper functions ----------
@@ -300,19 +280,31 @@ try:
             # Calculate price change percent from entry
             if position.type == 0:  # long
                 price_change_pct = (current_price - entry_price) / entry_price
-                # Exit if price increased by exit_percent
-                if price_change_pct >= EXIT_PERCENT:
+                
+                # Check Stop Loss (negative change)
+                if price_change_pct <= -SL_PERCENT:
                     should_exit = True
-                    exit_reason = f"price +{price_change_pct*100:.2f}% >= {EXIT_PERCENT*100}%"
+                    exit_reason = f"Stop Loss hit: price {price_change_pct*100:.2f}% <= -{SL_PERCENT*100}%"
+                # Exit if price increased by exit_percent (Take Profit)
+                elif price_change_pct >= EXIT_PERCENT:
+                    should_exit = True
+                    exit_reason = f"Take profit: price +{price_change_pct*100:.2f}% >= {EXIT_PERCENT*100}%"
                 # Or if EMA direction turns opposite (first reversal)
                 elif entry_direction == 1 and dir1 == -1:
                     should_exit = True
                     exit_reason = "EMA reversal (rising -> falling)"
             else:  # short
                 price_change_pct = (entry_price - current_price) / entry_price
-                if price_change_pct >= EXIT_PERCENT:
+                
+                # Check Stop Loss (negative change)
+                if price_change_pct <= -SL_PERCENT:
                     should_exit = True
-                    exit_reason = f"price -{price_change_pct*100:.2f}% >= {EXIT_PERCENT*100}%"
+                    exit_reason = f"Stop Loss hit: price {price_change_pct*100:.2f}% <= -{SL_PERCENT*100}%"
+                # Take Profit
+                elif price_change_pct >= EXIT_PERCENT:
+                    should_exit = True
+                    exit_reason = f"Take profit: price +{price_change_pct*100:.2f}% >= {EXIT_PERCENT*100}%"
+                # EMA reversal
                 elif entry_direction == -1 and dir1 == 1:
                     should_exit = True
                     exit_reason = "EMA reversal (falling -> rising)"
@@ -350,25 +342,33 @@ try:
 
         # ---------- Logging ----------
         pos_status = "No position"
+        pos_color = Colors.WHITE
         if position is not None:
             if position.type == 0:
                 pnl_pct = (current_price - entry_price) / entry_price * 100
             else:
                 pnl_pct = (entry_price - current_price) / entry_price * 100
-            pos_status = f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={position.profit:.2f} ({pnl_pct:+.2f}%)"
+            
+            # Color code based on profit/loss
+            profit_color = Colors.GREEN if position.profit >= 0 else Colors.RED
+            profit_str = colorize(f"{position.profit:.2f} ({pnl_pct:+.2f}%)", profit_color)
+            
+            pos_status = f"Position: {'BUY' if position.type == 0 else 'SELL'} {position.volume} lots, profit={profit_str}"
+            pos_color = Colors.YELLOW  # Use yellow for the rest of the position text so profit stands out
 
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
-        msg = (f"[{colorize(timestamp, Colors.BLUE)}] "
+        msg = (f"[{colorize(timestamp, Colors.BLUE)}]\n"
                f"{colorize(SYMBOL, Colors.WHITE)} price={colorize(f'{current_price:.5f}', Colors.CYAN)} "
-               f"EMA{EMA_PERIOD}={colorize(f'{ema_prev:.5f}', Colors.MAGENTA)} | "
-               f"{colorize(pos_status, Colors.GREEN if position else Colors.WHITE)}")
+               f"EMA{EMA_PERIOD}={colorize(f'{ema_prev:.5f}', Colors.MAGENTA)}\n"
+               f"{colorize(pos_status, pos_color) if position is None else pos_status}")
         print(msg)
 
         # Show EMA direction trend
         trend = "rising" if dir1 == 1 else "falling" if dir1 == -1 else "flat"
         trend_color = Colors.GREEN if dir1 == 1 else Colors.RED if dir1 == -1 else Colors.WHITE
-        print(f"  EMA direction: {colorize(trend, trend_color)} (last 3: {dir3},{dir2},{dir1})")
+        print(f"EMA direction: {colorize(trend, trend_color)} (last 3: {dir3},{dir2},{dir1})")
 
+        print(colorize("-" * 50, Colors.CYAN))
         time.sleep(0.05)
 
 except KeyboardInterrupt:
