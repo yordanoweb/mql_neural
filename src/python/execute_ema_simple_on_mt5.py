@@ -359,7 +359,7 @@ try:
 
         timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
         msg = (f"[{colorize(timestamp, Colors.BLUE)}]\n"
-               f"{colorize(SYMBOL, Colors.WHITE)} price={colorize(f'{current_price:.5f}', Colors.CYAN)} "
+               f"Symbol={colorize(SYMBOL, Colors.MAGENTA)} | Price={colorize(f'{current_price:.5f}', Colors.CYAN)} | "
                f"EMA{EMA_PERIOD}={colorize(f'{ema_prev:.5f}', Colors.MAGENTA)}\n"
                f"{colorize(pos_status, pos_color) if position is None else pos_status}")
         print(msg)
