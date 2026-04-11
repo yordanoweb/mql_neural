@@ -553,6 +553,12 @@ try:
         sell_positions = get_sell_positions()
         pos_count = len(buy_positions) + len(sell_positions)
 
+        account = mt5.account_info()
+        balance = account.balance if account else 0
+        equity  = account.equity  if account else 0
+
+        atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
+
         # Check trailing positions
         if args.trailing and pos_count > 0:
             for pos in buy_positions + sell_positions:
@@ -585,12 +591,6 @@ try:
                                     log_event("CLOSE", probs, predicted_class, raw_signal, history.copy(), signal, tick.bid if direction == 1 else tick.ask, 0, 0, atr, balance, equity, candle_time)
 
         tick = mt5.symbol_info_tick(args.symbol)
-
-        account = mt5.account_info()
-        balance = account.balance if account else 0
-        equity  = account.equity  if account else 0
-
-        atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
 
         print(c("--------------------------------------------------", Fore.BLUE))
         print(f"Hour: {server_time.strftime('%H:%M:%S')} | Class: {c(predicted_class, Fore.MAGENTA)} | Expected: {c(args.confidence, Fore.MAGENTA)}")
