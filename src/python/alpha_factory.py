@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import itertools
 
+from typing import cast
 from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.trend import EMAIndicator, MACD
 from ta.volatility import BollingerBands
@@ -17,13 +18,15 @@ parser.add_argument("csvfile")
 parser.add_argument("output_csv")
 args = parser.parse_args()
 
-df = pd.read_csv(args.csvfile)
+df: pd.DataFrame = pd.read_csv(args.csvfile)
 
 df["timestamp"] = pd.to_datetime(df["time"])
 df = df.sort_values("timestamp")
 df.set_index("timestamp", inplace=True)
 
-close = df["close"]
+close = cast(pd.Series, df["close"])
+high = cast(pd.Series, df["high"])
+low = cast(pd.Series, df["low"])
 
 
 # -------------------------
@@ -32,7 +35,7 @@ close = df["close"]
 
 df["rsi"] = RSIIndicator(close,14).rsi()
 
-stoch = StochasticOscillator(df["high"],df["low"],close)
+stoch = StochasticOscillator(high, low, close)
 df["stoch"] = stoch.stoch()
 
 df["ema5"] = EMAIndicator(close,5).ema_indicator()

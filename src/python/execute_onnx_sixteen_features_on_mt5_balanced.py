@@ -2,16 +2,20 @@ import time
 import argparse
 import numpy as np
 import pandas as pd
-import MetaTrader5 as mt5
+import MetaTrader5 as mt5 # pyright: ignore
 import onnxruntime as ort
-import ta
 import os
 import sys
+
+from typing import cast
+from ta.volatility import AverageTrueRange
+from ta.momentum import StochasticOscillator
+from ta.trend import ADXIndicator
 
 # =========================
 # COLORS
 # =========================
-from utils.colors import Fore, Style, c
+from utils.colors import Fore, c
 
 # =========================
 # ARGUMENTS
@@ -134,7 +138,6 @@ def print_parameters():
     
     # Summary box
     cli_count = len(cli_args)
-    default_count = len([p for p in params if p[0] != "" and p[0] not in ["MODEL"]]) - cli_count
     
     print(f"\n{c('SUMMARY:', Fore.WHITE)} {cli_count} parameters from CLI | Defaults active for remaining")
     
@@ -221,13 +224,13 @@ def safe(s):
     return s.replace([np.inf, -np.inf], np.nan).fillna(0)
 
 def build_features(df):
-    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range()
+    atr = AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range()
     atr_safe = atr.replace(0, np.nan).ffill().fillna(1)
 
     df['feat_body'] = safe((df['close'] - df['open']) / atr_safe)
     df['feat_range'] = safe((df['high'] - df['low']) / atr_safe)
 
-    stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=args.stoch_period)
+    stoch = StochasticOscillator(df['high'], df['low'], df['close'], window=args.stoch_period)
     k, d = stoch.stoch(), stoch.stoch_signal()
 
     df['feat_stoch_momentum'] = safe((k - d) / 100.0)
@@ -253,7 +256,7 @@ def build_features(df):
     df['feat_vol_zscore'] = safe((vol - vol_ma) / vol_std.replace(0,1))
 
     # ADX features (5 features)
-    adx_indicator = ta.trend.ADXIndicator(df['high'], df['low'], df['close'], window=args.adx_period)
+    adx_indicator = ADXIndicator(df['high'], df['low'], df['close'], window=args.adx_period)
     adx = adx_indicator.adx()
     di_plus = adx_indicator.adx_pos()
     di_minus = adx_indicator.adx_neg()
@@ -498,6 +501,9 @@ try:
             continue
 
         df = pd.DataFrame(df)
+        high = cast(pd.Series, df["high"])
+        low = cast(pd.Series, df["low"])
+        close = cast(pd.Series, df["close"])
 
         df = build_features(df).dropna()
         if len(df) < args.window:
@@ -557,7 +563,7 @@ try:
         balance = account.balance if account else 0
         equity  = account.equity  if account else 0
 
-        atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
+        atr = AverageTrueRange(high, low, close, window=args.atr_period).average_true_range().iloc[-1]
 
         # Check trailing positions
         if args.trailing and pos_count > 0:
