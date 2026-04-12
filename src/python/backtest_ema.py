@@ -35,6 +35,8 @@ class SimpleEMAStrategy(Strategy):
         self.entry_pattern = []
         self.last_exit_time = None
         self.entry_direction = None  # Track if we entered long (1) or short (-1)
+        self.long_entry_pattern  = [ 1,  1,  1]  # Require 3 consecutive rising EMAs for long entry
+        self.short_entry_pattern = [-1, -1, -1]  # Require 3 consecutive falling EMAs for short entry
     
     def next(self):
         current_time = self.data.index[-1]
@@ -84,15 +86,17 @@ class SimpleEMAStrategy(Strategy):
         
         # ENTRY LOGIC: Require 3 consecutive candles in same direction
         if not self.position:
+            pattern_len = len(self.entry_pattern)
+
             # Long entry: 3 consecutive rising EMAs
-            if len(self.entry_pattern) >= 3 and self.entry_pattern[-3:] == [1, 1, 1]:
+            if len(self.entry_pattern) >= pattern_len and self.entry_pattern[-pattern_len:] == self.long_entry_pattern:
                 self.log(f"Long entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.buy()
                 self.entry_price = self.data.Open[-1]
                 self.entry_direction = 1  # Mark as long entry
             
             # Short entry: 3 consecutive falling EMAs
-            elif len(self.entry_pattern) >= 3 and self.entry_pattern[-3:] == [-1, -1, -1]:
+            elif len(self.entry_pattern) >= pattern_len and self.entry_pattern[-pattern_len:] == self.short_entry_pattern:
                 self.log(f"Short entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.sell()
                 self.entry_price = self.data.Open[-1]
@@ -118,7 +122,7 @@ if __name__ == "__main__":
     print(run_stats)
 
     if args.optimize:
-        optim = bt.optimize(ema_period=range(6, 20, 1),
+        optim = bt.optimize(ema_period=range(6, 50, 1),
                             exit_percent=range(1, 5, 1),
                             maximize=args.opt_params)
         print("\nOPTIMIZATION RESULT:")
