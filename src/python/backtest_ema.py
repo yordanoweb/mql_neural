@@ -86,17 +86,18 @@ class SimpleEMAStrategy(Strategy):
         
         # ENTRY LOGIC: Require 3 consecutive candles in same direction
         if not self.position:
-            pattern_len = len(self.entry_pattern)
+            long_pattern_len = len(self.long_entry_pattern)
+            short_pattern_len = len(self.short_entry_pattern)
 
             # Long entry: 3 consecutive rising EMAs
-            if len(self.entry_pattern) >= pattern_len and self.entry_pattern[-pattern_len:] == self.long_entry_pattern:
+            if len(self.entry_pattern) >= long_pattern_len and self.entry_pattern[-long_pattern_len:] == self.long_entry_pattern:
                 self.log(f"Long entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.buy()
                 self.entry_price = self.data.Open[-1]
                 self.entry_direction = 1  # Mark as long entry
             
             # Short entry: 3 consecutive falling EMAs
-            elif len(self.entry_pattern) >= pattern_len and self.entry_pattern[-pattern_len:] == self.short_entry_pattern:
+            elif len(self.entry_pattern) >= short_pattern_len and self.entry_pattern[-short_pattern_len:] == self.short_entry_pattern:
                 self.log(f"Short entry at {current_time}: {self.entry_pattern[-10:]}")
                 self.sell()
                 self.entry_price = self.data.Open[-1]
