@@ -2,24 +2,33 @@
 Live inference loop: loads an ONNX model, polls MT5 for the latest candles,
 runs feature engineering, and places buy/sell market orders based on model output.
 
+Exit logic:
+  - Hard SL set at order open: ATR(atr_period) * sl_mult
+  - No TP sent to broker. An imaginary TP is tracked internally: ATR * tp_mult
+  - Once imaginary TP is reached, trailing mode activates:
+      BUY  → close on first M1 bearish candle (close < open)
+      SELL → close on first M1 bullish candle (close > open)
+  - Script never opens a new position while one is already open.
+
 Usage:
     python execute_onnx_adx_stoch_vol_on_mt5.py \
         --model onnx/ndx100_m5_12_feat_adx_stoch_vol.onnx \
         --symbol NAS100 --timeframe M5 \
-        --window 20 --confidence 0.60 --lot 1.0 \
-        --interval 60
+        --window 20 --confidence 0.60 --lot 1.0 --interval 60 \
+        --atr_period 14 --sl_mult 1.5 --tp_mult 2.0
 """
 
 import argparse
 import time
+from dataclasses import dataclass, field
 
 import numpy as np
 import onnxruntime as rt
 import pandas as pd
+import ta
 
 from utils.features import add_adx_features, add_stoch_features, add_volume_features
 
-# MT5 timeframe constants (avoids importing MetaTrader5 at module level — Windows-only lib)
 TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
 }
@@ -31,10 +40,23 @@ FEATURE_COLS = [
 ]
 
 
+@dataclass
+class TradeState:
+    """Tracks internal state for the open position."""
+    ticket:       int   = 0
+    is_buy:       bool  = False
+    entry_price:  float = 0.0
+    sl_price:     float = 0.0
+    tp_target:    float = 0.0   # imaginary TP level
+    trailing:     bool  = False # True once imaginary TP has been reached
+
+
+_state = TradeState()
+
+
 def load_session(model_path: str) -> rt.InferenceSession:
     sess = rt.InferenceSession(model_path)
-    out_shape = sess.get_outputs()[0].shape
-    assert out_shape[1] == 2, f"Expected output [*, 2], got {out_shape}"
+    assert sess.get_outputs()[0].shape[1] == 2
     return sess
 
 
@@ -42,11 +64,23 @@ def fetch_candles(symbol: str, tf, n: int) -> pd.DataFrame:
     import MetaTrader5 as mt5
     rates = mt5.copy_rates_from_pos(symbol, tf, 0, n)
     if rates is None or len(rates) < n:
-        raise RuntimeError(f"Not enough candles for {symbol}: {mt5.last_error()}")
+        raise RuntimeError(f"Not enough candles: {mt5.last_error()}")
     df = pd.DataFrame(rates)
-    df.rename(columns={'tick_volume': 'tick_volume'}, inplace=True)
     df['time'] = pd.to_datetime(df['time'], unit='s')
     return df
+
+
+def current_atr(symbol: str, atr_period: int) -> float:
+    """Fetch last 100 M5 candles and return the latest ATR value."""
+    df = fetch_candles(symbol, TIMEFRAME_MAP['M5'], atr_period + 50)
+    return ta.volatility.AverageTrueRange(
+        df['high'], df['low'], df['close'], window=atr_period
+    ).average_true_range().iloc[-1]
+
+
+def last_m1_candle(symbol: str) -> pd.Series:
+    df = fetch_candles(symbol, TIMEFRAME_MAP['M1'], 2)
+    return df.iloc[-2]   # last *closed* M1 candle
 
 
 def build_input(df: pd.DataFrame, window: int,
@@ -57,8 +91,7 @@ def build_input(df: pd.DataFrame, window: int,
     df.dropna(inplace=True)
     if len(df) < window:
         raise RuntimeError("Not enough clean rows after feature computation")
-    window_data = df[FEATURE_COLS].values[-window:].flatten().astype(np.float32)
-    return window_data.reshape(1, -1)
+    return df[FEATURE_COLS].values[-window:].flatten().astype(np.float32).reshape(1, -1)
 
 
 def get_open_position(symbol: str):
@@ -67,46 +100,92 @@ def get_open_position(symbol: str):
     return positions[0] if positions else None
 
 
-def close_position(pos, lot: float) -> None:
+def close_position(pos, lot: float, reason: str) -> None:
     import MetaTrader5 as mt5
     direction = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
-    price     = mt5.symbol_info_tick(pos.symbol).bid if direction == mt5.ORDER_TYPE_SELL \
-                else mt5.symbol_info_tick(pos.symbol).ask
+    tick      = mt5.symbol_info_tick(pos.symbol)
+    price     = tick.bid if direction == mt5.ORDER_TYPE_SELL else tick.ask
     req = {
-        'action':    mt5.TRADE_ACTION_DEAL,
-        'symbol':    pos.symbol,
-        'volume':    lot,
-        'type':      direction,
-        'position':  pos.ticket,
-        'price':     price,
-        'deviation': 20,
-        'magic':     0,
-        'comment':   'onnx_close',
-        'type_time': mt5.ORDER_TIME_GTC,
-        'type_filling': mt5.ORDER_FILLING_IOC,
-    }
-    mt5.order_send(req)
-
-
-def open_position(symbol: str, order_type: int, lot: float) -> None:
-    import MetaTrader5 as mt5
-    tick  = mt5.symbol_info_tick(symbol)
-    price = tick.ask if order_type == mt5.ORDER_TYPE_BUY else tick.bid
-    req = {
-        'action':    mt5.TRADE_ACTION_DEAL,
-        'symbol':    symbol,
-        'volume':    lot,
-        'type':      order_type,
-        'price':     price,
-        'deviation': 20,
-        'magic':     0,
-        'comment':   'onnx_open',
-        'type_time': mt5.ORDER_TIME_GTC,
+        'action':       mt5.TRADE_ACTION_DEAL,
+        'symbol':       pos.symbol,
+        'volume':       lot,
+        'type':         direction,
+        'position':     pos.ticket,
+        'price':        price,
+        'deviation':    20,
+        'magic':        0,
+        'comment':      f'onnx_{reason}',
+        'type_time':    mt5.ORDER_TIME_GTC,
         'type_filling': mt5.ORDER_FILLING_IOC,
     }
     result = mt5.order_send(req)
-    label  = 'BUY' if order_type == mt5.ORDER_TYPE_BUY else 'SELL'
-    print(f"  → {label} order: retcode={result.retcode}")
+    print(f"  → CLOSE ({reason}): retcode={result.retcode}")
+    # reset state
+    global _state
+    _state = TradeState()
+
+
+def open_position(symbol: str, is_buy: bool, lot: float,
+                  atr_period: int, sl_mult: float, tp_mult: float) -> None:
+    import MetaTrader5 as mt5
+    global _state
+    tick  = mt5.symbol_info_tick(symbol)
+    price = tick.ask if is_buy else tick.bid
+    atr   = current_atr(symbol, atr_period)
+    sl    = price - atr * sl_mult if is_buy else price + atr * sl_mult
+    tp_target = price + atr * tp_mult if is_buy else price - atr * tp_mult
+
+    order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
+    req = {
+        'action':       mt5.TRADE_ACTION_DEAL,
+        'symbol':       symbol,
+        'volume':       lot,
+        'type':         order_type,
+        'price':        price,
+        'sl':           sl,
+        'deviation':    20,
+        'magic':        0,
+        'comment':      'onnx_open',
+        'type_time':    mt5.ORDER_TIME_GTC,
+        'type_filling': mt5.ORDER_FILLING_IOC,
+    }
+    result = mt5.order_send(req)
+    label  = 'BUY' if is_buy else 'SELL'
+    print(f"  → {label} order: retcode={result.retcode}  SL={sl:.5f}  imaginary_TP={tp_target:.5f}")
+
+    if result.retcode == 10009:   # TRADE_RETCODE_DONE
+        _state = TradeState(
+            ticket=result.order,
+            is_buy=is_buy,
+            entry_price=price,
+            sl_price=sl,
+            tp_target=tp_target,
+            trailing=False,
+        )
+
+
+def manage_open_trade(pos, lot: float) -> None:
+    """Check imaginary TP and trailing exit on every cycle."""
+    import MetaTrader5 as mt5
+    global _state
+
+    tick          = mt5.symbol_info_tick(pos.symbol)
+    current_price = tick.bid if _state.is_buy else tick.ask
+
+    # activate trailing once imaginary TP is reached
+    if not _state.trailing:
+        tp_hit = (current_price >= _state.tp_target) if _state.is_buy \
+                 else (current_price <= _state.tp_target)
+        if tp_hit:
+            print(f"  → imaginary TP reached ({current_price:.5f}), trailing mode ON")
+            _state.trailing = True
+
+    if _state.trailing:
+        candle = last_m1_candle(pos.symbol)
+        bearish = candle['close'] < candle['open']
+        bullish = candle['close'] > candle['open']
+        if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
+            close_position(pos, lot, reason='trailing_exit')
 
 
 def run(args):
@@ -114,40 +193,41 @@ def run(args):
     if not mt5.initialize():
         raise RuntimeError(f"MT5 init failed: {mt5.last_error()}")
 
-    sess = load_session(args.model)
+    sess     = load_session(args.model)
     inp_name = sess.get_inputs()[0].name
-    tf = TIMEFRAME_MAP[args.timeframe.upper()]
-    # fetch enough candles to cover window + indicator warm-up
+    tf       = TIMEFRAME_MAP[args.timeframe.upper()]
     n_candles = args.window + 100
 
-    print(f"Running inference on {args.symbol} {args.timeframe} every {args.interval}s")
-    print(f"Model : {args.model}  |  confidence threshold: {args.confidence}")
+    print(f"Symbol={args.symbol}  TF={args.timeframe}  interval={args.interval}s")
+    print(f"Model={args.model}  confidence={args.confidence}")
+    print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
 
     try:
         while True:
-            df = fetch_candles(args.symbol, tf, n_candles)
-            X  = build_input(df, args.window, args.adx_period,
-                             args.stoch_k, args.stoch_d, args.vol_window)
-
-            p_sell, p_buy = sess.run(None, {inp_name: X})[0][0]
-            print(f"P(sell)={p_sell:.3f}  P(buy)={p_buy:.3f}", end='')
-
             pos = get_open_position(args.symbol)
 
-            if p_buy >= args.confidence:
-                print("  → signal: BUY")
-                if pos and pos.type == mt5.POSITION_TYPE_SELL:
-                    close_position(pos, args.lot)
-                if not pos or pos.type == mt5.POSITION_TYPE_SELL:
-                    open_position(args.symbol, mt5.ORDER_TYPE_BUY, args.lot)
-            elif p_sell >= args.confidence:
-                print("  → signal: SELL")
-                if pos and pos.type == mt5.POSITION_TYPE_BUY:
-                    close_position(pos, args.lot)
-                if not pos or pos.type == mt5.POSITION_TYPE_BUY:
-                    open_position(args.symbol, mt5.ORDER_TYPE_SELL, args.lot)
+            if pos:
+                manage_open_trade(pos, args.lot)
             else:
-                print("  → no signal")
+                # only run inference when flat
+                df = fetch_candles(args.symbol, tf, n_candles)
+                X  = build_input(df, args.window, args.adx_period,
+                                 args.stoch_k, args.stoch_d, args.vol_window)
+                p_sell, p_buy = sess.run(None, {inp_name: X})[0][0]
+                print(f"P(sell)={p_sell:.3f}  P(buy)={p_buy:.3f}", end='')
+
+                if p_buy >= args.confidence:
+                    print("  → BUY signal")
+                    open_position(args.symbol, is_buy=True, lot=args.lot,
+                                  atr_period=args.atr_period,
+                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult)
+                elif p_sell >= args.confidence:
+                    print("  → SELL signal")
+                    open_position(args.symbol, is_buy=False, lot=args.lot,
+                                  atr_period=args.atr_period,
+                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult)
+                else:
+                    print("  → no signal")
 
             time.sleep(args.interval)
 
@@ -163,9 +243,12 @@ def main():
     parser.add_argument('--symbol',     required=True,  help='MT5 symbol, e.g. NAS100')
     parser.add_argument('--timeframe',  required=True,  help='M1 M5 M15 M30 H1 H4 D1')
     parser.add_argument('--window',     type=int,   default=20,   help='Window size (must match training)')
-    parser.add_argument('--confidence', type=float, default=0.60, help='Min probability to place an order')
+    parser.add_argument('--confidence', type=float, default=0.60, help='Min probability to open a trade')
     parser.add_argument('--lot',        type=float, default=1.0,  help='Order lot size')
-    parser.add_argument('--interval',   type=int,   default=60,   help='Seconds between inference cycles')
+    parser.add_argument('--interval',   type=int,   default=60,   help='Seconds between cycles')
+    parser.add_argument('--atr_period', type=int,   default=14,   help='ATR period for SL/TP calculation')
+    parser.add_argument('--sl_mult',    type=float, default=1.5,  help='SL = ATR * sl_mult')
+    parser.add_argument('--tp_mult',    type=float, default=2.0,  help='Imaginary TP = ATR * tp_mult')
     parser.add_argument('--adx_period', type=int,   default=14,   help='ADX indicator period')
     parser.add_argument('--stoch_k',    type=int,   default=10,   help='Stochastic K period')
     parser.add_argument('--stoch_d',    type=int,   default=3,    help='Stochastic D period')

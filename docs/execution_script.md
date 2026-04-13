@@ -2,7 +2,7 @@
 
 ## Goal
 Poll MT5 for live candles, run feature engineering, run ONNX inference,
-and place/close market orders based on model output probabilities.
+and place market orders. Exit is managed by SL and a trailing logic — not by signal reversal.
 
 ## Implemented Scripts
 | Script | Model |
@@ -12,19 +12,27 @@ and place/close market orders based on model output probabilities.
 ## Inference Loop
 ```
 every --interval seconds:
-  1. fetch last (window + 100) candles from MT5
-  2. compute features (same as training)
-  3. dropna, take last `window` rows, flatten → float32[1, N]
-  4. run ONNX session → [P(sell), P(buy)]
-  5. if P(buy)  >= confidence → close any open SELL, open BUY
-     if P(sell) >= confidence → close any open BUY,  open SELL
-     else → hold
+  if position open:
+    → run manage_open_trade()
+  else:
+    → run inference → [P(sell), P(buy)]
+    → if P(buy)  >= confidence: open BUY
+    → if P(sell) >= confidence: open SELL
+    → else: hold
 ```
+Only one position at a time. No new trade is opened while one is active.
 
-## Order Logic
-- One position at a time per symbol
-- Reversal: close opposite position before opening new one
-- Uses `mt5.TRADE_ACTION_DEAL` (market order), `ORDER_FILLING_IOC`
+## Entry
+- Market order with hard SL: `entry_price ± ATR(atr_period) × sl_mult`
+- No TP sent to broker
+
+## Exit Logic
+1. **Hard SL** — set on MT5 at open, broker handles it
+2. **Imaginary TP** — tracked internally in Python: `entry_price ± ATR × tp_mult`
+3. Once imaginary TP is reached, **trailing mode** activates:
+   - BUY trade → close on first M1 candle where `close < open` (bearish)
+   - SELL trade → close on first M1 candle where `close > open` (bullish)
+4. M1 candle check always uses the last *closed* M1 candle (index -2)
 
 ## CLI Contract
 ```
@@ -32,13 +40,17 @@ every --interval seconds:
 --symbol      MT5 symbol (e.g. NAS100)
 --timeframe   M1 M5 M15 M30 H1 H4 D1
 --window      window size — must match training (default: 20)
---confidence  minimum probability to place an order (default: 0.60)
+--confidence  minimum probability to open a trade (default: 0.60)
 --lot         order lot size (default: 1.0)
---interval    seconds between inference cycles (default: 60)
+--interval    seconds between cycles (default: 60)
+--atr_period  ATR period for SL/TP calculation (default: 14)
+--sl_mult     SL distance = ATR × sl_mult (default: 1.5)
+--tp_mult     imaginary TP distance = ATR × tp_mult (default: 2.0)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
 ## Critical Rules
-- Feature columns and indicator periods **must** match the training script exactly
+- Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time
 - MT5 must be running and logged in before starting the script
+- Script state (`TradeState`) is in-memory only — restarting resets it
