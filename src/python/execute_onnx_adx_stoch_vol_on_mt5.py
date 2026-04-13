@@ -173,8 +173,9 @@ def open_position(symbol: str, is_buy: bool, lot: float,
         )
 
 
-def print_state(pos, current_price: float) -> None:
+def print_state(pos, current_price: float, lot: float) -> None:
     """Print current trade state to stdout."""
+    import MetaTrader5 as mt5
     now = datetime.now().strftime('%H:%M:%S')
     if not pos:
         print(c(f"[{now}] FLAT — no open position", Colors.CYAN))
@@ -182,12 +183,16 @@ def print_state(pos, current_price: float) -> None:
     direction = c('BUY',  Colors.GREEN) if _state.is_buy else c('SELL', Colors.RED)
     trailing  = c('TRAILING', Colors.MAGENTA) if _state.trailing else c('HOLDING', Colors.YELLOW)
     pnl_pts   = (current_price - _state.entry_price) * (1 if _state.is_buy else -1)
-    pnl_color = Colors.GREEN if pnl_pts >= 0 else Colors.RED
+    info      = mt5.symbol_info(pos.symbol)
+    tick_value = info.trade_tick_value if info else 1.0
+    tick_size  = info.trade_tick_size  if info else 1.0
+    pnl_money  = pnl_pts / tick_size * tick_value * lot
+    pnl_color  = Colors.GREEN if pnl_money >= 0 else Colors.RED
     print(
         f"[{now}] {direction} | {trailing} | "
         f"entry={c(f'{_state.entry_price:.5f}', Colors.WHITE)} "
         f"price={c(f'{current_price:.5f}', Colors.WHITE)} "
-        f"PnL={c(f'{pnl_pts:+.5f}', pnl_color)} | "
+        f"PnL={c(f'${pnl_money:+.2f}', pnl_color)} | "
         f"SL={c(f'{_state.sl_price:.5f}', Colors.RED)} "
         f"iTP={c(f'{_state.tp_target:.5f}', Colors.GREEN)}"
     )
@@ -239,7 +244,7 @@ def run(args):
             if pos:
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
-                print_state(pos, current_price)
+                print_state(pos, current_price, args.lot)
                 manage_open_trade(pos, args.lot)
             else:
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
