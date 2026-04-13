@@ -38,30 +38,33 @@ docs/                 # specs and design docs
 ## Implemented Feature Sets
 | Script | Features (n) | Groups |
 |---|---|---|
-| `train_adx_stoch_vol.py` | 12 | ADX (3) + Stochastic (4) + Volume (5) |
+| `train_adx_stoch_vol.py` | 16 | Price (2) + ADX (5) + Stochastic (4) + Volume (5) |
 
-### ADX (3): `adx_norm`, `dip_norm`, `din_norm`
-### Stochastic (4): `stoch_k`, `stoch_d`, `stoch_diff`, `stoch_signal`
-### Volume (5): `vol_norm`, `vol_change`, `vol_ma_ratio`, `obv_norm`, `vol_spike`
+### Price (2): `feat_body`, `feat_range` — normalised by ATR
+### ADX (5): `adx_strength`, `adx_di_signal`, `adx_di_sep`, `adx_momentum`, `adx_regime`
+### Stochastic (4): `stoch_momentum`, `stoch_position`, `stoch_velocity`, `stoch_divergence`
+### Volume (5): `vol_ratio`, `vol_momentum`, `vol_price_div`, `vol_percentile`, `vol_zscore`
 
 ## Classification Target
-- **2 classes**: `0 = sell`, `1 = buy`
-- Label: price rises by `> min_pct` in the next `forward` bars
+- **2 classes**: `0 = sell/hold`, `1 = buy`
+- Label: ATR-based — price must reach `min_profit_atr × ATR` upside AND upside > downside
+  over the next `forward` bars
 - Output: `float32[1, 2]` — `[P(sell), P(buy)]`
 
 ## CLI Contract
 Every `train_*.py` script must accept:
 ```
---input        CSV or Parquet path
---symbol       symbol name (used in output filename)
---timeframe    M1 M5 M15 M30 H1 H4 D1
---model        mlp | rf  (default: mlp)
---window       window size (default: 20)
---forward      forward bars for label (default: 1)
---min_pct      minimum price move % to count as signal (default: 0.0)
---output       ONNX output path (auto-generated if omitted)
+--input          CSV or Parquet path
+--symbol         symbol name (used in output filename)
+--timeframe      M1 M5 M15 M30 H1 H4 D1
+--model          mlp | rf  (default: rf)
+--window         window size (default: 20)
+--forward        forward bars for label (default: 10)
+--min_profit_atr minimum upside in ATR units to label as buy (default: 1.5)
+--output         ONNX output path (auto-generated if omitted)
 ```
-Indicator period args (per script, e.g. `--adx_period`, `--stoch_k`, `--vol_window`) are also required.
+Indicator period args: `--atr_period`, `--adx_period`, `--adx_min`, `--stoch_k`, `--stoch_d`, `--vol_window`
+RF-only args: `--n_iter` (RandomizedSearchCV iterations), `--jobs` (parallel jobs)
 
 ## Execution Script Contract
 Every `execute_onnx_<tag>_on_mt5.py` script must accept:
