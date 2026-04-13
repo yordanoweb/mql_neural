@@ -21,6 +21,7 @@ Usage:
 import argparse
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import numpy as np
 import onnxruntime as rt
@@ -28,6 +29,7 @@ import pandas as pd
 import ta
 
 from utils.features import add_adx_features, add_stoch_features, add_volume_features
+from utils.colors import Colors, colorize as c
 
 TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
@@ -119,7 +121,7 @@ def close_position(pos, lot: float, reason: str) -> None:
         'type_filling': mt5.ORDER_FILLING_IOC,
     }
     result = mt5.order_send(req)
-    print(f"  → CLOSE ({reason}): retcode={result.retcode}")
+    print(c(f"  → CLOSED ({reason}): retcode={result.retcode}", Colors.MAGENTA))
     # reset state
     global _state
     _state = TradeState()
@@ -151,7 +153,8 @@ def open_position(symbol: str, is_buy: bool, lot: float,
     }
     result = mt5.order_send(req)
     label  = 'BUY' if is_buy else 'SELL'
-    print(f"  → {label} order: retcode={result.retcode}  SL={sl:.5f}  imaginary_TP={tp_target:.5f}")
+    color  = Colors.GREEN if is_buy else Colors.RED
+    print(c(f"  → {label} opened: retcode={result.retcode}  SL={sl:.5f}  iTP={tp_target:.5f}", color))
 
     if result.retcode == 10009:   # TRADE_RETCODE_DONE
         _state = TradeState(
@@ -162,6 +165,26 @@ def open_position(symbol: str, is_buy: bool, lot: float,
             tp_target=tp_target,
             trailing=False,
         )
+
+
+def print_state(pos, current_price: float) -> None:
+    """Print current trade state to stdout."""
+    now = datetime.now().strftime('%H:%M:%S')
+    if not pos:
+        print(c(f"[{now}] FLAT — no open position", Colors.CYAN))
+        return
+    direction = c('BUY',  Colors.GREEN) if _state.is_buy else c('SELL', Colors.RED)
+    trailing  = c('TRAILING', Colors.MAGENTA) if _state.trailing else c('HOLDING', Colors.YELLOW)
+    pnl_pts   = (current_price - _state.entry_price) * (1 if _state.is_buy else -1)
+    pnl_color = Colors.GREEN if pnl_pts >= 0 else Colors.RED
+    print(
+        f"[{now}] {direction} | {trailing} | "
+        f"entry={c(f'{_state.entry_price:.5f}', Colors.WHITE)} "
+        f"price={c(f'{current_price:.5f}', Colors.WHITE)} "
+        f"PnL={c(f'{pnl_pts:+.5f}', pnl_color)} | "
+        f"SL={c(f'{_state.sl_price:.5f}', Colors.RED)} "
+        f"iTP={c(f'{_state.tp_target:.5f}', Colors.GREEN)}"
+    )
 
 
 def manage_open_trade(pos, lot: float) -> None:
@@ -177,7 +200,7 @@ def manage_open_trade(pos, lot: float) -> None:
         tp_hit = (current_price >= _state.tp_target) if _state.is_buy \
                  else (current_price <= _state.tp_target)
         if tp_hit:
-            print(f"  → imaginary TP reached ({current_price:.5f}), trailing mode ON")
+            print(c(f"  → imaginary TP reached ({current_price:.5f}), trailing mode ON", Colors.MAGENTA))
             _state.trailing = True
 
     if _state.trailing:
@@ -204,35 +227,43 @@ def run(args):
 
     try:
         while True:
+            now = datetime.now().strftime('%H:%M:%S')
             pos = get_open_position(args.symbol)
 
             if pos:
+                tick          = mt5.symbol_info_tick(args.symbol)
+                current_price = tick.bid if _state.is_buy else tick.ask
+                print_state(pos, current_price)
                 manage_open_trade(pos, args.lot)
             else:
-                # only run inference when flat
+                print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
                 X  = build_input(df, args.window, args.adx_period,
                                  args.stoch_k, args.stoch_d, args.vol_window)
-                p_sell, p_buy = sess.run(None, {inp_name: X})[0][0]
-                print(f"P(sell)={p_sell:.3f}  P(buy)={p_buy:.3f}", end='')
+                results       = {o.name: v for o, v in zip(sess.get_outputs(), sess.run(None, {inp_name: X}))}
+                p_sell, p_buy = results['probabilities'][0]
+
+                p_buy_str  = c(f'P(buy)={p_buy:.3f}',  Colors.GREEN if p_buy  >= args.confidence else Colors.WHITE)
+                p_sell_str = c(f'P(sell)={p_sell:.3f}', Colors.RED   if p_sell >= args.confidence else Colors.WHITE)
+                print(f"  {p_buy_str}  {p_sell_str}", end='')
 
                 if p_buy >= args.confidence:
-                    print("  → BUY signal")
+                    print(c('  → BUY signal', Colors.GREEN))
                     open_position(args.symbol, is_buy=True, lot=args.lot,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult)
                 elif p_sell >= args.confidence:
-                    print("  → SELL signal")
+                    print(c('  → SELL signal', Colors.RED))
                     open_position(args.symbol, is_buy=False, lot=args.lot,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult)
                 else:
-                    print("  → no signal")
+                    print(c('  → no signal', Colors.YELLOW))
 
             time.sleep(args.interval)
 
     except KeyboardInterrupt:
-        print("\nStopped.")
+        print(c("\nStopped.", Colors.YELLOW))
     finally:
         mt5.shutdown()
 

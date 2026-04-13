@@ -72,6 +72,11 @@ def main():
     print("\nClass distribution:")
     print(df['label'].value_counts(normalize=True).to_string())
 
+    n_classes = df['label'].nunique()
+    if n_classes < 2:
+        print(f"\n✗ Only {n_classes} class found in labels — adjust --min_pct or --forward and retry.")
+        return
+
     X, y = make_windows(df, FEATURE_COLS, args.window)
 
     split = int(len(X) * 0.8)

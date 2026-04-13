@@ -84,7 +84,9 @@ Exit logic: hard SL on broker + imaginary TP tracked in Python → trailing exit
 - Minimal code — no abstractions that don't directly serve the pipeline
 - No shuffle on train/test split — preserve time order
 - Always print class distribution before training
-- Always verify ONNX output shape `[1, 2]` after export
+- Always verify ONNX `probabilities` output shape `[*, 2]` after export — read by name, not index
+- sklearn exports two outputs (`label`, `probabilities`) — always use `probabilities` for inference
+- Abort training before export if labels contain fewer than 2 classes
 - Shared logic goes in `src/python/utils/`, not duplicated across scripts
 - Every exported ONNX **must** store `feature_names`, `window_size`, `n_features` in metadata — queryable via `query_onnx_model.py`
 - All `argparse.ArgumentParser` instances must use `formatter_class=argparse.ArgumentDefaultsHelpFormatter`

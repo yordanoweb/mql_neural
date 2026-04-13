@@ -43,7 +43,9 @@ df.dropna(subset=['label'], inplace=True)
 
 ### 7. Verification
 - Run `onnxruntime` inference on one sample
-- Assert output shape `[1, 2]` and values sum ≈ 1.0
+- Assert `probabilities` output exists with shape `[*, 2]`
+- sklearn exports two outputs: `label [None]` and `probabilities [None, 2]` — always read by name
+- If only one class is present in labels, abort before export with a clear message
 
 ## Querying a Model
 ```bash

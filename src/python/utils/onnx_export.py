@@ -15,11 +15,15 @@ from skl2onnx.common.data_types import FloatTensorType
 
 def export(model, feature_cols: list[str], window: int, output_path: str) -> None:
     """Convert a fitted sklearn model to ONNX and save with required metadata."""
+    from sklearn.pipeline import Pipeline
     n_flat = window * len(feature_cols)
     initial_type = [('float_input', FloatTensorType([None, n_flat]))]
+
+    # target the final estimator for zipmap option, whether wrapped in Pipeline or not
+    estimator = model.steps[-1][1] if isinstance(model, Pipeline) else model
     onnx_model = convert_sklearn(
         model, initial_types=initial_type,
-        options={type(model): {'zipmap': False}}
+        options={type(estimator): {'zipmap': False}},
     )
 
     for key, val in [
@@ -35,10 +39,12 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
 
 
 def _verify(path: str) -> None:
-    sess = rt.InferenceSession(path)
-    inp  = sess.get_inputs()[0]
-    out  = sess.get_outputs()[0]
+    sess    = rt.InferenceSession(path)
+    inp     = sess.get_inputs()[0]
+    outputs = {o.name: o for o in sess.get_outputs()}
     print(f"Saved : {path}")
     print(f"Input : {inp.name} {inp.shape} {inp.type}")
-    print(f"Output: {out.name} {out.shape} {out.type}")
-    assert out.shape == [None, 2] or out.shape[1] == 2, "Output must be [*, 2]"
+    for o in sess.get_outputs():
+        print(f"Output: {o.name} {o.shape} {o.type}")
+    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
+        f"Expected 'probabilities' output with shape [*, 2]. Got: {list(outputs.keys())}"

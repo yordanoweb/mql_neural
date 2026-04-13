@@ -49,6 +49,16 @@ Only one position at a time. No new trade is opened while one is active.
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
+## Output (colorized)
+Every cycle prints one of:
+
+- FLAT (cyan): `[HH:MM:SS] FLAT — running inference...` + probabilities
+- Signal (green/red): `P(buy)=0.72  P(sell)=0.28  → BUY signal`
+- No signal (yellow): `→ no signal`
+- Open trade (green=BUY/red=SELL): `[HH:MM:SS] BUY | HOLDING | entry=... price=... PnL=+... | SL=... iTP=...`
+- Trailing active (magenta): same line with `TRAILING` instead of `HOLDING`
+- Close (magenta): `→ CLOSED (trailing_exit): retcode=10009`
+
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time
