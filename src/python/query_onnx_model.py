@@ -1,71 +1,51 @@
 """
-Read an ONNX file and try to recover the original feature column names.
+Inspect an ONNX model: show all metadata, tensor shapes, and feature names.
+
+Usage:
+    python query_onnx_model.py path/to/model.onnx
 """
 
 import argparse
 import sys
-from typing import List
 
 import onnx
-
-
-def _parse_metadata(model: onnx.ModelProto) -> List[str]:
-    """Look for a metadata entry named 'feature_names'."""
-    for prop in model.metadata_props:
-        if prop.key == "feature_names":
-            # Expect a comma‑separated list
-            names = [n.strip() for n in prop.value.split(",") if n.strip()]
-            return names
-    return []
-
-
-def _fallback_from_doc(model: onnx.ModelProto) -> List[str]:
-    """Some exporters put a CSV list into model.doc_string."""
-    if model.doc_string:
-        parts = [p.strip() for p in model.doc_string.split(",") if p.strip()]
-        if parts:
-            return parts
-    return []
-
-
-def _names_from_inputs(model: onnx.ModelProto) -> List[str]:
-    """If the model has N separate inputs, their names are the feature names."""
-    return [inp.name for inp in model.graph.input]
+import onnxruntime as rt
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Recover feature column names from an ONNX model."
-    )
+    parser = argparse.ArgumentParser(description="Query ONNX model metadata.")
     parser.add_argument("onnx_path", help="Path to the ONNX file")
     args = parser.parse_args()
 
     try:
         model = onnx.load(args.onnx_path)
     except Exception as exc:
-        sys.stderr.write(f"Unable to load ONNX model: {exc}\n")
+        sys.stderr.write(f"Cannot load model: {exc}\n")
         sys.exit(1)
 
-    # 1️⃣ Try explicit metadata
-    names = _parse_metadata(model)
+    # --- tensor shapes via onnxruntime ---
+    sess = rt.InferenceSession(args.onnx_path)
+    inp  = sess.get_inputs()[0]
+    out  = sess.get_outputs()[0]
+    print(f"Input : {inp.name}  shape={inp.shape}  type={inp.type}")
+    print(f"Output: {out.name}  shape={out.shape}  type={out.type}")
 
-    # 2️⃣ If not found, try doc_string
-    if not names:
-        names = _fallback_from_doc(model)
+    # --- all metadata ---
+    meta = {p.key: p.value for p in model.metadata_props}
+    if not meta:
+        print("\nNo metadata found.")
+        sys.exit(0)
 
-    # 3️⃣ If still empty, maybe each feature was exported as a distinct input
-    if not names:
-        names = _names_from_inputs(model)
+    print("\nMetadata:")
+    for k, v in meta.items():
+        print(f"  {k}: {v}")
 
-    if names:
-        print("Recovered feature names:")
-        for i, n in enumerate(names, start=1):
-            print(f"  {i}. {n}")
-    else:
-        print("⚠️  No feature names could be recovered.")
-        print("   • If you have control over the export step, add a metadata property")
-        print("     called 'feature_names' with a comma‑separated list.")
-        print("   • Alternatively, export each column as a separate ONNX input.")
+    # --- feature names (structured) ---
+    if 'feature_names' in meta:
+        names = [n.strip() for n in meta['feature_names'].split(',') if n.strip()]
+        print(f"\nFeatures ({len(names)}):")
+        for i, n in enumerate(names, 1):
+            print(f"  {i:>2}. {n}")
 
 
 if __name__ == "__main__":
