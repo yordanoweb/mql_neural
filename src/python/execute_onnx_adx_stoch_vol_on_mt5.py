@@ -28,7 +28,7 @@ import onnxruntime as rt
 import pandas as pd
 import ta
 
-from utils.features import add_adx_features, add_stoch_features, add_volume_features
+from utils.features import add_price_features, add_adx_features, add_stoch_features, add_volume_features
 from utils.colors import Colors, colorize as c
 
 TIMEFRAME_MAP = {
@@ -36,9 +36,10 @@ TIMEFRAME_MAP = {
 }
 
 FEATURE_COLS = [
-    'adx_norm', 'dip_norm', 'din_norm',
-    'stoch_k', 'stoch_d', 'stoch_diff', 'stoch_signal',
-    'vol_norm', 'vol_change', 'vol_ma_ratio', 'obv_norm', 'vol_spike',
+    'feat_body', 'feat_range',
+    'adx_strength', 'adx_di_signal', 'adx_di_sep', 'adx_momentum', 'adx_regime',
+    'stoch_momentum', 'stoch_position', 'stoch_velocity', 'stoch_divergence',
+    'vol_ratio', 'vol_momentum', 'vol_price_div', 'vol_percentile', 'vol_zscore',
 ]
 
 
@@ -57,8 +58,10 @@ _state = TradeState()
 
 
 def load_session(model_path: str) -> rt.InferenceSession:
-    sess = rt.InferenceSession(model_path)
-    assert sess.get_outputs()[0].shape[1] == 2
+    sess    = rt.InferenceSession(model_path)
+    outputs = {o.name: o for o in sess.get_outputs()}
+    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
+        f"Model must have 'probabilities' output [*, 2]. Got: {list(outputs.keys())}"
     return sess
 
 
@@ -86,14 +89,17 @@ def last_m1_candle(symbol: str) -> pd.Series:
 
 
 def build_input(df: pd.DataFrame, window: int,
-                adx_period: int, stoch_k: int, stoch_d: int, vol_window: int) -> np.ndarray:
-    df = add_adx_features(df.copy(), adx_period)
+                atr_period: int, adx_period: int, adx_min: float,
+                stoch_k: int, stoch_d: int, vol_window: int) -> np.ndarray:
+    df = add_price_features(df.copy(), atr_period)
+    df = add_adx_features(df, adx_period, adx_min)
     df = add_stoch_features(df, stoch_k, stoch_d)
     df = add_volume_features(df, vol_window)
     df.dropna(inplace=True)
     if len(df) < window:
         raise RuntimeError("Not enough clean rows after feature computation")
-    return df[FEATURE_COLS].values[-window:].flatten().astype(np.float32).reshape(1, -1)
+    arr = df[FEATURE_COLS].values[-window:].flatten().astype(np.float32)
+    return np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0).reshape(1, -1)
 
 
 def get_open_position(symbol: str):
@@ -238,8 +244,8 @@ def run(args):
             else:
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
-                X  = build_input(df, args.window, args.adx_period,
-                                 args.stoch_k, args.stoch_d, args.vol_window)
+                X  = build_input(df, args.window, args.atr_period, args.adx_period,
+                                 args.adx_min, args.stoch_k, args.stoch_d, args.vol_window)
                 results       = {o.name: v for o, v in zip(sess.get_outputs(), sess.run(None, {inp_name: X}))}
                 p_sell, p_buy = results['probabilities'][0]
 
@@ -280,8 +286,9 @@ def main():
     parser.add_argument('--atr_period', type=int,   default=14,   help='ATR period for SL/TP calculation')
     parser.add_argument('--sl_mult',    type=float, default=1.5,  help='SL = ATR * sl_mult')
     parser.add_argument('--tp_mult',    type=float, default=2.0,  help='Imaginary TP = ATR * tp_mult')
-    parser.add_argument('--adx_period', type=int,   default=14,   help='ADX indicator period')
-    parser.add_argument('--stoch_k',    type=int,   default=10,   help='Stochastic K period')
+    parser.add_argument('--adx_period', type=int,   default=8,    help='ADX indicator period')
+    parser.add_argument('--adx_min',    type=float, default=20.0, help='ADX minimum threshold')
+    parser.add_argument('--stoch_k',    type=int,   default=14,   help='Stochastic K period')
     parser.add_argument('--stoch_d',    type=int,   default=3,    help='Stochastic D period')
     parser.add_argument('--vol_window', type=int,   default=10,   help='Volume rolling window')
     args = parser.parse_args()

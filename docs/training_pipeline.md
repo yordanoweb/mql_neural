@@ -19,9 +19,10 @@ Take raw OHLCV data → engineer features → train a binary classifier → expo
 ### 3. Label Generation
 ```python
 future_close = df['close'].shift(-forward_bars)
-df['label'] = ((future_close - df['close']) / df['close'] > min_pct).astype(int)
+df['label'] = ((future_close - df['close']) / df['close'] > min_pct / 100).astype(int)
 df.dropna(subset=['label'], inplace=True)
 ```
+- `--min_pct` is in **percentage points** (e.g. `0.5` means 0.5%, not 50%)
 - Print class distribution before training
 - If imbalance > 60/40: use `class_weight='balanced'`
 

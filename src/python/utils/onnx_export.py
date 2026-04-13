@@ -24,6 +24,7 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
     onnx_model = convert_sklearn(
         model, initial_types=initial_type,
         options={type(estimator): {'zipmap': False}},
+        target_opset=17,
     )
 
     for key, val in [
@@ -34,6 +35,7 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
         p = onnx_model.metadata_props.add()
         p.key, p.value = key, val
 
+    onnx.checker.check_model(onnx_model)
     onnx.save(onnx_model, output_path)
     _verify(output_path)
 
