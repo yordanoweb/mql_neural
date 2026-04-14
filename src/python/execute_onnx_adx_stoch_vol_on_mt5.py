@@ -8,6 +8,9 @@ Exit logic:
   - Once imaginary TP is reached, trailing mode activates:
       BUY  → close on first M1 bearish candle (close < open)
       SELL → close on first M1 bullish candle (close > open)
+  - Profit lock: on every new candle at the trading timeframe, SL is moved to
+    the previous candle's low (BUY) or high (SELL), but only if that level is
+    better (higher for BUY, lower for SELL) than the current SL.
   - Script never opens a new position while one is already open.
 
 Usage:
@@ -46,12 +49,13 @@ FEATURE_COLS = [
 @dataclass
 class TradeState:
     """Tracks internal state for the open position."""
-    ticket:       int   = 0
-    is_buy:       bool  = False
-    entry_price:  float = 0.0
-    sl_price:     float = 0.0
-    tp_target:    float = 0.0   # imaginary TP level
-    trailing:     bool  = False # True once imaginary TP has been reached
+    ticket:           int   = 0
+    is_buy:           bool  = False
+    entry_price:      float = 0.0
+    sl_price:         float = 0.0
+    tp_target:        float = 0.0   # imaginary TP level
+    trailing:         bool  = False # True once imaginary TP has been reached
+    last_candle_time: object = None # timestamp of last seen closed candle (profit lock)
 
 
 _state = TradeState()
@@ -198,13 +202,51 @@ def print_state(pos, current_price: float, lot: float) -> None:
     )
 
 
-def manage_open_trade(pos, lot: float) -> None:
-    """Check imaginary TP and trailing exit on every cycle."""
+def move_sl_to_previous_candle(pos, tf: int) -> None:
+    """Move SL to previous candle's low (BUY) or high (SELL) on each new candle."""
+    import MetaTrader5 as mt5
+    global _state
+
+    candles = fetch_candles(pos.symbol, tf, 3)
+    last_closed = candles.iloc[-2]   # index -1 is the forming candle
+    candle_time = last_closed['time']
+
+    if candle_time == _state.last_candle_time:
+        return   # same candle, nothing to do
+
+    _state.last_candle_time = candle_time
+    new_sl = float(last_closed['low']) if _state.is_buy else float(last_closed['high'])
+
+    # only move SL if it improves (locks more profit)
+    if (_state.is_buy and new_sl <= _state.sl_price) or \
+       (not _state.is_buy and new_sl >= _state.sl_price):
+        return
+
+    req = {
+        'action':   mt5.TRADE_ACTION_SLTP,
+        'symbol':   pos.symbol,
+        'position': pos.ticket,
+        'sl':       new_sl,
+        'tp':       0.0,
+    }
+    result = mt5.order_send(req)
+    if result.retcode == 10009:
+        print(c(f"  → SL moved to {new_sl:.5f} (prev candle {'low' if _state.is_buy else 'high'})", Colors.MAGENTA))
+        _state.sl_price = new_sl
+    else:
+        print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
+
+
+def manage_open_trade(pos, lot: float, tf: int) -> None:
+    """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
 
     tick          = mt5.symbol_info_tick(pos.symbol)
     current_price = tick.bid if _state.is_buy else tick.ask
+
+    # profit lock: move SL to previous candle on each new candle
+    move_sl_to_previous_candle(pos, tf)
 
     # activate trailing once imaginary TP is reached
     if not _state.trailing:
@@ -245,7 +287,7 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot)
-                manage_open_trade(pos, args.lot)
+                manage_open_trade(pos, args.lot, tf)
             else:
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)

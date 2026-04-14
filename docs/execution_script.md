@@ -29,10 +29,11 @@ Only one position at a time. No new trade is opened while one is active.
 ## Exit Logic
 1. **Hard SL** — set on MT5 at open, broker handles it
 2. **Imaginary TP** — tracked internally in Python: `entry_price ± ATR × tp_mult`
-3. Once imaginary TP is reached, **trailing mode** activates:
+3. **Profit lock** — on every new candle at the trading timeframe, SL is moved to the previous candle's low (BUY) or high (SELL), but only if that level is better than the current SL (i.e. it never widens the SL)
+4. Once imaginary TP is reached, **trailing mode** activates:
    - BUY trade → close on first M1 candle where `close < open` (bearish)
    - SELL trade → close on first M1 candle where `close > open` (bullish)
-4. M1 candle check always uses the last *closed* M1 candle (index -2)
+5. M1 candle check always uses the last *closed* M1 candle (index -2)
 
 ## CLI Contract
 ```
@@ -64,3 +65,6 @@ Every cycle prints one of:
 - `--window` must match the value used at training time
 - MT5 must be running and logged in before starting the script
 - Script state (`TradeState`) is in-memory only — restarting resets it
+
+## Maintenance Rule
+After every implementation, feature addition, bug fix, or test: update this doc and `docs/training_pipeline.md` to reflect the current behaviour before committing.

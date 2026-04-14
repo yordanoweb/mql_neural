@@ -99,3 +99,6 @@ Prints: input/output tensor shapes, all metadata keys, and the numbered feature 
 
 ## See Also
 - `docs/execution_script.md` — live inference + MT5 order execution
+
+## Maintenance Rule
+After every implementation, feature addition, bug fix, or test: update this doc and `docs/execution_script.md` to reflect the current behaviour before committing.
