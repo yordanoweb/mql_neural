@@ -87,8 +87,8 @@ def current_atr(symbol: str, tf: int, atr_period: int) -> float:
     ).average_true_range().iloc[-1]
 
 
-def last_m1_candle(symbol: str, m1_tf: int) -> pd.Series:
-    df = fetch_candles(symbol, m1_tf, 2)
+def last_m1_candle(symbol: str) -> pd.Series:
+    df = fetch_candles(symbol, TIMEFRAME_MAP['M1'], 2)
     return df.iloc[-2]   # last *closed* M1 candle
 
 
@@ -238,7 +238,7 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int, m1_tf: int, deviation: int, magic: int) -> None:
+def manage_open_trade(pos, lot: float, tf: int, deviation: int, magic: int) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -258,7 +258,7 @@ def manage_open_trade(pos, lot: float, tf: int, m1_tf: int, deviation: int, magi
             _state.trailing = True
 
     if _state.trailing:
-        candle = last_m1_candle(pos.symbol, m1_tf)
+        candle = last_m1_candle(pos.symbol)
         bearish = candle['close'] < candle['open']
         bullish = candle['close'] > candle['open']
         if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
@@ -273,7 +273,6 @@ def run(args):
     sess     = load_session(args.model)
     inp_name = sess.get_inputs()[0].name
     tf       = TIMEFRAME_MAP[args.timeframe.upper()]
-    m1_tf    = TIMEFRAME_MAP['M1']
     n_candles = args.window + args.atr_period + args.adx_period + args.stoch_k + args.vol_window + 10
 
     print(f"Symbol={args.symbol}  TF={args.timeframe}  interval={args.interval}s")
@@ -290,7 +289,7 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot)
-                manage_open_trade(pos, args.lot, tf, m1_tf, args.deviation, args.magic)
+                manage_open_trade(pos, args.lot, tf, args.deviation, args.magic)
             else:
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
