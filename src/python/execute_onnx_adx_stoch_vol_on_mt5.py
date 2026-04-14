@@ -87,8 +87,8 @@ def current_atr(symbol: str, tf: int, atr_period: int) -> float:
     ).average_true_range().iloc[-1]
 
 
-def last_m1_candle(symbol: str) -> pd.Series:
-    df = fetch_candles(symbol, TIMEFRAME_MAP['M1'], 2)
+def last_m1_candle(symbol: str, m1_tf: int) -> pd.Series:
+    df = fetch_candles(symbol, m1_tf, 2)
     return df.iloc[-2]   # last *closed* M1 candle
 
 
@@ -112,7 +112,7 @@ def get_open_position(symbol: str):
     return positions[0] if positions else None
 
 
-def close_position(pos, lot: float, reason: str) -> None:
+def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> None:
     import MetaTrader5 as mt5
     direction = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
     tick      = mt5.symbol_info_tick(pos.symbol)
@@ -124,8 +124,8 @@ def close_position(pos, lot: float, reason: str) -> None:
         'type':         direction,
         'position':     pos.ticket,
         'price':        price,
-        'deviation':    20,
-        'magic':        0,
+        'deviation':    deviation,
+        'magic':        magic,
         'comment':      f'onnx_{reason}',
         'type_time':    mt5.ORDER_TIME_GTC,
         'type_filling': mt5.ORDER_FILLING_IOC,
@@ -138,7 +138,8 @@ def close_position(pos, lot: float, reason: str) -> None:
 
 
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
-                  atr_period: int, sl_mult: float, tp_mult: float) -> None:
+                  atr_period: int, sl_mult: float, tp_mult: float,
+                  deviation: int, magic: int) -> None:
     import MetaTrader5 as mt5
     global _state
     tick  = mt5.symbol_info_tick(symbol)
@@ -155,8 +156,8 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         'type':         order_type,
         'price':        price,
         'sl':           sl,
-        'deviation':    20,
-        'magic':        0,
+        'deviation':    deviation,
+        'magic':        magic,
         'comment':      f'F16_{"B" if is_buy else "S"}@{price}',
         'type_time':    mt5.ORDER_TIME_GTC,
         'type_filling': mt5.ORDER_FILLING_IOC,
@@ -237,7 +238,7 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int) -> None:
+def manage_open_trade(pos, lot: float, tf: int, m1_tf: int, deviation: int, magic: int) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -257,11 +258,11 @@ def manage_open_trade(pos, lot: float, tf: int) -> None:
             _state.trailing = True
 
     if _state.trailing:
-        candle = last_m1_candle(pos.symbol)
+        candle = last_m1_candle(pos.symbol, m1_tf)
         bearish = candle['close'] < candle['open']
         bullish = candle['close'] > candle['open']
         if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
-            close_position(pos, lot, reason='trailing_exit')
+            close_position(pos, lot, reason='trailing_exit', deviation=deviation, magic=magic)
 
 
 def run(args):
@@ -272,11 +273,13 @@ def run(args):
     sess     = load_session(args.model)
     inp_name = sess.get_inputs()[0].name
     tf       = TIMEFRAME_MAP[args.timeframe.upper()]
-    n_candles = args.window + 100
+    m1_tf    = TIMEFRAME_MAP['M1']
+    n_candles = args.window + args.atr_period + args.adx_period + args.stoch_k + args.vol_window + 10
 
     print(f"Symbol={args.symbol}  TF={args.timeframe}  interval={args.interval}s")
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
+    print(f"magic={args.magic}  deviation={args.deviation}")
 
     try:
         while True:
@@ -287,7 +290,7 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot)
-                manage_open_trade(pos, args.lot, tf)
+                manage_open_trade(pos, args.lot, tf, m1_tf, args.deviation, args.magic)
             else:
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
@@ -304,12 +307,14 @@ def run(args):
                     print(c('  → BUY signal', Colors.GREEN))
                     open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
-                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult)
+                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult,
+                                  deviation=args.deviation, magic=args.magic)
                 elif p_sell >= args.confidence:
                     print(c('  → SELL signal', Colors.RED))
                     open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
-                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult)
+                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult,
+                                  deviation=args.deviation, magic=args.magic)
                 else:
                     print(c('  → no signal', Colors.YELLOW))
 
@@ -337,7 +342,9 @@ def main():
     parser.add_argument('--adx_min',    type=float, default=20.0, help='ADX minimum threshold')
     parser.add_argument('--stoch_k',    type=int,   default=14,   help='Stochastic K period')
     parser.add_argument('--stoch_d',    type=int,   default=3,    help='Stochastic D period')
-    parser.add_argument('--vol_window', type=int,   default=10,   help='Volume rolling window')
+    parser.add_argument('--vol_window', type=int,   default=20,   help='Volume rolling window')
+    parser.add_argument('--deviation',  type=int,   default=20,   help='Max price deviation (slippage) in points')
+    parser.add_argument('--magic',      type=int,   default=0,    help='Magic number for orders')
     args = parser.parse_args()
     run(args)
 

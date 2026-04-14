@@ -48,6 +48,8 @@ Only one position at a time. No new trade is opened while one is active.
 --atr_period  ATR period for SL/TP calculation (default: 14)
 --sl_mult     SL distance = ATR × sl_mult (default: 1.5)
 --tp_mult     imaginary TP distance = ATR × tp_mult (default: 2.0)
+--deviation   max slippage in points for order requests (default: 20)
+--magic       magic number for MT5 orders (default: 0)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
