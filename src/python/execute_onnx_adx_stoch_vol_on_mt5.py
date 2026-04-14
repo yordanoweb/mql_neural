@@ -79,9 +79,9 @@ def fetch_candles(symbol: str, tf, n: int) -> pd.DataFrame:
     return df
 
 
-def current_atr(symbol: str, atr_period: int) -> float:
-    """Fetch last 100 M5 candles and return the latest ATR value."""
-    df = fetch_candles(symbol, TIMEFRAME_MAP['M5'], atr_period + 50)
+def current_atr(symbol: str, tf: int, atr_period: int) -> float:
+    """Return the latest ATR value on the trading timeframe."""
+    df = fetch_candles(symbol, tf, atr_period + 50)
     return ta.volatility.AverageTrueRange(
         df['high'], df['low'], df['close'], window=atr_period
     ).average_true_range().iloc[-1]
@@ -137,13 +137,13 @@ def close_position(pos, lot: float, reason: str) -> None:
     _state = TradeState()
 
 
-def open_position(symbol: str, is_buy: bool, lot: float,
+def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                   atr_period: int, sl_mult: float, tp_mult: float) -> None:
     import MetaTrader5 as mt5
     global _state
     tick  = mt5.symbol_info_tick(symbol)
     price = tick.ask if is_buy else tick.bid
-    atr   = current_atr(symbol, atr_period)
+    atr   = current_atr(symbol, tf, atr_period)
     sl    = price - atr * sl_mult if is_buy else price + atr * sl_mult
     tp_target = price + atr * tp_mult if is_buy else price - atr * tp_mult
 
@@ -302,12 +302,12 @@ def run(args):
 
                 if p_buy >= args.confidence:
                     print(c('  → BUY signal', Colors.GREEN))
-                    open_position(args.symbol, is_buy=True, lot=args.lot,
+                    open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult)
                 elif p_sell >= args.confidence:
                     print(c('  → SELL signal', Colors.RED))
-                    open_position(args.symbol, is_buy=False, lot=args.lot,
+                    open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult)
                 else:

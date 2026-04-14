@@ -23,7 +23,8 @@ every --interval seconds:
 Only one position at a time. No new trade is opened while one is active.
 
 ## Entry
-- Market order with hard SL: `entry_price ± ATR(atr_period) × sl_mult`
+- Market order with hard SL: `entry_price ± ATR(atr_period, trading_timeframe) × sl_mult`
+- ATR is always computed on the **trading timeframe** (not hardcoded to M5)
 - No TP sent to broker
 
 ## Exit Logic
