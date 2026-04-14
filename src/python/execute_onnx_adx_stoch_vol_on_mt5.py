@@ -153,7 +153,7 @@ def open_position(symbol: str, is_buy: bool, lot: float,
         'sl':           sl,
         'deviation':    20,
         'magic':        0,
-        'comment':      f'16Feat_{"B" if is_buy else "S"}@{price}',
+        'comment':      f'F16_{"B" if is_buy else "S"}@{price}',
         'type_time':    mt5.ORDER_TIME_GTC,
         'type_filling': mt5.ORDER_FILLING_IOC,
     }
