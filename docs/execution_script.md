@@ -73,10 +73,10 @@ a confidence of 0.70 will never fire. Stats reset on script restart (in-memory o
 ## Output (colorized)
 Every cycle prints one of:
 
-- FLAT (cyan): `[HH:MM:SS] FLAT — running inference...` + probabilities + stats line
+- FLAT (cyan): `[HH:MM:SS] SYMBOL FLAT — running inference...` + probabilities + stats line
 - Signal (green/red): `P(buy)=0.72  P(sell)=0.28  → BUY signal`
 - No signal (yellow): `→ no signal`
-- Open trade (green=BUY/red=SELL): `[HH:MM:SS] BUY | HOLDING | entry=... price=... PnL=$+1.23 | SL=... iTP=...`
+- Open trade (green=BUY/red=SELL): `[HH:MM:SS] SYMBOL BUY | HOLDING | entry=... price=... PnL=$+1.23 | SL=... iTP=...`
 - Trailing active (magenta): same line with `TRAILING` instead of `HOLDING`
 - Close (magenta): `→ CLOSED (trailing_exit): retcode=10009`
 

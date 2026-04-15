@@ -230,12 +230,12 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
              price=price, sl=sl, tp_target=tp_target, atr=round(atr, 5), confidence=confidence)
 
 
-def print_state(pos, current_price: float, lot: float) -> None:
+def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
     """Print current trade state to stdout."""
     import MetaTrader5 as mt5
     now = datetime.now().strftime('%H:%M:%S')
     if not pos:
-        print(c(f"[{now}] FLAT — no open position", Colors.CYAN))
+        print(c(f"[{now}] {symbol} FLAT — no open position", Colors.CYAN))
         return
     direction = c('BUY',  Colors.GREEN) if _state.is_buy else c('SELL', Colors.RED)
     trailing  = c('TRAILING', Colors.MAGENTA) if _state.trailing else c('HOLDING', Colors.YELLOW)
@@ -246,7 +246,7 @@ def print_state(pos, current_price: float, lot: float) -> None:
     pnl_money  = pnl_pts / tick_size * tick_value * lot
     pnl_color  = Colors.GREEN if pnl_money >= 0 else Colors.RED
     print(
-        f"[{now}] {direction} | {trailing} | "
+        f"[{now}] {symbol} {direction} | {trailing} | "
         f"entry={c(f'{_state.entry_price:.5f}', Colors.WHITE)} "
         f"price={c(f'{current_price:.5f}', Colors.WHITE)} "
         f"PnL={c(f'${pnl_money:+.2f}', pnl_color)} | "
@@ -353,7 +353,7 @@ def run(args):
             if pos:
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
-                print_state(pos, current_price, args.lot)
+                print_state(pos, current_price, args.lot, args.symbol)
                 manage_open_trade(pos, args.lot, tf, args.deviation, args.magic)
             else:
                 # detect broker-closed position (SL hit)
@@ -361,12 +361,12 @@ def run(args):
                     tick = mt5.symbol_info_tick(args.symbol)
                     close_price = tick.bid if _state.is_buy else tick.ask
                     pnl_pts = round((close_price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
-                    print(c(f"[{now}] position closed by broker (SL hit), PnL={pnl_pts:+.5f}", Colors.RED))
+                    print(c(f"[{now}] {args.symbol} position closed by broker (SL hit), PnL={pnl_pts:+.5f}", Colors.RED))
                     _log(args.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
                          price=close_price, sl=_state.sl_price, tp_target=_state.tp_target,
                          pnl_pts=pnl_pts, reason='sl_hit')
                     _state.__init__()
-                print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
+                print(c(f"[{now}] {args.symbol} FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
                 X  = build_input(df, args.window, args.atr_period, args.adx_period,
                                  args.adx_min, args.stoch_k, args.stoch_d, args.vol_window)
