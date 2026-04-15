@@ -12,9 +12,9 @@ def _load_env() -> tuple[str, str]:
             for line in f:
                 line = line.strip()
                 if line.startswith('BOT_TOKEN='):
-                    token = line.split('=', 1)[1].strip()
+                    token = line.split('=', 1)[1].strip().strip('"\'')
                 elif line.startswith('CHAT_ID='):
-                    chat_id = line.split('=', 1)[1].strip()
+                    chat_id = line.split('=', 1)[1].strip().strip('"\'')
     except FileNotFoundError:
         pass
     return token, chat_id
