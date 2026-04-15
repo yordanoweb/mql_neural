@@ -110,7 +110,7 @@ Applied only at execution time — training is unchanged.
 - Inference always runs and stats always update regardless of filter outcome
 
 ## Telegram Notifications
-Implemented in `src/python/utils/telegram.py`. Reads `BOT_TOKEN` and `CHAT_ID` from `.env` at the project root. Errors are silently ignored (fire-and-forget).
+Implemented in `src/python/utils/telegram.py`. Reads `BOT_TOKEN` and `CHAT_ID` from `.env` at the project root (quotes stripped automatically). Errors are silently ignored (fire-and-forget).
 
 Three events trigger a message:
 
@@ -118,7 +118,29 @@ Three events trigger a message:
 |---|---|---|
 | Script start | `run()` entry | Symbol, timeframe, confidence, model filename |
 | Trade open | `open_position()` — retcode 10009 | Direction, symbol, price, SL, iTP, confidence |
-| Trade close | `close_position()` or SL-hit detection | Direction, symbol, price, PnL pts, reason |
+| Trade close | `close_position()` (trailing exit) or SL-hit detection | Direction, symbol, price, PnL pts, reason |
+
+Example messages:
+```
+🚀 Bot started
+━━━━━━━━━━━━━━━━
+📊 NAS100  M5
+🎯 Confidence: 0.6
+📁 ustec_m5_16_feat_adx_stoch_vol.onnx
+
+🟢 BUY opened — NAS100
+━━━━━━━━━━━━━━━━
+💰 Price:      19500.00000
+🛡 SL:         19450.00000
+🎯 iTP:        19580.00000
+📈 Confidence: 0.724
+
+🔴 SELL closed — NAS100
+━━━━━━━━━━━━━━━━
+💰 Price: 19480.00000
+📊 PnL:   +0.00050 pts
+🛑 Reason: SL hit
+```
 
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly
