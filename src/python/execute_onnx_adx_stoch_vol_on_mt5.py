@@ -238,6 +238,14 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
     if candle_time == _state.last_candle_time:
         return   # same candle, nothing to do
 
+    # only ratchet once price is in profit
+    import MetaTrader5 as mt5
+    tick = mt5.symbol_info_tick(pos.symbol)
+    current_price = tick.bid if _state.is_buy else tick.ask
+    in_profit = (current_price > _state.entry_price) if _state.is_buy else (current_price < _state.entry_price)
+    if not in_profit:
+        return
+
     _state.last_candle_time = candle_time
     new_sl = float(last_closed['low']) if _state.is_buy else float(last_closed['high'])
 

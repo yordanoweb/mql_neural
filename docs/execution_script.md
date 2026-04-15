@@ -31,7 +31,7 @@ Only one position at a time. No new trade is opened while one is active.
 ## Exit Logic
 1. **Hard SL** — set on MT5 at open, broker handles it
 2. **Imaginary TP** — tracked internally in Python: `entry_price ± ATR × tp_mult`
-3. **Profit lock** — on every new candle at the trading timeframe, SL is moved to the previous candle's low (BUY) or high (SELL), but only if that level is better than the current SL (i.e. it never widens the SL)
+3. **Profit lock** — on every new candle at the trading timeframe, SL is ratcheted to the previous candle's low (BUY) or high (SELL), but **only if price is currently in profit** (above entry for BUY, below entry for SELL) and only if the new level is better than the current SL (never widens it)
 4. Once imaginary TP is reached, **trailing mode** activates:
    - BUY trade → close on first M1 candle where `close < open` (bearish)
    - SELL trade → close on first M1 candle where `close > open` (bullish)
