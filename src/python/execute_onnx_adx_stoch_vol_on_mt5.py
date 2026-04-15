@@ -75,7 +75,10 @@ def _log(symbol: str, event: str, **kwargs) -> None:
         row = {k: '' for k in _LOG_FIELDS}
         row.update({'timestamp': datetime.now().isoformat(), 'event': event, 'symbol': symbol})
         row.update(kwargs)
-        w.writerow(row)(model_path: str) -> rt.InferenceSession:
+        w.writerow(row)
+
+
+def load_session(model_path: str) -> rt.InferenceSession:
     sess    = rt.InferenceSession(model_path)
     outputs = {o.name: o for o in sess.get_outputs()}
     assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
