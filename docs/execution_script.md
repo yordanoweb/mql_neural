@@ -109,6 +109,17 @@ Applied only at execution time — training is unchanged.
 - When blocked: prints `→ EMA filter: close=X < EMA=Y — BUY blocked` (yellow)
 - Inference always runs and stats always update regardless of filter outcome
 
+## Telegram Notifications
+Implemented in `src/python/utils/telegram.py`. Reads `BOT_TOKEN` and `CHAT_ID` from `.env` at the project root. Errors are silently ignored (fire-and-forget).
+
+Three events trigger a message:
+
+| Event | Trigger | Message content |
+|---|---|---|
+| Script start | `run()` entry | Symbol, timeframe, confidence, model filename |
+| Trade open | `open_position()` — retcode 10009 | Direction, symbol, price, SL, iTP, confidence |
+| Trade close | `close_position()` or SL-hit detection | Direction, symbol, price, PnL pts, reason |
+
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time

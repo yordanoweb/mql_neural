@@ -35,6 +35,7 @@ import ta
 
 from utils.features import add_price_features, add_adx_features, add_stoch_features, add_volume_features
 from utils.colors import Colors, colorize as c
+from utils.telegram import notify
 
 TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
@@ -184,6 +185,8 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
     _log(pos.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
          price=price, sl=_state.sl_price, tp_target=_state.tp_target,
          pnl_pts=pnl_pts, reason=reason)
+    notify(f"{'🟢 BUY' if _state.is_buy else '🔴 SELL'} CLOSE {pos.symbol}\n"
+           f"price={price:.5f}  PnL={pnl_pts:+.5f}  reason={reason}")
     _state = TradeState()
 
 
@@ -228,6 +231,9 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         )
         _log(symbol, 'OPEN', direction='BUY' if is_buy else 'SELL',
              price=price, sl=sl, tp_target=tp_target, atr=round(atr, 5), confidence=confidence)
+        notify(f"{'🟢 BUY' if is_buy else '🔴 SELL'} OPEN {symbol}\n"
+               f"price={price:.5f}  SL={sl:.5f}  iTP={tp_target:.5f}\n"
+               f"confidence={confidence:.3f}")
 
 
 def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
@@ -344,6 +350,8 @@ def run(args):
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
     print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
+    notify(f"🚀 Bot started\n{args.symbol} {args.timeframe}  confidence={args.confidence}\n"
+           f"model={os.path.basename(args.model)}")
 
     try:
         while True:
@@ -365,6 +373,8 @@ def run(args):
                     _log(args.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
                          price=close_price, sl=_state.sl_price, tp_target=_state.tp_target,
                          pnl_pts=pnl_pts, reason='sl_hit')
+                    notify(f"{'🟢 BUY' if _state.is_buy else '🔴 SELL'} CLOSE {args.symbol}\n"
+                           f"price={close_price:.5f}  PnL={pnl_pts:+.5f}  reason=sl_hit")
                     _state.__init__()
                 print(c(f"[{now}] {args.symbol} FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
