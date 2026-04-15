@@ -343,7 +343,7 @@ def run(args):
     print(f"Symbol={args.symbol}  TF={args.timeframe}  interval={args.interval}s")
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
-    print(f"magic={args.magic}  deviation={args.deviation}")
+    print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
 
     try:
         while True:
@@ -380,20 +380,29 @@ def run(args):
                 print(f"  {p_buy_str}  {p_sell_str}  {exp_str}", end='')
                 print(c(f"\n{_stats}", Colors.CYAN), end='')
 
+                last_close = df['close'].iloc[-1]
+                ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
+
                 if p_buy >= args.confidence:
-                    print(c('  → BUY signal', Colors.GREEN))
-                    open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
-                                  atr_period=args.atr_period,
-                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult,
-                                  deviation=args.deviation, magic=args.magic,
-                                  confidence=p_buy)
+                    if last_close >= ema_val:
+                        print(c('  → BUY signal', Colors.GREEN))
+                        open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
+                                      atr_period=args.atr_period,
+                                      sl_mult=args.sl_mult, tp_mult=args.tp_mult,
+                                      deviation=args.deviation, magic=args.magic,
+                                      confidence=p_buy)
+                    else:
+                        print(c(f'  → EMA filter: close={last_close:.5f} < EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
                 elif p_sell >= args.confidence:
-                    print(c('  → SELL signal', Colors.RED))
-                    open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
-                                  atr_period=args.atr_period,
-                                  sl_mult=args.sl_mult, tp_mult=args.tp_mult,
-                                  deviation=args.deviation, magic=args.magic,
-                                  confidence=p_sell)
+                    if last_close <= ema_val:
+                        print(c('  → SELL signal', Colors.RED))
+                        open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
+                                      atr_period=args.atr_period,
+                                      sl_mult=args.sl_mult, tp_mult=args.tp_mult,
+                                      deviation=args.deviation, magic=args.magic,
+                                      confidence=p_sell)
+                    else:
+                        print(c(f'  → EMA filter: close={last_close:.5f} > EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
                 else:
                     print(c('  → no signal', Colors.YELLOW))
 
@@ -424,6 +433,7 @@ def main():
     parser.add_argument('--vol_window', type=int,   default=20,   help='Volume rolling window')
     parser.add_argument('--deviation',  type=int,   default=20,   help='Max price deviation (slippage) in points')
     parser.add_argument('--magic',      type=int,   default=0,    help='Magic number for orders')
+    parser.add_argument('--ema_period', type=int,   default=18,   help='EMA period for trend filter')
     args = parser.parse_args()
     run(args)
 

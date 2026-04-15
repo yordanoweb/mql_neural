@@ -51,6 +51,7 @@ Only one position at a time. No new trade is opened while one is active.
 --tp_mult     imaginary TP distance = ATR × tp_mult (default: 2.0)
 --deviation   max slippage in points for order requests (default: 20)
 --magic       magic number for MT5 orders (default: 0)
+--ema_period  EMA period for trend filter (default: 18)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
@@ -97,6 +98,16 @@ Every entry and exit is appended to `trades.csv` in the working directory.
 | `reason` | Exit reason: `trailing_exit` or `sl_hit` |
 
 Exit reason `sl_hit` is detected when the broker closes the position (position disappears from MT5 while `_state.ticket != 0`).
+
+## EMA Trend Filter
+Applied only at execution time — training is unchanged.
+
+- EMA is computed on the trading timeframe candles already fetched for inference
+- Filter only activates when a signal fires (`p >= confidence`)
+- BUY signal: allowed only if `close >= EMA(ema_period)`
+- SELL signal: allowed only if `close <= EMA(ema_period)`
+- When blocked: prints `→ EMA filter: close=X < EMA=Y — BUY blocked` (yellow)
+- Inference always runs and stats always update regardless of filter outcome
 
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly
