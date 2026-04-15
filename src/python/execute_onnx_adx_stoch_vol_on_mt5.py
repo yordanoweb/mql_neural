@@ -376,7 +376,8 @@ def run(args):
 
                 p_buy_str  = c(f'P(buy)={p_buy:.3f}',  Colors.GREEN if p_buy  >= args.confidence else Colors.WHITE)
                 p_sell_str = c(f'P(sell)={p_sell:.3f}', Colors.RED   if p_sell >= args.confidence else Colors.WHITE)
-                print(f"  {p_buy_str}  {p_sell_str}", end='')
+                exp_str    = c(f'Exp={args.confidence:.3f}', Colors.YELLOW)
+                print(f"  {p_buy_str}  {p_sell_str}  {exp_str}", end='')
                 print(c(f"\n{_stats}", Colors.CYAN), end='')
 
                 if p_buy >= args.confidence:
