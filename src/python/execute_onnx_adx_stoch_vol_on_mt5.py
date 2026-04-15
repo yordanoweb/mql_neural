@@ -249,6 +249,11 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
     _state.last_candle_time = candle_time
     new_sl = float(last_closed['low']) if _state.is_buy else float(last_closed['high'])
 
+    # new SL must itself be in profit territory (past entry)
+    if (_state.is_buy and new_sl <= _state.entry_price) or \
+       (not _state.is_buy and new_sl >= _state.entry_price):
+        return
+
     # only move SL if it improves (locks more profit)
     if (_state.is_buy and new_sl <= _state.sl_price) or \
        (not _state.is_buy and new_sl >= _state.sl_price):
