@@ -64,6 +64,25 @@ Every cycle prints one of:
 - Trailing active (magenta): same line with `TRAILING` instead of `HOLDING`
 - Close (magenta): `→ CLOSED (trailing_exit): retcode=10009`
 
+## Trade Logging
+Every entry and exit is appended to `trades.csv` in the working directory.
+
+| Column | Description |
+|---|---|
+| `timestamp` | ISO datetime of the event |
+| `event` | `OPEN` or `CLOSE` |
+| `symbol` | MT5 symbol |
+| `direction` | `BUY` or `SELL` |
+| `price` | Execution price |
+| `sl` | SL price at time of event |
+| `tp_target` | Imaginary TP level |
+| `atr` | ATR value at entry (OPEN only) |
+| `confidence` | Model probability that triggered entry (OPEN only) |
+| `pnl_pts` | Price points PnL at close (CLOSE only) |
+| `reason` | Exit reason: `trailing_exit` or `sl_hit` |
+
+Exit reason `sl_hit` is detected when the broker closes the position (position disappears from MT5 while `_state.ticket != 0`).
+
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time

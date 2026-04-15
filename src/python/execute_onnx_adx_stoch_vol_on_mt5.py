@@ -22,6 +22,8 @@ Usage:
 """
 
 import argparse
+import csv
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -60,8 +62,20 @@ class TradeState:
 
 _state = TradeState()
 
+_LOG_FILE   = 'trades.csv'
+_LOG_FIELDS = ['timestamp', 'event', 'symbol', 'direction', 'price',
+               'sl', 'tp_target', 'atr', 'confidence', 'pnl_pts', 'reason']
 
-def load_session(model_path: str) -> rt.InferenceSession:
+def _log(symbol: str, event: str, **kwargs) -> None:
+    exists = os.path.exists(_LOG_FILE)
+    with open(_LOG_FILE, 'a', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=_LOG_FIELDS)
+        if not exists:
+            w.writeheader()
+        row = {k: '' for k in _LOG_FIELDS}
+        row.update({'timestamp': datetime.now().isoformat(), 'event': event, 'symbol': symbol})
+        row.update(kwargs)
+        w.writerow(row)(model_path: str) -> rt.InferenceSession:
     sess    = rt.InferenceSession(model_path)
     outputs = {o.name: o for o in sess.get_outputs()}
     assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
@@ -134,6 +148,10 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
     print(c(f"  → CLOSED ({reason}): retcode={result.retcode}", Colors.MAGENTA))
     # reset state
     global _state
+    pnl_pts = round((price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
+    _log(pos.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
+         price=price, sl=_state.sl_price, tp_target=_state.tp_target,
+         pnl_pts=pnl_pts, reason=reason)
     _state = TradeState()
 
 
@@ -176,6 +194,8 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
             tp_target=tp_target,
             trailing=False,
         )
+        _log(symbol, 'OPEN', direction='BUY' if is_buy else 'SELL',
+             price=price, sl=sl, tp_target=tp_target, atr=round(atr, 5), confidence=confidence)
 
 
 def print_state(pos, current_price: float, lot: float) -> None:
@@ -291,6 +311,16 @@ def run(args):
                 print_state(pos, current_price, args.lot)
                 manage_open_trade(pos, args.lot, tf, args.deviation, args.magic)
             else:
+                # detect broker-closed position (SL hit)
+                if _state.ticket != 0:
+                    tick = mt5.symbol_info_tick(args.symbol)
+                    close_price = tick.bid if _state.is_buy else tick.ask
+                    pnl_pts = round((close_price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
+                    print(c(f"[{now}] position closed by broker (SL hit), PnL={pnl_pts:+.5f}", Colors.RED))
+                    _log(args.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
+                         price=close_price, sl=_state.sl_price, tp_target=_state.tp_target,
+                         pnl_pts=pnl_pts, reason='sl_hit')
+                    _state.__init__()
                 print(c(f"[{now}] FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
                 X  = build_input(df, args.window, args.atr_period, args.adx_period,
