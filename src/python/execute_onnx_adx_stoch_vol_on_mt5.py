@@ -62,6 +62,35 @@ class TradeState:
 
 _state = TradeState()
 
+
+@dataclass
+class InferenceStats:
+    """Running min/max of raw model probabilities since script start."""
+    max_buy:  float = field(default=None)
+    min_buy:  float = field(default=None)
+    max_sell: float = field(default=None)
+    min_sell: float = field(default=None)
+    count:    int   = 0
+
+    def update(self, p_buy: float, p_sell: float) -> None:
+        self.count    += 1
+        self.max_buy   = p_buy  if self.max_buy  is None else max(self.max_buy,  p_buy)
+        self.min_buy   = p_buy  if self.min_buy  is None else min(self.min_buy,  p_buy)
+        self.max_sell  = p_sell if self.max_sell is None else max(self.max_sell, p_sell)
+        self.min_sell  = p_sell if self.min_sell is None else min(self.min_sell, p_sell)
+
+    def __str__(self) -> str:
+        if self.count == 0:
+            return "  stats: no data yet"
+        return (
+            f"  stats({self.count}): "
+            f"buy=[{self.min_buy:.3f}–{self.max_buy:.3f}]  "
+            f"sell=[{self.min_sell:.3f}–{self.max_sell:.3f}]"
+        )
+
+
+_stats = InferenceStats()
+
 _LOG_FILE   = 'trades.csv'
 _LOG_FIELDS = ['timestamp', 'event', 'symbol', 'direction', 'price',
                'sl', 'tp_target', 'atr', 'confidence', 'pnl_pts', 'reason']
@@ -343,10 +372,12 @@ def run(args):
                                  args.adx_min, args.stoch_k, args.stoch_d, args.vol_window)
                 results       = {o.name: v for o, v in zip(sess.get_outputs(), sess.run(None, {inp_name: X}))}
                 p_sell, p_buy = results['probabilities'][0]
+                _stats.update(p_buy, p_sell)
 
                 p_buy_str  = c(f'P(buy)={p_buy:.3f}',  Colors.GREEN if p_buy  >= args.confidence else Colors.WHITE)
                 p_sell_str = c(f'P(sell)={p_sell:.3f}', Colors.RED   if p_sell >= args.confidence else Colors.WHITE)
                 print(f"  {p_buy_str}  {p_sell_str}", end='')
+                print(c(f"\n{_stats}", Colors.CYAN), end='')
 
                 if p_buy >= args.confidence:
                     print(c('  → BUY signal', Colors.GREEN))

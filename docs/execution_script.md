@@ -54,10 +54,25 @@ Only one position at a time. No new trade is opened while one is active.
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
+## Inference Stats
+Every FLAT cycle updates in-memory running min/max of raw model probabilities since script start.
+After each inference, a stats line is printed:
+
+```
+  stats(42): buy=[0.481–0.731]  sell=[0.269–0.519]
+```
+
+- `count` — number of FLAT inference cycles so far
+- `buy=[min–max]` — observed range of `P(buy)` across all cycles
+- `sell=[min–max]` — observed range of `P(sell)` across all cycles
+
+Use this to calibrate `--confidence`: if `max_buy` never exceeds 0.63 after many candles,
+a confidence of 0.70 will never fire. Stats reset on script restart (in-memory only).
+
 ## Output (colorized)
 Every cycle prints one of:
 
-- FLAT (cyan): `[HH:MM:SS] FLAT — running inference...` + probabilities
+- FLAT (cyan): `[HH:MM:SS] FLAT — running inference...` + probabilities + stats line
 - Signal (green/red): `P(buy)=0.72  P(sell)=0.28  → BUY signal`
 - No signal (yellow): `→ no signal`
 - Open trade (green=BUY/red=SELL): `[HH:MM:SS] BUY | HOLDING | entry=... price=... PnL=$+1.23 | SL=... iTP=...`
