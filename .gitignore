@@ -97,8 +97,9 @@ passwords.txt
 
 # Do not place rules under here refering ONNX
 onnx/**
-!onnx/ndx100_rates_m5_SGRADT70.onnx
-!onnx/ndx100_rates_m5_3_feat.onnx
+!onnx/ndx100_m15_16_feat_adx_stoch_vol.onnx
+!onnx/sp500_m15_16_feat_adx_stoch_vol.onnx
+!onnx/us30_m15_16_feat_adx_stoch_vol.onnx
 
 data/
 csv/**
