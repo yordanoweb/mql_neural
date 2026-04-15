@@ -26,6 +26,7 @@ Only one position at a time. No new trade is opened while one is active.
 - Market order with hard SL: `entry_price ± ATR(atr_period, trading_timeframe) × sl_mult`
 - ATR is always computed on the **trading timeframe** (not hardcoded to M5)
 - No TP sent to broker
+- MT5 order comment: `F16_B@<p_buy>` or `F16_S@<p_sell>` — the inference probability that triggered the entry (3 decimal places)
 
 ## Exit Logic
 1. **Hard SL** — set on MT5 at open, broker handles it

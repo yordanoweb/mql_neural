@@ -139,7 +139,7 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
 
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                   atr_period: int, sl_mult: float, tp_mult: float,
-                  deviation: int, magic: int) -> None:
+                  deviation: int, magic: int, confidence: float = 0.0) -> None:
     import MetaTrader5 as mt5
     global _state
     tick  = mt5.symbol_info_tick(symbol)
@@ -158,7 +158,7 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         'sl':           sl,
         'deviation':    deviation,
         'magic':        magic,
-        'comment':      f'F16_{"B" if is_buy else "S"}@{price}',
+        'comment':      f'F16_{"B" if is_buy else "S"}@{confidence:.3f}',
         'type_time':    mt5.ORDER_TIME_GTC,
         'type_filling': mt5.ORDER_FILLING_IOC,
     }
@@ -307,13 +307,15 @@ def run(args):
                     open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult,
-                                  deviation=args.deviation, magic=args.magic)
+                                  deviation=args.deviation, magic=args.magic,
+                                  confidence=p_buy)
                 elif p_sell >= args.confidence:
                     print(c('  → SELL signal', Colors.RED))
                     open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
                                   atr_period=args.atr_period,
                                   sl_mult=args.sl_mult, tp_mult=args.tp_mult,
-                                  deviation=args.deviation, magic=args.magic)
+                                  deviation=args.deviation, magic=args.magic,
+                                  confidence=p_sell)
                 else:
                     print(c('  → no signal', Colors.YELLOW))
 
