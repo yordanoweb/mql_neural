@@ -414,8 +414,8 @@ def run(args):
                 print(f"  {p_buy_str}  {p_sell_str}  {exp_str}", end='')
                 print(c(f"\n{_stats}", Colors.CYAN), end='')
 
-                last_close = df['close'].iloc[-1]
-                ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
+                last_close = df['close'].iloc[-2]   # last closed candle, not the forming one
+                ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-2]
 
                 if p_buy >= args.confidence:
                     if last_close >= ema_val:
