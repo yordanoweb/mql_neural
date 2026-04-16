@@ -27,7 +27,7 @@ docs/                 # specs and design docs
 
 ## ONNX Contract (never break this)
 - Input : `float32[1, WINDOW_SIZE * N_FEATURES]` — flattened window, row-major
-- Output: `float32[1, 2]` — softmax probabilities `[P(sell), P(buy)]`
+- Output: `float32[1, 3]` — softmax probabilities `[P(hold), P(buy), P(sell)]`
 - Metadata key `feature_names`: comma-separated feature column names (required)
 - Metadata keys `window_size`, `n_features`: integers as strings
 
@@ -46,10 +46,12 @@ docs/                 # specs and design docs
 ### Volume (5): `vol_ratio`, `vol_momentum`, `vol_price_div`, `vol_percentile`, `vol_zscore`
 
 ## Classification Target
-- **2 classes**: `0 = sell/hold`, `1 = buy`
-- Label: ATR-based — price must reach `min_profit_atr × ATR` upside AND upside > downside
-  over the next `forward` bars
-- Output: `float32[1, 2]` — `[P(sell), P(buy)]`
+- **3 classes**: `0 = hold`, `1 = buy`, `2 = sell`
+- Label: ATR-based — over the next `forward` bars:
+  - `1 (buy)`  — upside   >= `min_profit_atr × ATR` AND upside > downside
+  - `2 (sell)` — downside >= `min_profit_atr × ATR` AND downside > upside
+  - `0 (hold)` — otherwise
+- Output: `float32[1, 3]` — `[P(hold), P(buy), P(sell)]`
 
 ## CLI Contract
 Every `train_*.py` script must accept:

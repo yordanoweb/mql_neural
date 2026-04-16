@@ -15,7 +15,7 @@ every --interval seconds:
   if position open:
     → run manage_open_trade()
   else:
-    → run inference → [P(sell), P(buy)]
+    → run inference → [P(hold), P(buy), P(sell)]
     → if P(buy)  >= confidence: open BUY
     → if P(sell) >= confidence: open SELL
     → else: hold

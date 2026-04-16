@@ -3,7 +3,7 @@ ONNX export helpers.
 
 Contract (never break):
   Input : float32[1, WINDOW_SIZE * N_FEATURES]
-  Output: float32[1, 2]  — softmax [P(sell), P(buy)]
+  Output: float32[1, 3]  — softmax [P(hold), P(buy), P(sell)]
   Metadata: feature_names (comma-sep), window_size, n_features
 """
 
@@ -48,5 +48,5 @@ def _verify(path: str) -> None:
     print(f"Input : {inp.name} {inp.shape} {inp.type}")
     for o in sess.get_outputs():
         print(f"Output: {o.name} {o.shape} {o.type}")
-    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
-        f"Expected 'probabilities' output with shape [*, 2]. Got: {list(outputs.keys())}"
+    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 3, \
+        f"Expected 'probabilities' output with shape [*, 3]. Got: {list(outputs.keys())}"

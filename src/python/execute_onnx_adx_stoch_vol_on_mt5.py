@@ -71,14 +71,18 @@ class InferenceStats:
     min_buy:  float = field(default=None)
     max_sell: float = field(default=None)
     min_sell: float = field(default=None)
+    max_hold: float = field(default=None)
+    min_hold: float = field(default=None)
     count:    int   = 0
 
-    def update(self, p_buy: float, p_sell: float) -> None:
+    def update(self, p_buy: float, p_sell: float, p_hold: float) -> None:
         self.count    += 1
         self.max_buy   = p_buy  if self.max_buy  is None else max(self.max_buy,  p_buy)
         self.min_buy   = p_buy  if self.min_buy  is None else min(self.min_buy,  p_buy)
         self.max_sell  = p_sell if self.max_sell is None else max(self.max_sell, p_sell)
         self.min_sell  = p_sell if self.min_sell is None else min(self.min_sell, p_sell)
+        self.max_hold  = p_hold if self.max_hold is None else max(self.max_hold, p_hold)
+        self.min_hold  = p_hold if self.min_hold is None else min(self.min_hold, p_hold)
 
     def __str__(self) -> str:
         if self.count == 0:
@@ -86,7 +90,8 @@ class InferenceStats:
         return (
             f"  stats({self.count}): "
             f"buy=[{self.min_buy:.3f}–{self.max_buy:.3f}]  "
-            f"sell=[{self.min_sell:.3f}–{self.max_sell:.3f}]"
+            f"sell=[{self.min_sell:.3f}–{self.max_sell:.3f}]  "
+            f"hold=[{self.min_hold:.3f}–{self.max_hold:.3f}]"
         )
 
 
@@ -119,8 +124,8 @@ def _pnl_usd(symbol: str, pnl_pts: float, lot: float) -> float:
 def load_session(model_path: str) -> rt.InferenceSession:
     sess    = rt.InferenceSession(model_path)
     outputs = {o.name: o for o in sess.get_outputs()}
-    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 2, \
-        f"Model must have 'probabilities' output [*, 2]. Got: {list(outputs.keys())}"
+    assert 'probabilities' in outputs and outputs['probabilities'].shape[1] == 3, \
+        f"Model must have 'probabilities' output [*, 3]. Got: {list(outputs.keys())}"
     return sess
 
 
@@ -404,14 +409,15 @@ def run(args):
                 df = fetch_candles(args.symbol, tf, n_candles)
                 X  = build_input(df, args.window, args.atr_period, args.adx_period,
                                  args.adx_min, args.stoch_k, args.stoch_d, args.vol_window)
-                results       = {o.name: v for o, v in zip(sess.get_outputs(), sess.run(None, {inp_name: X}))}
-                p_sell, p_buy = results['probabilities'][0]
-                _stats.update(p_buy, p_sell)
+                results                = {o.name: v for o, v in zip(sess.get_outputs(), sess.run(None, {inp_name: X}))}
+                p_hold, p_buy, p_sell  = results['probabilities'][0]
+                _stats.update(p_buy, p_sell, p_hold)
 
-                p_buy_str  = c(f'P(buy)={p_buy:.3f}',  Colors.GREEN if p_buy  >= args.confidence else Colors.WHITE)
-                p_sell_str = c(f'P(sell)={p_sell:.3f}', Colors.RED   if p_sell >= args.confidence else Colors.WHITE)
+                p_buy_str  = c(f'P(buy)={p_buy:.3f}',   Colors.GREEN  if p_buy  >= args.confidence else Colors.WHITE)
+                p_sell_str = c(f'P(sell)={p_sell:.3f}',  Colors.RED    if p_sell >= args.confidence else Colors.WHITE)
+                p_hold_str = c(f'P(hold)={p_hold:.3f}',  Colors.YELLOW if p_hold >= args.confidence else Colors.WHITE)
                 exp_str    = c(f'Exp={args.confidence:.3f}', Colors.YELLOW)
-                print(f"  {p_buy_str}  {p_sell_str}  {exp_str}", end='')
+                print(f"  {p_buy_str}  {p_sell_str}  {p_hold_str}  {exp_str}", end='')
                 print(c(f"\n{_stats}", Colors.CYAN), end='')
 
                 last_close = df['close'].iloc[-2]   # last closed candle, not the forming one

@@ -21,7 +21,12 @@ Take raw OHLCV data → engineer features → train a binary classifier → expo
 for each bar i:
     upside   = (max(high[i+1..i+forward]) - close[i]) / ATR[i]
     downside = (close[i] - min(low[i+1..i+forward]))  / ATR[i]
-    label[i] = 1 if upside >= min_profit_atr AND upside > downside else 0
+    if upside >= min_profit_atr AND upside > downside:
+        label[i] = 1   # buy
+    elif downside >= min_profit_atr AND downside > upside:
+        label[i] = 2   # sell
+    else:
+        label[i] = 0   # hold
 ```
 - `--min_profit_atr` is in ATR units (e.g. 1.5 = price must move 1.5× ATR upward)
 - Last `forward` rows are dropped (no future data)
@@ -54,10 +59,12 @@ for each bar i:
 - sklearn exports two outputs: `label [None]` and `probabilities [None, 2]` — always read by name
 
 ## Classification Target
-- **2 classes**: `0 = sell/hold`, `1 = buy`
-- Label: ATR-based — price must reach `min_profit_atr × ATR` upside AND upside > downside
-  over the next `forward` bars
-- Output: `float32[1, 2]` — `[P(sell), P(buy)]`
+- **3 classes**: `0 = hold`, `1 = buy`, `2 = sell`
+- Label: ATR-based — over the next `forward` bars:
+  - `1 (buy)`  — upside   >= `min_profit_atr × ATR` AND upside > downside
+  - `2 (sell)` — downside >= `min_profit_atr × ATR` AND downside > upside
+  - `0 (hold)` — otherwise
+- Output: `float32[1, 3]` — `[P(hold), P(buy), P(sell)]`
 
 ## Implemented Scripts
 | Script | Features (n) | Groups |
@@ -88,7 +95,7 @@ RF-only args: `--n_iter`, `--jobs`
 | Property | Value |
 |---|---|
 | Input  | `float32[1, WINDOW_SIZE * N_FEATURES]` |
-| Output | `float32[1, 2]` — `[P(sell), P(buy)]` |
+| Output | `float32[1, 3]` — `[P(hold), P(buy), P(sell)]` |
 | Metadata | `feature_names`, `window_size`, `n_features` |
 
 ## Querying a Model

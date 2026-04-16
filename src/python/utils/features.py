@@ -90,9 +90,10 @@ def add_price_features(df: pd.DataFrame, atr_period: int = 14) -> pd.DataFrame:
 
 def add_label(df: pd.DataFrame, forward_bars: int = 10, min_profit_atr: float = 1.5) -> pd.DataFrame:
     """
-    ATR-based binary label over a future window:
+    ATR-based 3-class label over a future window:
       1 (buy)  — max upside   >= min_profit_atr AND upside > downside
-      0 (sell) — otherwise
+      2 (sell) — max downside >= min_profit_atr AND downside > upside
+      0 (hold) — otherwise
     Requires 'atr' column (added by add_price_features).
     Last forward_bars rows are dropped (no future data available).
     """
@@ -112,6 +113,8 @@ def add_label(df: pd.DataFrame, forward_bars: int = 10, min_profit_atr: float = 
         downside    = (entry - future_low)  / atr_arr[i]
         if upside >= min_profit_atr and upside > downside:
             labels[i] = 1
+        elif downside >= min_profit_atr and downside > upside:
+            labels[i] = 2
 
     df = df.copy()
     df['label'] = labels
