@@ -50,8 +50,8 @@ def build_model(model_type: str, n_iter: int, jobs: int):
     tscv = TimeSeriesSplit(n_splits=3)
     if model_type == 'rf':
         param_dist = {
-            'n_estimators':      [100, 150, 200, 250],
-            'max_depth':         [5, 8, 12, 15],
+            'n_estimators':      [50, 100, 150],
+            'max_depth':         [4, 6, 8],
             'min_samples_split': [2, 5, 10],
             'min_samples_leaf':  [1, 2, 4],
             'max_features':      ['sqrt', 'log2', None],
@@ -59,7 +59,7 @@ def build_model(model_type: str, n_iter: int, jobs: int):
         estimator = RandomForestClassifier(random_state=42, class_weight='balanced')
         return RandomizedSearchCV(estimator, param_dist, n_iter=n_iter,
                                   cv=tscv, scoring='balanced_accuracy',
-                                  n_jobs=jobs, verbose=1)
+                                  n_jobs=jobs, verbose=3)
     else:
         # MLP: wrap in Pipeline with scaler, no hyperparam search
         return Pipeline([
