@@ -136,6 +136,7 @@ Example messages:
 🔴 SELL CLOSED — NAS100
 💵 Price:  19480.00000
 🔻 PnL:    -12.50 USD
+📉 Balance: 10934.57 USD
 🛑 Reason: SL hit
 ```
 
