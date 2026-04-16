@@ -123,24 +123,23 @@ Three events trigger a message:
 Example messages:
 ```
 🚀 Bot started
-━━━━━━━━━━━━━━━━
 📊 NAS100  M5
 🎯 Confidence: 0.6
 📁 ustec_m5_16_feat_adx_stoch_vol.onnx
 
-🟢 BUY opened — NAS100
-━━━━━━━━━━━━━━━━
-💰 Price:      19500.00000
+🟢 BUY OPENED — NAS100
+💵 Price:      19500.00000
 🛡 SL:         19450.00000
 🎯 iTP:        19580.00000
 📈 Confidence: 0.724
 
-🔴 SELL closed — NAS100
-━━━━━━━━━━━━━━━━
-💰 Price: 19480.00000
-📊 PnL:   +0.00050 pts
+🔴 SELL CLOSED — NAS100
+💵 Price:  19480.00000
+🔻 PnL:    -12.50 USD
 🛑 Reason: SL hit
 ```
+
+PnL is computed as `pnl_pts / tick_size * tick_value * lot` using MT5 symbol info. The PnL emoji is `✅` for profit and `🔻` for loss.
 
 ## Critical Rules
 - Feature columns and indicator periods must match the training script exactly

@@ -108,6 +108,14 @@ def _log(symbol: str, event: str, **kwargs) -> None:
         w.writerow(row)
 
 
+def _pnl_usd(symbol: str, pnl_pts: float, lot: float) -> float:
+    import MetaTrader5 as mt5
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return 0.0
+    return pnl_pts / info.trade_tick_size * info.trade_tick_value * lot
+
+
 def load_session(model_path: str) -> rt.InferenceSession:
     sess    = rt.InferenceSession(model_path)
     outputs = {o.name: o for o in sess.get_outputs()}
@@ -182,14 +190,15 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
     # reset state
     global _state
     pnl_pts = round((price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
+    pnl_usd = _pnl_usd(pos.symbol, pnl_pts, lot)
     _log(pos.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
          price=price, sl=_state.sl_price, tp_target=_state.tp_target,
          pnl_pts=pnl_pts, reason=reason)
-    notify(f"{'🟢' if _state.is_buy else '🔴'} *{'BUY' if _state.is_buy else 'SELL'} closed* — {pos.symbol}\n"
-           f"━━━━━━━━━━━━━━━━\n"
-           f"💰 Price: {price:.5f}\n"
-           f"📊 PnL:   {pnl_pts:+.5f} pts\n"
-           f"📋 Reason: trailing exit")
+    direction = 'BUY' if _state.is_buy else 'SELL'
+    notify(f"{'🟢' if _state.is_buy else '🔴'} {direction} CLOSED — {pos.symbol}\n"
+           f"💵 Price:  {price:.5f}\n"
+           f"{'✅' if pnl_usd >= 0 else '🔻'} PnL:    {pnl_usd:+.2f} USD\n"
+           f"🛑 Reason: {reason}")
     _state = TradeState()
 
 
@@ -234,9 +243,8 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         )
         _log(symbol, 'OPEN', direction='BUY' if is_buy else 'SELL',
              price=price, sl=sl, tp_target=tp_target, atr=round(atr, 5), confidence=confidence)
-        notify(f"{'🟢' if is_buy else '🔴'} *{'BUY' if is_buy else 'SELL'} opened* — {symbol}\n"
-               f"━━━━━━━━━━━━━━━━\n"
-               f"💰 Price:      {price:.5f}\n"
+        notify(f"{'🟢' if is_buy else '🔴'} {'BUY' if is_buy else 'SELL'} OPENED — {symbol}\n"
+               f"💵 Price:      {price:.5f}\n"
                f"🛡 SL:         {sl:.5f}\n"
                f"🎯 iTP:        {tp_target:.5f}\n"
                f"📈 Confidence: {confidence:.3f}")
@@ -357,7 +365,6 @@ def run(args):
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
     print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
     notify(f"🚀 *Bot started*\n"
-           f"━━━━━━━━━━━━━━━━\n"
            f"📊 {args.symbol}  {args.timeframe}\n"
            f"🎯 Confidence: {args.confidence}\n"
            f"📁 {os.path.basename(args.model)}")
@@ -378,14 +385,15 @@ def run(args):
                     tick = mt5.symbol_info_tick(args.symbol)
                     close_price = tick.bid if _state.is_buy else tick.ask
                     pnl_pts = round((close_price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
-                    print(c(f"[{now}] {args.symbol} position closed by broker (SL hit), PnL={pnl_pts:+.5f}", Colors.RED))
+                    pnl_usd = _pnl_usd(args.symbol, pnl_pts, args.lot)
+                    print(c(f"[{now}] {args.symbol} position closed by broker (SL hit), PnL={pnl_usd:+.2f} USD", Colors.RED))
                     _log(args.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
                          price=close_price, sl=_state.sl_price, tp_target=_state.tp_target,
                          pnl_pts=pnl_pts, reason='sl_hit')
-                    notify(f"{'🟢' if _state.is_buy else '🔴'} *{'BUY' if _state.is_buy else 'SELL'} closed* — {args.symbol}\n"
-                           f"━━━━━━━━━━━━━━━━\n"
-                           f"💰 Price: {close_price:.5f}\n"
-                           f"📊 PnL:   {pnl_pts:+.5f} pts\n"
+                    direction = 'BUY' if _state.is_buy else 'SELL'
+                    notify(f"{'🟢' if _state.is_buy else '🔴'} {direction} CLOSED — {args.symbol}\n"
+                           f"💵 Price:  {close_price:.5f}\n"
+                           f"{'✅' if pnl_usd >= 0 else '🔻'} PnL:    {pnl_usd:+.2f} USD\n"
                            f"🛑 Reason: SL hit")
                     _state.__init__()
                 print(c(f"[{now}] {args.symbol} FLAT — running inference...", Colors.CYAN))
