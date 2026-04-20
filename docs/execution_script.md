@@ -39,19 +39,21 @@ Only one position at a time. No new trade is opened while one is active.
 
 ## CLI Contract
 ```
---model       path to ONNX file
---symbol      MT5 symbol (e.g. NAS100)
---timeframe   M1 M5 M15 M30 H1 H4 D1
---window      window size — must match training (default: 20)
---confidence  minimum probability to open a trade (default: 0.60)
---lot         order lot size (default: 1.0)
---interval    seconds between cycles (default: 60)
---atr_period  ATR period for SL/TP calculation (default: 14)
---sl_mult     SL distance = ATR × sl_mult (default: 1.5)
---tp_mult     imaginary TP distance = ATR × tp_mult (default: 2.0)
---deviation   max slippage in points for order requests (default: 20)
---magic       magic number for MT5 orders (default: 0)
---ema_period  EMA period for trend filter (default: 18)
+--model           path to ONNX file
+--symbol          MT5 symbol (e.g. NAS100)
+--timeframe       M1 M5 M15 M30 H1 H4 D1
+--window          window size — must match training (default: 20)
+--confidence      minimum probability to open a trade (default: 0.60)
+--lot             order lot size — used when --max_risk is not set (default: 1.0)
+--interval        seconds between cycles (default: 60)
+--atr_period      ATR period for SL/TP calculation (default: 14)
+--sl_mult         SL distance = ATR × sl_mult (default: 1.5)
+--tp_mult         imaginary TP distance = ATR × tp_mult (default: 2.0)
+--deviation       max slippage in points for order requests (default: 20)
+--magic           magic number for MT5 orders (default: 0)
+--ema_period      EMA period for trend filter (default: 18)
+--max_risk        fraction of free margin to risk per trade (e.g. 0.01 = 1%). Overrides --lot when > 0 (default: 0.0)
+--decrease_factor consecutive-loss lot reduction factor — 0 = disabled (default: 0.0)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
@@ -143,7 +145,23 @@ Example messages:
 
 PnL is computed as `pnl_pts / tick_size * tick_value * lot` using MT5 symbol info. The PnL emoji is `✅` for profit and `🔻` for loss.
 
-## Critical Rules
+## Dynamic Lot Sizing
+When `--max_risk > 0`, lot size is computed dynamically instead of using `--lot`:
+
+```
+lot = free_margin × max_risk / margin_per_lot
+```
+
+If `--decrease_factor > 0`, consecutive losing trades on the same symbol+magic reduce the lot:
+```
+losses = count of consecutive losing deals (same symbol+magic, walking back until a profit)
+if losses > 1:
+    lot = lot - lot × losses / decrease_factor
+```
+Lot is always clamped to `[volume_min, volume_max]` and snapped to `volume_step`.
+Set `--decrease_factor 0` (default) to disable the reduction.
+
+
 - Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time
 - MT5 must be running and logged in before starting the script

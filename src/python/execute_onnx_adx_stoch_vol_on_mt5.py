@@ -121,6 +121,36 @@ def _pnl_usd(symbol: str, pnl_pts: float, lot: float) -> float:
     return pnl_pts / info.trade_tick_size * info.trade_tick_value * lot
 
 
+def calc_lot(symbol: str, magic: int, max_risk: float, decrease_factor: float, fallback_lot: float) -> float:
+    """Dynamic lot sizing: risk-based + consecutive-loss reduction."""
+    import MetaTrader5 as mt5
+    tick   = mt5.symbol_info_tick(symbol)
+    margin = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, symbol, 1.0, tick.ask)
+    if not margin:
+        return fallback_lot
+    account = mt5.account_info()
+    lot     = round(account.margin_free * max_risk / margin, 2)
+
+    if decrease_factor > 0:
+        deals = mt5.history_deals_get(0, int(time.time()) + 1)
+        losses = 0
+        if deals:
+            for deal in reversed(deals):
+                if deal.symbol != symbol or deal.magic != magic:
+                    continue
+                if deal.profit > 0:
+                    break
+                if deal.profit < 0:
+                    losses += 1
+        if losses > 1:
+            lot = round(lot - lot * losses / decrease_factor, 1)
+
+    info = mt5.symbol_info(symbol)
+    step = info.volume_step
+    lot  = step * round(lot / step)
+    return max(info.volume_min, min(info.volume_max, lot))
+
+
 def load_session(model_path: str) -> rt.InferenceSession:
     sess    = rt.InferenceSession(model_path)
     outputs = {o.name: o for o in sess.get_outputs()}
@@ -211,9 +241,12 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
 
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                   atr_period: int, sl_mult: float, tp_mult: float,
-                  deviation: int, magic: int, confidence: float = 0.0) -> None:
+                  deviation: int, magic: int, confidence: float = 0.0,
+                  max_risk: float = 0.0, decrease_factor: float = 0.0) -> None:
     import MetaTrader5 as mt5
     global _state
+    if max_risk > 0:
+        lot = calc_lot(symbol, magic, max_risk, decrease_factor, lot)
     tick  = mt5.symbol_info_tick(symbol)
     price = tick.ask if is_buy else tick.bid
     atr   = current_atr(symbol, tf, atr_period)
@@ -430,7 +463,8 @@ def run(args):
                                       atr_period=args.atr_period,
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
-                                      confidence=p_buy)
+                                      confidence=p_buy,
+                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
                         print(c(f'  → EMA filter: close={last_close:.5f} < EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
                 elif p_sell >= args.confidence:
@@ -440,7 +474,8 @@ def run(args):
                                       atr_period=args.atr_period,
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
-                                      confidence=p_sell)
+                                      confidence=p_sell,
+                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
                         print(c(f'  → EMA filter: close={last_close:.5f} > EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
                 else:
@@ -461,11 +496,13 @@ def main():
     parser.add_argument('--timeframe',  required=True,  help='M1 M5 M15 M30 H1 H4 D1')
     parser.add_argument('--window',     type=int,   default=20,   help='Window size (must match training)')
     parser.add_argument('--confidence', type=float, default=0.60, help='Min probability to open a trade')
-    parser.add_argument('--lot',        type=float, default=1.0,  help='Order lot size')
+    parser.add_argument('--lot',        type=float, default=1.0,  help='Order lot size (used when --max_risk is not set)')
     parser.add_argument('--interval',   type=int,   default=60,   help='Seconds between cycles')
     parser.add_argument('--atr_period', type=int,   default=14,   help='ATR period for SL/TP calculation')
     parser.add_argument('--sl_mult',    type=float, default=1.5,  help='SL = ATR * sl_mult')
     parser.add_argument('--tp_mult',    type=float, default=2.0,  help='Imaginary TP = ATR * tp_mult')
+    parser.add_argument('--max_risk',       type=float, default=0.0, help='Fraction of free margin to risk per trade (e.g. 0.01). Overrides --lot when > 0')
+    parser.add_argument('--decrease_factor', type=float, default=0.0, help='Consecutive-loss lot reduction factor (0 = disabled)')
     parser.add_argument('--adx_period', type=int,   default=8,    help='ADX indicator period')
     parser.add_argument('--adx_min',    type=float, default=20.0, help='ADX minimum threshold')
     parser.add_argument('--stoch_k',    type=int,   default=14,   help='Stochastic K period')
