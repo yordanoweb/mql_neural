@@ -100,6 +100,8 @@ onnx/**
 !onnx/ndx100_m15_16_feat_adx_stoch_vol.onnx
 !onnx/sp500_m15_16_feat_adx_stoch_vol.onnx
 !onnx/us30_m15_16_feat_adx_stoch_vol.onnx
+!onnx/us500_m15_16_feat_adx_stoch_vol.onnx
+!onnx/ustec_m15_16_feat_adx_stoch_vol.onnx
 
 data/
 csv/**
