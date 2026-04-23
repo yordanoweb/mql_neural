@@ -31,12 +31,13 @@ Only one position at a time. No new trade is opened while one is active.
 ## Exit Logic
 1. **Hard SL** — set on MT5 at open, broker handles it
 2. **Imaginary TP** — tracked internally in Python: `entry_price ± ATR × tp_mult`
-3. **Profit lock** — on every new candle at the trading timeframe, SL is ratcheted to the previous candle's low (BUY) or high (SELL), subject to three conditions all being true: (a) current price is in profit (above entry for BUY, below entry for SELL), (b) the new SL level itself is past entry (locks at least breakeven), and (c) the new level is better than the current SL (never widens it)
-4. Once imaginary TP is reached, **trailing mode** activates:
+3. **Breakeven** — when profit reaches 0.5× ATR, SL is moved to entry price (zero-risk position)
+4. **Profit lock** — on every new candle at the **profit lock timeframe** (one step below trading timeframe: M5→M1, M15→M5, M30→M15, H1→M30, H4→H1, D1→H4), SL is ratcheted to the previous candle's low (BUY) or high (SELL), subject to three conditions all being true: (a) current price is in profit (above entry for BUY, below entry for SELL), (b) the new SL level itself is past entry (locks at least breakeven), and (c) the new level is better than the current SL (never widens it)
+5. Once imaginary TP is reached, **trailing mode** activates:
    - The trailing candle timeframe is one step below the trading timeframe (M5→M1, M15→M5, M30→M15, H1→M30, H4→H1, D1→H4). Falls back to M1 if no mapping exists.
    - BUY trade → close on first opposite candle where `close < open` (bearish) on the trailing timeframe
    - SELL trade → close on first opposite candle where `close > open` (bullish) on the trailing timeframe
-5. Trailing candle check always uses the last *closed* candle (index -2) on the trailing timeframe
+6. Trailing candle check always uses the last *closed* candle (index -2) on the trailing timeframe
 
 ## CLI Contract
 ```

@@ -41,10 +41,11 @@ TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
 }
 
-# Trailing exit timeframe: one step below the trading timeframe
-TRAILING_TF = {
-    'M5': 'M1', 'M15': 'M5', 'M30': 'M15', 'H1': 'M30', 'H4': 'H1', 'D1': 'H4',
-}
+# Reverse mapping from MT5 timeframe integer to string key
+TIMEFRAME_REVERSE_MAP = {v: k for k, v in TIMEFRAME_MAP.items()}
+
+# Profit lock timeframe: one step below the trading timeframe (same as trailing)
+PROFIT_LOCK_TF = TRAILING_TF
 
 FEATURE_COLS = [
     'feat_body', 'feat_range',
@@ -174,12 +175,9 @@ def fetch_candles(symbol: str, tf, n: int) -> pd.DataFrame:
     return df
 
 
-def current_atr(symbol: str, tf: int, atr_period: int) -> float:
-    """Return the latest ATR value on the trading timeframe."""
-    df = fetch_candles(symbol, tf, atr_period + 50)
-    return ta.volatility.AverageTrueRange(
-        df['high'], df['low'], df['close'], window=atr_period
-    ).average_true_range().iloc[-1]
+def compute_atr(symbol: str, tf: int, atr_period: int) -> float:
+    """Return the latest ATR value (alias for current_atr)."""
+    return current_atr(symbol, tf, atr_period)
 
 
 def last_trailing_candle(symbol: str, trailing_tf: int) -> pd.Series:
@@ -320,12 +318,12 @@ def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
     )
 
 
-def move_sl_to_previous_candle(pos, tf: int) -> None:
+def move_sl_to_previous_candle(pos, tf: int, profit_lock_tf: int) -> None:
     """Move SL to previous candle's low (BUY) or high (SELL) on each new candle."""
     import MetaTrader5 as mt5
     global _state
 
-    candles = fetch_candles(pos.symbol, tf, 3)
+    candles = fetch_candles(pos.symbol, profit_lock_tf, 3)
     last_closed = candles.iloc[-2]   # index -1 is the forming candle
     candle_time = last_closed['time']
 
@@ -362,13 +360,13 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
     }
     result = mt5.order_send(req)
     if result.retcode == 10009:
-        print(c(f"  → SL moved to {new_sl:.5f} (prev candle {'low' if _state.is_buy else 'high'})", Colors.MAGENTA))
+        print(c(f"  → SL moved to {new_sl:.5f} (prev {profit_lock_tf} candle {'low' if _state.is_buy else 'high'})", Colors.MAGENTA))
         _state.sl_price = new_sl
     else:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int) -> None:
+def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int, atr_period: int, sl_mult: float) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -376,8 +374,33 @@ def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int
     tick          = mt5.symbol_info_tick(pos.symbol)
     current_price = tick.bid if _state.is_buy else tick.ask
 
-    # profit lock: move SL to previous candle on each new candle
-    move_sl_to_previous_candle(pos, tf)
+    # breakeven: move SL to entry when profit reaches 0.5× ATR
+    if not _state.trailing:
+        atr = compute_atr(pos.symbol, tf, atr_period)
+        profit_atr = abs(current_price - _state.entry_price) / atr if atr > 0 else 0
+        if profit_atr >= 0.5 and _state.sl_price != _state.entry_price:
+            # Check if SL is not already at or better than entry
+            if (_state.is_buy and _state.sl_price < _state.entry_price) or \
+               (not _state.is_buy and _state.sl_price > _state.entry_price):
+                req = {
+                    'action':   mt5.TRADE_ACTION_SLTP,
+                    'symbol':   pos.symbol,
+                    'position': pos.ticket,
+                    'sl':       _state.entry_price,
+                    'tp':       0.0,
+                }
+                result = mt5.order_send(req)
+                if result.retcode == 10009:
+                    print(c(f"  → SL moved to breakeven ({_state.entry_price:.5f}) at {profit_atr:.1f}×ATR profit", Colors.MAGENTA))
+                    _state.sl_price = _state.entry_price
+                else:
+                    print(c(f"  → breakeven move failed: retcode={result.retcode}", Colors.RED))
+
+    # profit lock: move SL to previous candle on each new candle (using profit lock TF)
+    tf_key = TIMEFRAME_REVERSE_MAP.get(tf, 'M1')
+    profit_lock_tf_key = PROFIT_LOCK_TF.get(tf_key, 'M1')
+    profit_lock_tf = TIMEFRAME_MAP.get(profit_lock_tf_key, tf)  # fallback to trading TF if no mapping
+    move_sl_to_previous_candle(pos, tf, profit_lock_tf)
 
     # activate trailing once imaginary TP is reached
     if not _state.trailing:
@@ -426,7 +449,7 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot, args.symbol)
-                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic)
+                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult)
             else:
                 # detect broker-closed position (SL hit)
                 if _state.ticket != 0:
