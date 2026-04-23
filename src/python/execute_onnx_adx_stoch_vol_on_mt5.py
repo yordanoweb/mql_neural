@@ -6,8 +6,8 @@ Exit logic:
   - Hard SL set at order open: ATR(atr_period) * sl_mult
   - No TP sent to broker. An imaginary TP is tracked internally: ATR * tp_mult
   - Once imaginary TP is reached, trailing mode activates:
-      BUY  → close on first M1 bearish candle (close < open)
-      SELL → close on first M1 bullish candle (close > open)
+      BUY  → close on first opposite candle one timeframe below (e.g. M5→M1, M15→M5)
+      SELL → close on first opposite candle one timeframe below
   - Profit lock: on every new candle at the trading timeframe, SL is moved to
     the previous candle's low (BUY) or high (SELL), but only if that level is
     better (higher for BUY, lower for SELL) than the current SL.
@@ -39,6 +39,11 @@ from utils.telegram import notify
 
 TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
+}
+
+# Trailing exit timeframe: one step below the trading timeframe
+TRAILING_TF = {
+    'M5': 'M1', 'M15': 'M5', 'M30': 'M15', 'H1': 'M30', 'H4': 'H1', 'D1': 'H4',
 }
 
 FEATURE_COLS = [
@@ -177,9 +182,9 @@ def current_atr(symbol: str, tf: int, atr_period: int) -> float:
     ).average_true_range().iloc[-1]
 
 
-def last_m1_candle(symbol: str) -> pd.Series:
-    df = fetch_candles(symbol, TIMEFRAME_MAP['M1'], 2)
-    return df.iloc[-2]   # last *closed* M1 candle
+def last_trailing_candle(symbol: str, trailing_tf: int) -> pd.Series:
+    df = fetch_candles(symbol, trailing_tf, 2)
+    return df.iloc[-2]   # last *closed* candle on trailing timeframe
 
 
 def build_input(df: pd.DataFrame, window: int,
@@ -363,7 +368,7 @@ def move_sl_to_previous_candle(pos, tf: int) -> None:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int, deviation: int, magic: int) -> None:
+def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -383,7 +388,7 @@ def manage_open_trade(pos, lot: float, tf: int, deviation: int, magic: int) -> N
             _state.trailing = True
 
     if _state.trailing:
-        candle = last_m1_candle(pos.symbol)
+        candle = last_trailing_candle(pos.symbol, trailing_tf)
         bearish = candle['close'] < candle['open']
         bullish = candle['close'] > candle['open']
         if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
@@ -398,9 +403,12 @@ def run(args):
     sess     = load_session(args.model)
     inp_name = sess.get_inputs()[0].name
     tf       = TIMEFRAME_MAP[args.timeframe.upper()]
+    tf_key   = args.timeframe.upper()
+    trailing_tf_key = TRAILING_TF.get(tf_key, 'M1')
+    trailing_tf     = TIMEFRAME_MAP[trailing_tf_key]
     n_candles = args.window + args.atr_period + args.adx_period + args.stoch_k + args.vol_window + 10
 
-    print(f"Symbol={args.symbol}  TF={args.timeframe}  interval={args.interval}s")
+    print(f"Symbol={args.symbol}  TF={args.timeframe}  trailing_TF={trailing_tf_key}  interval={args.interval}s")
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
     print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
@@ -418,7 +426,7 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot, args.symbol)
-                manage_open_trade(pos, args.lot, tf, args.deviation, args.magic)
+                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic)
             else:
                 # detect broker-closed position (SL hit)
                 if _state.ticket != 0:
