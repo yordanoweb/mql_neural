@@ -107,7 +107,7 @@ Exit reason `sl_hit` is detected when the broker closes the position (position d
 Applied only at execution time — training is unchanged.
 
 - EMA is computed on the trading timeframe candles already fetched for inference
-- Filter uses the **last closed candle** (`iloc[-2]`) for both `close` and EMA — avoids flipping on the forming candle
+- Filter uses the **forming candle** (`iloc[-1]`) for both `close` and EMA — reflects the live price at decision time
 - Filter only activates when a signal fires (`p >= confidence`)
 - BUY signal: allowed only if `close > EMA(ema_period)` (strictly above the line)
 - SELL signal: allowed only if `close < EMA(ema_period)` (strictly below the line)
