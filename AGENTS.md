@@ -96,3 +96,4 @@ Exit logic: hard SL on broker + imaginary TP tracked in Python → trailing exit
 - Every exported ONNX **must** store `feature_names`, `window_size`, `n_features` in metadata — queryable via `query_onnx_model.py`
 - All `argparse.ArgumentParser` instances must use `formatter_class=argparse.ArgumentDefaultsHelpFormatter`
 - **After every implementation, feature addition, bug fix, or test: update `docs/execution_script.md` and/or `docs/training_pipeline.md` to reflect the current behaviour before committing**
+- **Never break working features** — see the Regression Contract in `docs/execution_script.md`. Any change that would alter a listed behaviour must be explicitly requested and the contract updated accordingly.

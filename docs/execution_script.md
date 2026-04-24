@@ -109,9 +109,9 @@ Applied only at execution time — training is unchanged.
 - EMA is computed on the trading timeframe candles already fetched for inference
 - Filter uses the **last closed candle** (`iloc[-2]`) for both `close` and EMA — avoids flipping on the forming candle
 - Filter only activates when a signal fires (`p >= confidence`)
-- BUY signal: allowed only if `close >= EMA(ema_period)`
-- SELL signal: allowed only if `close <= EMA(ema_period)`
-- When blocked: prints `→ EMA filter: close=X < EMA=Y — BUY blocked` (yellow)
+- BUY signal: allowed only if `close > EMA(ema_period)` (strictly above the line)
+- SELL signal: allowed only if `close < EMA(ema_period)` (strictly below the line)
+- When blocked: prints `→ EMA filter: close=X <= EMA=Y — BUY blocked` (yellow)
 - Inference always runs and stats always update regardless of filter outcome
 
 ## Telegram Notifications
@@ -171,3 +171,16 @@ Set `--decrease_factor 0` (default) to disable the reduction.
 
 ## Maintenance Rule
 After every implementation, feature addition, bug fix, or test: update this doc and `docs/training_pipeline.md` to reflect the current behaviour before committing.
+
+## Regression Contract (never break working features)
+Any change to the execution script must preserve the following behaviours. If a change would alter any of these, it must be explicitly requested and this contract must be updated accordingly.
+
+1. **EMA trend filter** — BUY only when `close > EMA`; SELL only when `close < EMA`. No entry at or on the wrong side of the line.
+2. **Hard SL** — always set on the broker at order open; never removed or widened.
+3. **Breakeven** — SL moves to entry price when profit reaches 0.5× ATR; never moves SL backwards.
+4. **Profit lock** — SL ratchets to previous candle low/high on the profit-lock timeframe; only tightens, never widens.
+5. **Imaginary TP + trailing exit** — trailing mode activates only after imaginary TP is hit; exit on first opposite candle on the trailing timeframe.
+6. **Single position** — never opens a new trade while one is already open.
+7. **ONNX metadata contract** — `feature_names`, `window_size`, `n_features` always present in exported models.
+8. **Trade logging** — every open and close event is appended to `trades.csv`.
+9. **Telegram notifications** — bot start, trade open, and trade close events always fire a notification.

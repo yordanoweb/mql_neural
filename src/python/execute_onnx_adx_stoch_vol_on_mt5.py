@@ -498,7 +498,7 @@ def run(args):
                 ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-2]
 
                 if p_buy >= args.confidence:
-                    if last_close >= ema_val:
+                    if last_close > ema_val:
                         print(c('  → BUY signal', Colors.GREEN))
                         open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
                                       atr_period=args.atr_period,
@@ -507,9 +507,9 @@ def run(args):
                                       confidence=p_buy,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
-                        print(c(f'  → EMA filter: close={last_close:.5f} < EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
+                        print(c(f'  → EMA filter: close={last_close:.5f} <= EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
                 elif p_sell >= args.confidence:
-                    if last_close <= ema_val:
+                    if last_close < ema_val:
                         print(c('  → SELL signal', Colors.RED))
                         open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
                                       atr_period=args.atr_period,
@@ -518,7 +518,7 @@ def run(args):
                                       confidence=p_sell,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
-                        print(c(f'  → EMA filter: close={last_close:.5f} > EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
+                        print(c(f'  → EMA filter: close={last_close:.5f} >= EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
                 else:
                     print(c('  → no signal', Colors.YELLOW))
 
