@@ -44,7 +44,10 @@ TIMEFRAME_MAP = {
 # Reverse mapping from MT5 timeframe integer to string key
 TIMEFRAME_REVERSE_MAP = {v: k for k, v in TIMEFRAME_MAP.items()}
 
-# Profit lock timeframe: one step below the trading timeframe (same as trailing)
+# One step below the trading timeframe
+TRAILING_TF = {'M5': 'M1', 'M15': 'M5', 'M30': 'M15', 'H1': 'M30', 'H4': 'H1', 'D1': 'H4'}
+
+# Profit lock timeframe: same mapping as trailing
 PROFIT_LOCK_TF = TRAILING_TF
 
 FEATURE_COLS = [
@@ -173,6 +176,13 @@ def fetch_candles(symbol: str, tf, n: int) -> pd.DataFrame:
     df = pd.DataFrame(rates)
     df['time'] = pd.to_datetime(df['time'], unit='s')
     return df
+
+
+def current_atr(symbol: str, tf: int, atr_period: int) -> float:
+    """Return the latest ATR value on the given timeframe."""
+    df = fetch_candles(symbol, tf, atr_period * 3)
+    atr = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=atr_period)
+    return float(atr.average_true_range().iloc[-1])
 
 
 def compute_atr(symbol: str, tf: int, atr_period: int) -> float:
