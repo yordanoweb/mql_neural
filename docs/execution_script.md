@@ -31,7 +31,7 @@ Only one position at a time. No new trade is opened while one is active.
 ## Exit Logic
 1. **Hard SL** — set on MT5 at open, broker handles it
 2. **Imaginary TP** — tracked internally in Python: `entry_price ± ATR × tp_mult`
-3. **Breakeven** — when profit reaches 0.5× ATR, SL is moved to entry price (zero-risk position)
+3. **Breakeven** — when directional profit (not absolute distance) reaches 0.5× ATR, SL is moved to entry price (zero-risk position)
 4. **Profit lock** — on every new candle at the **profit lock timeframe** (one step below trading timeframe: M5→M1, M15→M5, M30→M15, H1→M30, H4→H1, D1→H4), SL is ratcheted to the previous candle's low (BUY) or high (SELL), subject to three conditions all being true: (a) current price is in profit (above entry for BUY, below entry for SELL), (b) the new SL level itself is past entry (locks at least breakeven), and (c) the new level is better than the current SL (never widens it)
 5. Once imaginary TP is reached, **trailing mode** activates:
    - The trailing candle timeframe is one step below the trading timeframe (M5→M1, M15→M5, M30→M15, H1→M30, H4→H1, D1→H4). Falls back to M1 if no mapping exists.
@@ -177,7 +177,7 @@ Any change to the execution script must preserve the following behaviours. If a 
 
 1. **EMA trend filter** — BUY only when `close > EMA`; SELL only when `close < EMA`. No entry at or on the wrong side of the line.
 2. **Hard SL** — always set on the broker at order open; never removed or widened.
-3. **Breakeven** — SL moves to entry price when profit reaches 0.5× ATR; never moves SL backwards.
+3. **Breakeven** — SL moves to entry price when directional profit reaches 0.5× ATR; never moves SL backwards; never triggers on a losing position.
 4. **Profit lock** — SL ratchets to previous candle low/high on the profit-lock timeframe; only tightens, never widens.
 5. **Imaginary TP + trailing exit** — trailing mode activates only after imaginary TP is hit; exit on first opposite candle on the trailing timeframe.
 6. **Single position** — never opens a new trade while one is already open.

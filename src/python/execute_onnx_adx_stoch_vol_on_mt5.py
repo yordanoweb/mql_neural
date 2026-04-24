@@ -387,7 +387,8 @@ def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int
     # breakeven: move SL to entry when profit reaches 0.5× ATR
     if not _state.trailing:
         atr = compute_atr(pos.symbol, tf, atr_period)
-        profit_atr = abs(current_price - _state.entry_price) / atr if atr > 0 else 0
+        profit_pts = (current_price - _state.entry_price) if _state.is_buy else (_state.entry_price - current_price)
+        profit_atr = profit_pts / atr if atr > 0 else 0
         if profit_atr >= 0.5 and _state.sl_price != _state.entry_price:
             # Check if SL is not already at or better than entry
             if (_state.is_buy and _state.sl_price < _state.entry_price) or \
