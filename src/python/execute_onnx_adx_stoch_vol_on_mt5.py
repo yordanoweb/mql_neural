@@ -459,9 +459,18 @@ def run(args):
     print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
     if args.max_daily_loss > 0:
         print(f"Max_daily_loss={args.max_daily_loss} USD")
-    notify(f"🚀 *Bot started*\n"
-           f"📊 {args.symbol}  {args.timeframe}\n"
-           f"🎯 Confidence: {args.confidence}\n"
+    balance = mt5.account_info().balance
+    daily_loss_line = f"\n📉 Max daily loss: {args.max_daily_loss:.2f} USD" if args.max_daily_loss > 0 else ""
+    notify(f"🚀 Bot started\n"
+           f"📊 {args.symbol} ({args.timeframe})\n"
+           f"💰 Balance: {balance:.2f} USD\n"
+           f"🎯 Confidence: {args.confidence:.2f}\n"
+           f"🛡 SL: {args.sl_mult}×ATR\n"
+           f"🎯 TP: {args.tp_mult}×ATR"
+           f"{daily_loss_line}\n"
+           f"⏱ Interval: {args.interval}s\n"
+           f"📈 EMA: {args.ema_period}\n"
+           f"🔢 Magic: {args.magic}\n"
            f"📁 {os.path.basename(args.model)}")
 
     try:

@@ -122,15 +122,22 @@ Three events trigger a message:
 
 | Event | Trigger | Message content |
 |---|---|---|
-| Script start | `run()` entry | Symbol, timeframe, confidence, model filename |
+| Script start | `run()` entry | Symbol, timeframe, balance, confidence, SL/TP multipliers, max daily loss (if enabled), interval, EMA period, magic, model filename |
 | Trade open | `open_position()` — retcode 10009 | Direction, symbol, price, SL, iTP, confidence |
 | Trade close | `close_position()` (trailing exit) or SL-hit detection | Direction, symbol, price, PnL pts, reason |
 
 Example messages:
 ```
 🚀 Bot started
-📊 NAS100  M5
-🎯 Confidence: 0.6
+📊 NAS100 (M5)
+💰 Balance: 10934.57 USD
+🎯 Confidence: 0.60
+🛡 SL: 1.0×ATR
+🎯 TP: 1.0×ATR
+📉 Max daily loss: 5.00 USD
+⏱ Interval: 60s
+📈 EMA: 18
+🔢 Magic: 1745600123
 📁 ustec_m5_16_feat_adx_stoch_vol.onnx
 
 🟢 BUY OPENED — NAS100
