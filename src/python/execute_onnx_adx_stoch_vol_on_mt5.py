@@ -130,6 +130,17 @@ def _pnl_usd(symbol: str, pnl_pts: float, lot: float) -> float:
     return pnl_pts / info.trade_tick_size * info.trade_tick_value * lot
 
 
+def _daily_loss(symbol: str) -> float:
+    """Sum of today's realized losses (negative number) for *symbol* from MT5 deal history."""
+    import MetaTrader5 as mt5
+    from datetime import date
+    today_start = int(datetime.combine(date.today(), datetime.min.time()).timestamp())
+    deals = mt5.history_deals_get(today_start, int(time.time()) + 1)
+    if not deals:
+        return 0.0
+    return sum(d.profit for d in deals if d.symbol == symbol and d.profit < 0)
+
+
 def calc_lot(symbol: str, magic: int, max_risk: float, decrease_factor: float, fallback_lot: float) -> float:
     """Dynamic lot sizing: risk-based + consecutive-loss reduction."""
     import MetaTrader5 as mt5
@@ -446,6 +457,8 @@ def run(args):
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
     print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
+    if args.max_daily_loss > 0:
+        print(f"Max_daily_loss={args.max_daily_loss} USD")
     notify(f"🚀 *Bot started*\n"
            f"📊 {args.symbol}  {args.timeframe}\n"
            f"🎯 Confidence: {args.confidence}\n"
@@ -460,7 +473,16 @@ def run(args):
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot, args.symbol)
+                had_ticket = _state.ticket
                 manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult)
+                # daily loss check after trailing exit
+                if had_ticket and _state.ticket == 0 and args.max_daily_loss > 0:
+                    loss = _daily_loss(args.symbol)
+                    if abs(loss) >= args.max_daily_loss:
+                        msg = f"Daily loss limit reached: {loss:+.2f} USD (limit: -{args.max_daily_loss:.2f})"
+                        print(c(f"  🛑 {msg}", Colors.RED))
+                        notify(f"🛑 {msg} — {args.symbol}\nBot stopped.")
+                        break
             else:
                 # detect broker-closed position (SL hit)
                 if _state.ticket != 0:
@@ -480,6 +502,14 @@ def run(args):
                            f"{'📈' if pnl_usd >= 0 else '📉'} Balance: {balance:.2f} USD\n"
                            f"🛑 Reason: SL hit")
                     _state.__init__()
+                    # daily loss check after SL hit
+                    if args.max_daily_loss > 0:
+                        loss = _daily_loss(args.symbol)
+                        if abs(loss) >= args.max_daily_loss:
+                            msg = f"Daily loss limit reached: {loss:+.2f} USD (limit: -{args.max_daily_loss:.2f})"
+                            print(c(f"  🛑 {msg}", Colors.RED))
+                            notify(f"🛑 {msg} — {args.symbol}\nBot stopped.")
+                            break
                 print(c(f"[{now}] {args.symbol} FLAT — running inference...", Colors.CYAN))
                 df = fetch_candles(args.symbol, tf, n_candles)
                 X  = build_input(df, args.window, args.atr_period, args.adx_period,
@@ -498,7 +528,17 @@ def run(args):
                 last_close = df['close'].iloc[-1]   # forming candle (live price)
                 ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
 
-                if p_buy >= args.confidence:
+                # daily loss gate — block new entries if limit reached
+                daily_loss_hit = False
+                if args.max_daily_loss > 0:
+                    loss = _daily_loss(args.symbol)
+                    if abs(loss) >= args.max_daily_loss:
+                        daily_loss_hit = True
+                        print(c(f'  → Daily loss limit reached: {loss:+.2f} USD — no new trades', Colors.RED))
+
+                if daily_loss_hit:
+                    pass  # inference ran, stats updated, but no trade opened
+                elif p_buy >= args.confidence:
                     if last_close > ema_val:
                         print(c('  → BUY signal', Colors.GREEN))
                         open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
@@ -545,6 +585,7 @@ def main():
     parser.add_argument('--tp_mult',    type=float, default=1.0,  help='Imaginary TP = ATR * tp_mult')
     parser.add_argument('--max_risk',       type=float, default=0.0, help='Fraction of free margin to risk per trade (e.g. 0.01). Overrides --lot when > 0')
     parser.add_argument('--decrease_factor', type=float, default=0.0, help='Consecutive-loss lot reduction factor (0 = disabled)')
+    parser.add_argument('--max_daily_loss', type=float, default=5.0, help='Max daily loss in USD before stopping (0 = disabled)')
     parser.add_argument('--adx_period', type=int,   default=8,    help='ADX indicator period')
     parser.add_argument('--adx_min',    type=float, default=20.0, help='ADX minimum threshold')
     parser.add_argument('--stoch_k',    type=int,   default=5,    help='Stochastic K period')

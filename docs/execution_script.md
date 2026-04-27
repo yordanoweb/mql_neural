@@ -56,6 +56,7 @@ Only one position at a time. No new trade is opened while one is active.
 --ema_period      EMA period for trend filter (default: 18)
 --max_risk        fraction of free margin to risk per trade (e.g. 0.01 = 1%). Overrides --lot when > 0 (default: 0.0)
 --decrease_factor consecutive-loss lot reduction factor — 0 = disabled (default: 0.0)
+--max_daily_loss max daily loss in USD before stopping — 0 = disabled (default: 5.0)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
 
@@ -163,6 +164,14 @@ if losses > 1:
 Lot is always clamped to `[volume_min, volume_max]` and snapped to `volume_step`.
 Set `--decrease_factor 0` (default) to disable the reduction.
 
+## Daily Loss Limit
+When `--max_daily_loss > 0`, the script sums today's realized losses for the current symbol from MT5 deal history. The check runs:
+
+1. **After every trade close** (SL hit or trailing exit) — if `abs(daily_losses) >= max_daily_loss`, the bot stops and sends a Telegram notification.
+2. **Before opening a new trade** (FLAT cycle) — if the limit is already reached, the signal is blocked and inference continues without opening.
+
+Set `--max_daily_loss 0` to disable. Default: `5.0` USD.
+
 
 - Feature columns and indicator periods must match the training script exactly
 - `--window` must match the value used at training time
@@ -184,3 +193,4 @@ Any change to the execution script must preserve the following behaviours. If a 
 7. **ONNX metadata contract** — `feature_names`, `window_size`, `n_features` always present in exported models.
 8. **Trade logging** — every open and close event is appended to `trades.csv`.
 9. **Telegram notifications** — bot start, trade open, and trade close events always fire a notification.
+10. **Daily loss limit** — when enabled, bot stops after a trade close that breaches the limit and blocks new entries while the limit is reached.
