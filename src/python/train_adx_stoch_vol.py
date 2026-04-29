@@ -7,9 +7,10 @@ Label: ATR-based binary — 1 (buy) if max upside >= min_profit_atr AND upside >
 Hyperparameter search uses RandomizedSearchCV with TimeSeriesSplit (no data leakage).
 
 Usage:
-    python train_adx_stoch_vol.py --input csv/ndx100_rates_m5.csv \
-        --symbol ndx100 --timeframe M5 --model rf \
+    python train_adx_stoch_vol.py --symbol ndx100 --timeframe M5 --model rf \
         --window 20 --forward 10 --min_profit_atr 1.5
+
+Automatically uses training dataset: SYMBOL_TIMEFRAME_part1.csv
 """
 
 import argparse
@@ -100,7 +101,6 @@ def build_model(model_type: str, n_iter: int, jobs: int, X_train, y_train):
 
 def main():
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--input',          required=True,              help='CSV or Parquet input path')
     parser.add_argument('--symbol',         required=True,              help='Symbol name for output filename')
     parser.add_argument('--timeframe',      required=True,              help='Timeframe: M1 M5 M15 M30 H1 H4 D1')
     parser.add_argument('--model',          default='rf', choices=['mlp', 'rf', 'xgb'], help='Model type')
@@ -123,7 +123,11 @@ def main():
     print(c(f"Training {args.model.upper()} — ADX + Stoch + Volume (16 features)", Colors.CYAN))
     print(c("=" * 60, Colors.CYAN))
 
-    df = load(args.input)
+    # Automatically construct input filename from symbol and timeframe
+    input_file = f"csv/{args.symbol}_{args.timeframe}_part1.csv"
+    print(c(f"Using training dataset: {input_file}", Colors.YELLOW))
+    
+    df = load(input_file)
     df = add_price_features(df, args.atr_period)
     df = add_adx_features(df, args.adx_period, args.adx_min)
     df = add_stoch_features(df, args.stoch_k, args.stoch_d)

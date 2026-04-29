@@ -5,36 +5,41 @@ Timeframe and date range are supplied via command-line parameters.
 No processing, transformations, or calculations are applied—only raw rates are extracted.
 
 Usage:
-    python extract_rates_to_csv.py EURUSD M15 2024-01-01 2024-12-31 rates.csv
-    python extract_rates_to_csv.py GBPUSD H1 2024-06-01 2024-06-30 gbp_rates.csv
+    python extract_rates_to_csv.py SYMBOL TIMEFRAME DAYS_BACK
+    
+Example:
+    python extract_rates_to_csv.py EURUSD M15 300
 """
 
 import sys
 import MetaTrader5 as mt5
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 
 def parse_args():
     """Parse command-line arguments."""
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 4:
         print(__doc__)
         print("\nArguments:")
         print("  SYMBOL       - Trading pair (e.g., EURUSD, GBPUSD, USDJPY)")
         print("  TIMEFRAME    - Candle timeframe (M1, M5, M15, M30, H1, H4, D1, W1, MN1)")
-        print("  START_DATE   - Start date in YYYY-MM-DD format")
-        print("  END_DATE     - End date in YYYY-MM-DD format")
-        print("  OUTPUT_FILE  - Output CSV filename (optional, default: rates.csv)")
+        print("  DAYS_BACK    - Number of days to fetch backwards from current day")
         sys.exit(1)
 
     symbol = sys.argv[1].upper()
     timeframe_str = sys.argv[2].upper()
-    start_date_str = sys.argv[3]
-    end_date_str = sys.argv[4]
-    output_file = sys.argv[5] if len(sys.argv) > 5 else "rates.csv"
+    
+    try:
+        days_back = int(sys.argv[3])
+    except ValueError:
+        raise ValueError(f"Invalid DAYS_BACK: {sys.argv[3]}. Must be an integer.")
+    
+    if days_back <= 0:
+        raise ValueError(f"DAYS_BACK must be positive, got {days_back}")
 
-    return symbol, timeframe_str, start_date_str, end_date_str, output_file
+    return symbol, timeframe_str, days_back
 
 
 def get_timeframe(timeframe_str):
@@ -61,25 +66,20 @@ def get_timeframe(timeframe_str):
     return timeframe_map[timeframe_str]
 
 
-def parse_date(date_str):
-    """Parse date string in YYYY-MM-DD format to datetime object."""
-    try:
-        return datetime.strptime(date_str, "%Y-%m-%d")
-    except ValueError:
-        raise ValueError(f"Invalid date format: {date_str}. Use YYYY-MM-DD")
-
-
-def extract_rates(symbol, timeframe, start_date, end_date, output_file):
+def extract_rates(symbol, timeframe, timeframe_str, days_back):
     """
-    Extract rates from MetaTrader 5 and save to CSV.
+    Extract rates from MetaTrader 5 and save to split CSV files.
     
     Args:
         symbol: Trading pair symbol (e.g., 'EURUSD')
         timeframe: MT5 timeframe constant (e.g., mt5.TIMEFRAME_M15)
-        start_date: datetime object for start date
-        end_date: datetime object for end date
-        output_file: Path to output CSV file
+        timeframe_str: Timeframe string (e.g., 'M15')
+        days_back: Number of days to fetch backwards from current day
     """
+    
+    # Calculate date range
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days_back)
     
     # Initialize MetaTrader 5
     if not mt5.initialize():
@@ -87,7 +87,7 @@ def extract_rates(symbol, timeframe, start_date, end_date, output_file):
     
     try:
         print(f"Connecting to MetaTrader 5...")
-        print(f"Fetching {symbol} {timeframe} rates from {start_date.date()} to {end_date.date()}...")
+        print(f"Fetching {symbol} {timeframe_str} rates from {start_date.date()} to {end_date.date()} ({days_back} days)...")
         
         # Get rates from the specified date range
         rates = mt5.copy_rates_range(symbol, timeframe, start_date, end_date)
@@ -108,10 +108,25 @@ def extract_rates(symbol, timeframe, start_date, end_date, output_file):
         # Convert time from unix timestamp to datetime
         df['time'] = pd.to_datetime(df['time'], unit='s')
         
-        # Save to CSV
-        df.to_csv(output_file, index=False)
-        print(f"Rates saved to {output_file}")
-        print(f"File size: {os.path.getsize(output_file) / 1024:.2f} KB")
+        # Split data into two parts
+        split_index = len(df) // 2
+        df_part1 = df.iloc[:split_index]
+        df_part2 = df.iloc[split_index:]
+        
+        # Generate output filenames in csv/ directory
+        csv_dir = "csv"
+        os.makedirs(csv_dir, exist_ok=True)
+        base_filename = f"{symbol}_{timeframe_str}"
+        part1_file = os.path.join(csv_dir, f"{base_filename}_part1.csv")
+        part2_file = os.path.join(csv_dir, f"{base_filename}_part2.csv")
+        
+        # Save to CSV files
+        df_part1.to_csv(part1_file, index=False)
+        df_part2.to_csv(part2_file, index=False)
+        
+        print(f"Part 1 saved to {part1_file} ({len(df_part1)} candles)")
+        print(f"Part 2 saved to {part2_file} ({len(df_part2)} candles)")
+        print(f"Total file size: {(os.path.getsize(part1_file) + os.path.getsize(part2_file)) / 1024:.2f} KB")
         
     finally:
         # Always shutdown MT5 connection
@@ -121,18 +136,13 @@ def extract_rates(symbol, timeframe, start_date, end_date, output_file):
 def main():
     """Main entry point."""
     try:
-        symbol, timeframe_str, start_date_str, end_date_str, output_file = parse_args()
+        symbol, timeframe_str, days_back = parse_args()
         
         # Parse arguments
         timeframe = get_timeframe(timeframe_str)
-        start_date = parse_date(start_date_str)
-        end_date = parse_date(end_date_str)
-        
-        if start_date > end_date:
-            raise ValueError("Start date must be before end date.")
         
         # Extract rates
-        extract_rates(symbol, timeframe, start_date, end_date, output_file)
+        extract_rates(symbol, timeframe, timeframe_str, days_back)
         
         print("\n✓ Extraction completed successfully!")
         
