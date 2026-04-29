@@ -24,7 +24,7 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
     onnx_model = convert_sklearn(
         model, initial_types=initial_type,
         options={type(estimator): {'zipmap': False}},
-        target_opset=17,
+        target_opset=15,
     )
 
     for key, val in [
@@ -49,7 +49,7 @@ def export_xgb_to_onnx(model, feature_cols: list[str], window: int, output_path:
     initial_type = [('float_input', FloatTensorType([None, n_flat]))]
     
     # Convert XGBoost model to ONNX
-    onnx_model = convert_xgboost(model, initial_types=initial_type, target_opset=17)
+    onnx_model = convert_xgboost(model, initial_types=initial_type, target_opset=15)
     
     for key, val in [
         ('feature_names', ','.join(feature_cols)),
