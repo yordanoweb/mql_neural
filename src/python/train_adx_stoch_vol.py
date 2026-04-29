@@ -10,7 +10,8 @@ Usage:
     python train_adx_stoch_vol.py --symbol ndx100 --timeframe M5 --model rf \
         --window 20 --forward 10 --min_profit_atr 1.5
 
-Automatically uses training dataset: SYMBOL_TIMEFRAME_part1.csv
+Automatically uses training dataset: csv/SYMBOL_TIMEFRAME_part1.csv
+Use --csv to specify a different CSV file.
 """
 
 import argparse
@@ -115,6 +116,7 @@ def main():
     parser.add_argument('--vol_window',     type=int,   default=20,     help='Volume rolling window')
     parser.add_argument('--n_iter',         type=int,   default=10,     help='RandomizedSearchCV iterations (rf only)')
     parser.add_argument('--jobs',           type=int,   default=3,      help='Parallel jobs for RandomizedSearchCV (rf/xgb)')
+    parser.add_argument('--csv',           default=None,               help='Optional CSV file path (overrides auto-generated filename)')
     parser.add_argument('--output',         default=None,               help='ONNX output path (auto-generated if omitted)')
     args = parser.parse_args()
 
@@ -123,8 +125,11 @@ def main():
     print(c(f"Training {args.model.upper()} — ADX + Stoch + Volume (16 features)", Colors.CYAN))
     print(c("=" * 60, Colors.CYAN))
 
-    # Automatically construct input filename from symbol and timeframe
-    input_file = f"csv/{args.symbol}_{args.timeframe}_part1.csv"
+    # Determine input file: use --csv if provided, otherwise auto-generate
+    if args.csv:
+        input_file = args.csv
+    else:
+        input_file = f"csv/{args.symbol}_{args.timeframe}_part1.csv"
     print(c(f"Using training dataset: {input_file}", Colors.YELLOW))
     
     df = load(input_file)
