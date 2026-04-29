@@ -538,7 +538,14 @@ def main() -> None:
                 else:
                     # Log correlation state even when not aligned
                     _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP', symbols)
-                    print(f"{c(Colors.YELLOW, f'[{alignment}]')} Signals not aligned — waiting")
+                    
+                    # Detailed logging of non-aligned state
+                    details = []
+                    for sym in symbols:
+                        if sym in inferences:
+                            inf = inferences[sym]
+                            details.append(f"{sym}:{inf.signal_decision}(s={scores[sym]:.3f})")
+                    print(f"{c(Colors.YELLOW, f'[{alignment}]')} {' | '.join(details)}")
 
                 time.sleep(args.interval)
 
