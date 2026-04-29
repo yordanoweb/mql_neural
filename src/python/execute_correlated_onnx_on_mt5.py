@@ -44,12 +44,7 @@ _CORR_INF_FIELDS = [
     'atr_value', 'volume', 'close_price',
 ]
 
-_CORR_STATE_FIELDS = [
-    'timestamp', 'nas100_signal', 'nas100_score', 'nas100_p_buy', 'nas100_p_sell', 'nas100_atr',
-    'sp500_signal', 'sp500_score', 'sp500_p_buy', 'sp500_p_sell', 'sp500_atr',
-    'dow30_signal', 'dow30_score', 'dow30_p_buy', 'dow30_p_sell', 'dow30_atr',
-    'alignment', 'best_symbol', 'best_score', 'action',
-]
+
 
 # Reference ATR (index points) used to normalise the atr_norm factor.
 # Adjust if your instruments have very different typical ATR ranges.
@@ -145,19 +140,26 @@ def _log_correlation_state(
     best_symbol: Optional[str],
     best_score: float,
     action: str,
+    symbols: list,
 ) -> None:
     """Log full correlation state snapshot for analysis."""
     _ensure_dir(_CORR_STATE_LOG_FILE)
     exists = os.path.exists(_CORR_STATE_LOG_FILE)
     
-    row = {k: '' for k in _CORR_STATE_FIELDS}
+    # Build dynamic fields based on symbols
+    fields = ['timestamp', 'alignment', 'best_symbol', 'best_score', 'action']
+    for sym in symbols:
+        fields.extend([f'{sym.lower()}_signal', f'{sym.lower()}_score', 
+                      f'{sym.lower()}_p_buy', f'{sym.lower()}_p_sell', f'{sym.lower()}_atr'])
+    
+    row = {k: '' for k in fields}
     row['timestamp'] = datetime.now().isoformat()
     row['alignment'] = alignment
     row['best_symbol'] = best_symbol or ''
     row['best_score'] = round(best_score, 5) if best_symbol else ''
     row['action'] = action
     
-    for symbol in ['NAS100', 'SP500', 'DOW30']:
+    for symbol in symbols:
         if symbol in inferences:
             inf = inferences[symbol]
             row[f'{symbol.lower()}_signal'] = inf.signal_decision
@@ -167,7 +169,7 @@ def _log_correlation_state(
             row[f'{symbol.lower()}_atr'] = round(inf.atr_value, 2)
     
     with open(_CORR_STATE_LOG_FILE, 'a', newline='') as f:
-        w = csv.DictWriter(f, fieldnames=_CORR_STATE_FIELDS)
+        w = csv.DictWriter(f, fieldnames=fields)
         if not exists:
             w.writeheader()
         w.writerow(row)
@@ -517,7 +519,7 @@ def main() -> None:
                     )
                     
                     # Log full correlation state snapshot
-                    _log_correlation_state(inferences, scores, alignment, symbol, score, 'EXECUTE')
+                    _log_correlation_state(inferences, scores, alignment, symbol, score, 'EXECUTE', symbols)
 
                     if not get_open_position(symbol):
                         open_position(
@@ -535,7 +537,7 @@ def main() -> None:
                         print(f"{c(Colors.YELLOW, '[SKIP]')} {symbol} already has an open position")
                 else:
                     # Log correlation state even when not aligned
-                    _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP')
+                    _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP', symbols)
                     print(f"{c(Colors.YELLOW, f'[{alignment}]')} Signals not aligned — waiting")
 
                 time.sleep(args.interval)
