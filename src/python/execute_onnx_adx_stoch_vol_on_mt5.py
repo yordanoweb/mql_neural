@@ -72,6 +72,11 @@ class TradeState:
 
 _state = TradeState()
 
+# Global state for inference tracking
+_last_signal = None  # 'BUY', 'SELL', or None
+_consecutive_signal_count = 0
+_last_trade_time = None  # datetime of last trade open/close
+
 
 @dataclass
 class InferenceStats:
@@ -119,6 +124,56 @@ def _log(symbol: str, event: str, **kwargs) -> None:
         row = {k: '' for k in _LOG_FIELDS}
         row.update({'timestamp': datetime.now().isoformat(), 'event': event, 'symbol': symbol})
         row.update(kwargs)
+        w.writerow(row)
+
+
+_INFERENCE_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'log', 'inference_log.csv')
+_INFERENCE_LOG_FIELDS = [
+    'timestamp', 'symbol', 'timeframe', 'p_buy', 'p_sell', 'p_hold',
+    'close_price', 'ema_value', 'ema_distance_pct', 'ema_filter_passed', 'ema_distance_filter_passed',
+    'confidence_threshold', 'signal_decision', 'signal_reason', 'signal_strength',
+    'atr_value', 'volume', 'account_balance', 'has_open_position',
+    'consecutive_signal_count', 'time_since_last_trade_sec'
+]
+
+def _log_inference(symbol: str, timeframe: str, p_buy: float, p_sell: float, p_hold: float,
+                   close_price: float, ema_value: float, ema_distance_pct: float,
+                   ema_filter_passed: bool, ema_distance_filter_passed: bool,
+                   confidence_threshold: float, signal_decision: str, signal_reason: str,
+                   atr_value: float, volume: float, account_balance: float,
+                   has_open_position: bool, consecutive_signal_count: int = 0,
+                   time_since_last_trade_sec: int = 0) -> None:
+    """Log inference statistics for later analysis."""
+    signal_strength = max(p_buy, p_sell, p_hold) - sorted([p_buy, p_sell, p_hold])[1]
+    
+    exists = os.path.exists(_INFERENCE_LOG_FILE)
+    with open(_INFERENCE_LOG_FILE, 'a', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=_INFERENCE_LOG_FIELDS)
+        if not exists:
+            w.writeheader()
+        row = {
+            'timestamp': datetime.now().isoformat(),
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'p_buy': p_buy,
+            'p_sell': p_sell,
+            'p_hold': p_hold,
+            'close_price': close_price,
+            'ema_value': ema_value,
+            'ema_distance_pct': ema_distance_pct,
+            'ema_filter_passed': ema_filter_passed,
+            'ema_distance_filter_passed': ema_distance_filter_passed,
+            'confidence_threshold': confidence_threshold,
+            'signal_decision': signal_decision,
+            'signal_reason': signal_reason,
+            'signal_strength': signal_strength,
+            'atr_value': atr_value,
+            'volume': volume,
+            'account_balance': account_balance,
+            'has_open_position': has_open_position,
+            'consecutive_signal_count': consecutive_signal_count,
+            'time_since_last_trade_sec': time_since_last_trade_sec
+        }
         w.writerow(row)
 
 
@@ -247,7 +302,7 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
     result = mt5.order_send(req)
     print(c(f"  → CLOSED ({reason}): retcode={result.retcode}", Colors.MAGENTA))
     # reset state
-    global _state
+    global _state, _last_trade_time
     pnl_pts = round((price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
     pnl_usd = _pnl_usd(pos.symbol, pnl_pts, lot)
     balance = mt5.account_info().balance
@@ -261,6 +316,8 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
            f"{'📈' if pnl_usd >= 0 else '📉'} Balance: {balance:.2f} USD\n"
            f"🛑 Reason: {reason}")
     _state = TradeState()
+    # Update last trade time
+    _last_trade_time = datetime.now()
 
 
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
@@ -511,6 +568,9 @@ def run(args):
                            f"{'📈' if pnl_usd >= 0 else '📉'} Balance: {balance:.2f} USD\n"
                            f"🛑 Reason: SL hit")
                     _state.__init__()
+                    # Update last trade time
+                    global _last_trade_time
+                    _last_trade_time = datetime.now()
                     # daily loss check after SL hit
                     if args.max_daily_loss > 0:
                         loss = _daily_loss(args.symbol)
@@ -537,6 +597,79 @@ def run(args):
                 last_close = df['close'].iloc[-1]   # forming candle (live price)
                 ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
                 ema_distance_pct = ((last_close - ema_val) / ema_val) * 100
+                
+                # Calculate ATR and volume for logging
+                atr_val = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
+                volume_val = df['volume'].iloc[-1]
+                account_balance = mt5.account_info().balance
+                has_open_position = _state.ticket != 0
+                
+                # Track consecutive signals
+                global _last_signal, _consecutive_signal_count
+                current_signal = None
+                signal_decision = 'HOLD'
+                signal_reason = 'no_signal'
+                ema_filter_passed = False
+                ema_distance_filter_passed = False
+                
+                # Determine signal and filter status
+                if p_buy >= args.confidence:
+                    current_signal = 'BUY'
+                    ema_filter_passed = last_close > ema_val
+                    ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
+                    if ema_filter_passed and ema_distance_filter_passed:
+                        signal_decision = 'BUY'
+                        signal_reason = 'signal_passed_filters'
+                    elif not ema_filter_passed:
+                        signal_reason = 'ema_filter_failed'
+                    else:
+                        signal_reason = 'ema_distance_filter_failed'
+                elif p_sell >= args.confidence:
+                    current_signal = 'SELL'
+                    ema_filter_passed = last_close < ema_val
+                    ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
+                    if ema_filter_passed and ema_distance_filter_passed:
+                        signal_decision = 'SELL'
+                        signal_reason = 'signal_passed_filters'
+                    elif not ema_filter_passed:
+                        signal_reason = 'ema_filter_failed'
+                    else:
+                        signal_reason = 'ema_distance_filter_failed'
+                
+                # Update consecutive signal count
+                if current_signal == _last_signal:
+                    _consecutive_signal_count += 1
+                else:
+                    _consecutive_signal_count = 1 if current_signal is not None else 0
+                    _last_signal = current_signal
+                
+                # Calculate time since last trade
+                time_since_last_trade_sec = 0
+                if _last_trade_time:
+                    time_since_last_trade_sec = int((datetime.now() - _last_trade_time).total_seconds())
+                
+                # Log inference statistics
+                _log_inference(
+                    symbol=args.symbol,
+                    timeframe=args.timeframe,
+                    p_buy=p_buy,
+                    p_sell=p_sell,
+                    p_hold=p_hold,
+                    close_price=last_close,
+                    ema_value=ema_val,
+                    ema_distance_pct=ema_distance_pct,
+                    ema_filter_passed=ema_filter_passed,
+                    ema_distance_filter_passed=ema_distance_filter_passed,
+                    confidence_threshold=args.confidence,
+                    signal_decision=signal_decision,
+                    signal_reason=signal_reason,
+                    atr_value=atr_val,
+                    volume=volume_val,
+                    account_balance=account_balance,
+                    has_open_position=has_open_position,
+                    consecutive_signal_count=_consecutive_signal_count,
+                    time_since_last_trade_sec=time_since_last_trade_sec
+                )
 
                 # daily loss gate — block new entries if limit reached
                 daily_loss_hit = False
@@ -557,6 +690,8 @@ def run(args):
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_buy,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
+                        # Update last trade time
+                        _last_trade_time = datetime.now()
                     else:
                         if last_close <= ema_val:
                             print(c(f'  → EMA filter: close={last_close:.5f} <= EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
@@ -571,6 +706,8 @@ def run(args):
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_sell,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
+                        # Update last trade time
+                        _last_trade_time = datetime.now()
                     else:
                         if last_close >= ema_val:
                             print(c(f'  → EMA filter: close={last_close:.5f} >= EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
