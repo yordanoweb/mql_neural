@@ -31,6 +31,7 @@ from utils.telegram import notify
 _INFERENCE_LOG_FILE = os.path.join('log', 'inference_log.csv')     # written by upstream inference process
 _LOG_FILE           = os.path.join('log', 'correlated_trading_log.csv')
 _CORR_INF_LOG_FILE  = os.path.join('log', 'correlated_inference_log.csv')
+_CORR_STATE_LOG_FILE = os.path.join('log', 'correlation_state_log.csv')
 
 _LOG_FIELDS = [
     'timestamp', 'event', 'selected_symbol', 'direction',
@@ -41,6 +42,13 @@ _CORR_INF_FIELDS = [
     'timestamp', 'symbol', 'p_buy', 'p_sell', 'p_hold',
     'signal_decision', 'score', 'alignment', 'consecutive_count',
     'atr_value', 'volume', 'close_price',
+]
+
+_CORR_STATE_FIELDS = [
+    'timestamp', 'nas100_signal', 'nas100_score', 'nas100_p_buy', 'nas100_p_sell', 'nas100_atr',
+    'sp500_signal', 'sp500_score', 'sp500_p_buy', 'sp500_p_sell', 'sp500_atr',
+    'dow30_signal', 'dow30_score', 'dow30_p_buy', 'dow30_p_sell', 'dow30_atr',
+    'alignment', 'best_symbol', 'best_score', 'action',
 ]
 
 # Reference ATR (index points) used to normalise the atr_norm factor.
@@ -128,6 +136,41 @@ def _log_inference(
                 'volume':           inf.volume,
                 'close_price':      inf.close_price,
             })
+
+
+def _log_correlation_state(
+    inferences: Dict[str, LatestInference],
+    scores: Dict[str, float],
+    alignment: str,
+    best_symbol: Optional[str],
+    best_score: float,
+    action: str,
+) -> None:
+    """Log full correlation state snapshot for analysis."""
+    _ensure_dir(_CORR_STATE_LOG_FILE)
+    exists = os.path.exists(_CORR_STATE_LOG_FILE)
+    
+    row = {k: '' for k in _CORR_STATE_FIELDS}
+    row['timestamp'] = datetime.now().isoformat()
+    row['alignment'] = alignment
+    row['best_symbol'] = best_symbol or ''
+    row['best_score'] = round(best_score, 5) if best_symbol else ''
+    row['action'] = action
+    
+    for symbol in ['NAS100', 'SP500', 'DOW30']:
+        if symbol in inferences:
+            inf = inferences[symbol]
+            row[f'{symbol.lower()}_signal'] = inf.signal_decision
+            row[f'{symbol.lower()}_score'] = round(scores.get(symbol, 0.0), 5)
+            row[f'{symbol.lower()}_p_buy'] = round(inf.p_buy, 5)
+            row[f'{symbol.lower()}_p_sell'] = round(inf.p_sell, 5)
+            row[f'{symbol.lower()}_atr'] = round(inf.atr_value, 2)
+    
+    with open(_CORR_STATE_LOG_FILE, 'a', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=_CORR_STATE_FIELDS)
+        if not exists:
+            w.writeheader()
+        w.writerow(row)
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +515,9 @@ def main() -> None:
                         f"{c(Colors.GREEN, f'[{alignment}]')} {symbol}: {inf.signal_decision} "
                         f"score={score:.4f}  consec={states[symbol].consecutive_count}"
                     )
+                    
+                    # Log full correlation state snapshot
+                    _log_correlation_state(inferences, scores, alignment, symbol, score, 'EXECUTE')
 
                     if not get_open_position(symbol):
                         open_position(
@@ -488,6 +534,8 @@ def main() -> None:
                     else:
                         print(f"{c(Colors.YELLOW, '[SKIP]')} {symbol} already has an open position")
                 else:
+                    # Log correlation state even when not aligned
+                    _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP')
                     print(f"{c(Colors.YELLOW, f'[{alignment}]')} Signals not aligned — waiting")
 
                 time.sleep(args.interval)
