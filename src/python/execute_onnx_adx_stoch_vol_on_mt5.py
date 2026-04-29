@@ -117,6 +117,10 @@ _LOG_FIELDS = ['timestamp', 'event', 'symbol', 'direction', 'price',
 
 def _log(symbol: str, event: str, **kwargs) -> None:
     exists = os.path.exists(_LOG_FILE)
+    # Ensure log directory exists
+    log_dir = os.path.dirname(_LOG_FILE)
+    os.makedirs(log_dir, exist_ok=True)
+    
     with open(_LOG_FILE, 'a', newline='') as f:
         w = csv.DictWriter(f, fieldnames=_LOG_FIELDS)
         if not exists:
@@ -145,6 +149,10 @@ def _log_inference(symbol: str, timeframe: str, p_buy: float, p_sell: float, p_h
                    time_since_last_trade_sec: int = 0) -> None:
     """Log inference statistics for later analysis."""
     signal_strength = max(p_buy, p_sell, p_hold) - sorted([p_buy, p_sell, p_hold])[1]
+    
+    # Ensure log directory exists
+    log_dir = os.path.dirname(_INFERENCE_LOG_FILE)
+    os.makedirs(log_dir, exist_ok=True)
     
     exists = os.path.exists(_INFERENCE_LOG_FILE)
     with open(_INFERENCE_LOG_FILE, 'a', newline='') as f:
