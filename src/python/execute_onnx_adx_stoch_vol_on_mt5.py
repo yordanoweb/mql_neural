@@ -291,11 +291,16 @@ def get_open_position(symbol: str):
     return positions[0] if positions else None
 
 
-def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> None:
+def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry_run: bool = False) -> None:
     import MetaTrader5 as mt5
     direction = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
     tick      = mt5.symbol_info_tick(pos.symbol)
     price     = tick.bid if direction == mt5.ORDER_TYPE_SELL else tick.ask
+    
+    if dry_run:
+        print(c(f"  → WOULD_CLOSE ({reason}): {pos.symbol} at {price:.5f}", Colors.MAGENTA))
+        return
+    
     req = {
         'action':       mt5.TRADE_ACTION_DEAL,
         'symbol':       pos.symbol,
@@ -333,7 +338,7 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int) -> 
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                   atr_period: int, sl_mult: float, tp_mult: float,
                   deviation: int, magic: int, confidence: float = 0.0,
-                  max_risk: float = 0.0, decrease_factor: float = 0.0) -> None:
+                  max_risk: float = 0.0, decrease_factor: float = 0.0, dry_run: bool = False) -> None:
     import MetaTrader5 as mt5
     global _state
     if max_risk > 0:
@@ -343,6 +348,13 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
     atr   = current_atr(symbol, tf, atr_period)
     sl    = price - atr * sl_mult if is_buy else price + atr * sl_mult
     tp_target = price + atr * tp_mult if is_buy else price - atr * tp_mult
+
+    label  = 'BUY' if is_buy else 'SELL'
+    color  = Colors.GREEN if is_buy else Colors.RED
+    
+    if dry_run:
+        print(c(f"  → WOULD_{label}: price={price:.5f}  SL={sl:.5f}  iTP={tp_target:.5f}", color))
+        return
 
     order_type = mt5.ORDER_TYPE_BUY if is_buy else mt5.ORDER_TYPE_SELL
     req = {
@@ -359,8 +371,6 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         'type_filling': mt5.ORDER_FILLING_IOC,
     }
     result = mt5.order_send(req)
-    label  = 'BUY' if is_buy else 'SELL'
-    color  = Colors.GREEN if is_buy else Colors.RED
     print(c(f"  → {label} opened: retcode={result.retcode}  SL={sl:.5f}  iTP={tp_target:.5f}", color))
 
     if result.retcode == 10009:   # TRADE_RETCODE_DONE
@@ -454,7 +464,7 @@ def move_sl_to_previous_candle(pos, tf: int, profit_lock_tf: int) -> None:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int, atr_period: int, sl_mult: float) -> None:
+def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int, atr_period: int, sl_mult: float, dry_run: bool = False) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -504,7 +514,7 @@ def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int
         bearish = candle['close'] < candle['open']
         bullish = candle['close'] > candle['open']
         if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
-            close_position(pos, lot, reason='trailing_exit', deviation=deviation, magic=magic)
+            close_position(pos, lot, reason='trailing_exit', deviation=deviation, magic=magic, dry_run=dry_run)
 
 
 def run(args):
@@ -550,7 +560,7 @@ def run(args):
                 current_price = tick.bid if _state.is_buy else tick.ask
                 print_state(pos, current_price, args.lot, args.symbol)
                 had_ticket = _state.ticket
-                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult)
+                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult, args.dry_run)
                 # daily loss check after trailing exit
                 if had_ticket and _state.ticket == 0 and args.max_daily_loss > 0:
                     loss = _daily_loss(args.symbol)
@@ -704,7 +714,8 @@ def run(args):
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_buy,
-                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor)
+                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor,
+                                      dry_run=args.dry_run)
                         # Update last trade time
                         _last_trade_time = datetime.now()
                     else:
@@ -720,7 +731,8 @@ def run(args):
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_sell,
-                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor)
+                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor,
+                                      dry_run=args.dry_run)
                         # Update last trade time
                         _last_trade_time = datetime.now()
                     else:
@@ -763,6 +775,7 @@ def main():
     parser.add_argument('--magic',      type=int,   default=int(time.time()),    help='Magic number for orders')
     parser.add_argument('--ema_period', type=int,   default=18,   help='EMA period for trend filter')
     parser.add_argument('--ema_distance', type=float, default=0.02, help='Max percentage distance from EMA to allow trades (e.g., 0.02 for 0.02%%)')
+    parser.add_argument('--dry_run',    action='store_true', help='Prevent trades, log WOULD_EXECUTE instead')
     args = parser.parse_args()
     run(args)
 
