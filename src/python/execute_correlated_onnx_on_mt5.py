@@ -384,7 +384,14 @@ def open_position(
             tp_target  = f'±{round(tp_offset, 5)}',
             reason     = 'DRY_RUN',
         )
-        notify(f"[DRY] {symbol} {direction}  lot={lot}  ATR={atr:.2f}  SL±{sl_offset:.2f}  TP±{tp_offset:.2f}")
+        # Enhanced dry-run notification with more details
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        notify(f"[DRY] {symbol} {direction}\n"
+               f"Time: {current_time}\n"
+               f"Lot: {lot}\n"
+               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n"
+               f"SL offset: ±{sl_offset:.2f}\n"
+               f"TP offset: ±{tp_offset:.2f}")
         return
 
     tick  = mt5.symbol_info_tick(symbol)
@@ -422,12 +429,23 @@ def open_position(
              sl        = round(sl, 5),
              tp_target = round(tp, 5),
              atr       = round(atr, 5))
-        notify(f"✓ {symbol} {direction} @ {price:.2f}  SL={sl:.2f}  TP={tp:.2f}")
+        # Enhanced real trade notification with more details
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        notify(f"✓ {symbol} {direction}\n"
+               f"Time: {current_time}\n"
+               f"Open: {price:.2f}\n"
+               f"Lot: {lot}\n"
+               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n"
+               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n"
+               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})")
     else:
         _log('OPEN_FAILED', symbol,
              direction = direction,
              reason    = str(result.comment))
-        notify(f"✗ {symbol} {direction} FAILED: {result.comment}")
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        notify(f"✗ {symbol} {direction} FAILED\n"
+               f"Time: {current_time}\n"
+               f"Error: {result.comment}")
 
 
 # ---------------------------------------------------------------------------
