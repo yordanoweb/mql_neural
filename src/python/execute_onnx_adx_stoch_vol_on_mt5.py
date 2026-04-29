@@ -600,7 +600,12 @@ def run(args):
                 
                 # Calculate ATR and volume for logging
                 atr_val = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
-                volume_val = df['volume'].iloc[-1]
+                # Handle volume column - MT5 may use 'tick_volume' or 'volume'
+                volume_val = 0.0
+                if 'tick_volume' in df.columns:
+                    volume_val = df['tick_volume'].iloc[-1]
+                elif 'volume' in df.columns:
+                    volume_val = df['volume'].iloc[-1]
                 account_balance = mt5.account_info().balance
                 has_open_position = _state.ticket != 0
                 
