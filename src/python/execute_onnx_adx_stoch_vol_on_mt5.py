@@ -111,7 +111,10 @@ class InferenceStats:
 
 _stats = InferenceStats()
 
-_LOG_FILE   = 'trades.csv'
+# Paths relative to project root
+_LOG_FILE   = os.path.join('log', 'trading_log.csv')
+_INFERENCE_LOG_FILE = os.path.join('log', 'inference_log.csv')
+
 _LOG_FIELDS = ['timestamp', 'event', 'symbol', 'direction', 'price',
                'sl', 'tp_target', 'atr', 'confidence', 'pnl_pts', 'reason']
 
@@ -131,7 +134,6 @@ def _log(symbol: str, event: str, **kwargs) -> None:
         w.writerow(row)
 
 
-_INFERENCE_LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'log', 'inference_log.csv')
 _INFERENCE_LOG_FIELDS = [
     'timestamp', 'symbol', 'timeframe', 'p_buy', 'p_sell', 'p_hold',
     'close_price', 'ema_value', 'ema_distance_pct', 'ema_filter_passed', 'ema_distance_filter_passed',
