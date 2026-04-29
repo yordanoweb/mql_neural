@@ -40,6 +40,28 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
     _verify(output_path)
 
 
+def export_xgb_to_onnx(model, feature_cols: list[str], window: int, output_path: str) -> None:
+    """Convert a fitted XGBoost model to ONNX and save with required metadata."""
+    from onnxmltools.convert import convert_xgboost
+    from onnxmltools.convert.common.data_types import FloatTensorType
+    
+    n_flat = window * len(feature_cols)
+    initial_type = [('float_input', FloatTensorType([None, n_flat]))]
+    
+    # Convert XGBoost model to ONNX
+    onnx_model = convert_xgboost(model, initial_types=initial_type, target_opset=17)
+    
+    for key, val in [
+        ('feature_names', ','.join(feature_cols)),
+        ('window_size',   str(window)),
+        ('n_features',    str(len(feature_cols))),
+    ]:
+        p = onnx_model.metadata_props.add()
+        p.key, p.value = key, val
+    
+    onnx.checker.check_model(onnx_model)
+    onnx.save(onnx_model, output_path)
+    _verify(output_path)
 def _verify(path: str) -> None:
     sess    = rt.InferenceSession(path)
     inp     = sess.get_inputs()[0]
