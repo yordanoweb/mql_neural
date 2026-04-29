@@ -456,7 +456,7 @@ def run(args):
     print(f"Symbol={args.symbol}  TF={args.timeframe}  trailing_TF={trailing_tf_key}  interval={args.interval}s")
     print(f"Model={args.model}  confidence={args.confidence}")
     print(f"SL={args.sl_mult}×ATR  imaginary_TP={args.tp_mult}×ATR  ATR_period={args.atr_period}")
-    print(f"EMA_filter={args.ema_period}  magic={args.magic}  deviation={args.deviation}")
+    print(f"EMA_filter={args.ema_period}  EMA_distance={args.ema_distance}%  magic={args.magic}  deviation={args.deviation}")
     if args.max_daily_loss > 0:
         print(f"Max_daily_loss={args.max_daily_loss} USD")
     balance = mt5.account_info().balance
@@ -466,12 +466,12 @@ def run(args):
            f"💰 Balance: {balance:.2f} USD\n"
            f"🎯 Confidence: {args.confidence:.2f}\n"
            f"🛡 SL: {args.sl_mult}×ATR\n"
-           f"🎯 TP: {args.tp_mult}×ATR"
-           f"{daily_loss_line}\n"
+           f"🎯 TP: {args.tp_mult}×ATR\n"
+           f"📈 EMA: {args.ema_period} ({args.ema_distance:.3f}% distance)\n"
            f"⏱ Interval: {args.interval}s\n"
-           f"📈 EMA: {args.ema_period}\n"
            f"🔢 Magic: {args.magic}\n"
-           f"📁 {os.path.basename(args.model)}")
+           f"📁 {os.path.basename(args.model)}"
+           f"{daily_loss_line}")
 
     try:
         while True:
@@ -536,6 +536,7 @@ def run(args):
 
                 last_close = df['close'].iloc[-1]   # forming candle (live price)
                 ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
+                ema_distance_pct = ((last_close - ema_val) / ema_val) * 100
 
                 # daily loss gate — block new entries if limit reached
                 daily_loss_hit = False
@@ -548,8 +549,8 @@ def run(args):
                 if daily_loss_hit:
                     pass  # inference ran, stats updated, but no trade opened
                 elif p_buy >= args.confidence:
-                    if last_close > ema_val:
-                        print(c('  → BUY signal', Colors.GREEN))
+                    if last_close > ema_val and abs(ema_distance_pct) <= args.ema_distance:
+                        print(c(f'  → BUY signal (EMA distance: {ema_distance_pct:.3f}%)', Colors.GREEN))
                         open_position(args.symbol, is_buy=True, lot=args.lot, tf=tf,
                                       atr_period=args.atr_period,
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
@@ -557,10 +558,13 @@ def run(args):
                                       confidence=p_buy,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
-                        print(c(f'  → EMA filter: close={last_close:.5f} <= EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
+                        if last_close <= ema_val:
+                            print(c(f'  → EMA filter: close={last_close:.5f} <= EMA={ema_val:.5f} — BUY blocked', Colors.YELLOW))
+                        else:
+                            print(c(f'  → EMA distance filter: {ema_distance_pct:.3f}% > {args.ema_distance:.3f}% — BUY blocked', Colors.YELLOW))
                 elif p_sell >= args.confidence:
-                    if last_close < ema_val:
-                        print(c('  → SELL signal', Colors.RED))
+                    if last_close < ema_val and abs(ema_distance_pct) <= args.ema_distance:
+                        print(c(f'  → SELL signal (EMA distance: {ema_distance_pct:.3f}%)', Colors.RED))
                         open_position(args.symbol, is_buy=False, lot=args.lot, tf=tf,
                                       atr_period=args.atr_period,
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
@@ -568,7 +572,10 @@ def run(args):
                                       confidence=p_sell,
                                       max_risk=args.max_risk, decrease_factor=args.decrease_factor)
                     else:
-                        print(c(f'  → EMA filter: close={last_close:.5f} >= EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
+                        if last_close >= ema_val:
+                            print(c(f'  → EMA filter: close={last_close:.5f} >= EMA={ema_val:.5f} — SELL blocked', Colors.YELLOW))
+                        else:
+                            print(c(f'  → EMA distance filter: {abs(ema_distance_pct):.3f}% > {args.ema_distance:.3f}% — SELL blocked', Colors.YELLOW))
                 else:
                     print(c('  → no signal', Colors.YELLOW))
 
@@ -603,6 +610,7 @@ def main():
     parser.add_argument('--deviation',  type=int,   default=20,   help='Max price deviation (slippage) in points')
     parser.add_argument('--magic',      type=int,   default=int(time.time()),    help='Magic number for orders')
     parser.add_argument('--ema_period', type=int,   default=18,   help='EMA period for trend filter')
+    parser.add_argument('--ema_distance', type=float, default=0.02, help='Max percentage distance from EMA to allow trades (e.g., 0.02 for 0.02%%)')
     args = parser.parse_args()
     run(args)
 
