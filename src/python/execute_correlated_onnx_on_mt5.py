@@ -399,13 +399,15 @@ def open_position(
         )
         # Enhanced dry-run notification with more details
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notify(f"[DRY] {symbol} {direction}\n"
-               f"Time: {current_time}\n"
-               f"Open: {price:.2f}\n"
-               f"Lot: {lot}\n"
-               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n"
-               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n"
-               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})")
+        notification_text = f"[DRY] {symbol} {direction}\n" \
+                           f"Time: {current_time}\n" \
+                           f"Open: {price:.2f}\n" \
+                           f"Lot: {lot}\n" \
+                           f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
+                           f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
+                           f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
+        print(f"{c(Colors.GREEN, notification_text)}")
+        notify(notification_text)
         return
 
     req = {
@@ -433,21 +435,25 @@ def open_position(
              atr       = round(atr, 5))
         # Enhanced real trade notification with more details
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notify(f"✓ {symbol} {direction}\n"
-               f"Time: {current_time}\n"
-               f"Open: {price:.2f}\n"
-               f"Lot: {lot}\n"
-               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n"
-               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n"
-               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})")
+        notification_text = f"✓ {symbol} {direction}\n" \
+                           f"Time: {current_time}\n" \
+                           f"Open: {price:.2f}\n" \
+                           f"Lot: {lot}\n" \
+                           f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
+                           f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
+                           f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
+        print(f"{c(Colors.GREEN, notification_text)}")
+        notify(notification_text)
     else:
         _log('OPEN_FAILED', symbol,
              direction = direction,
              reason    = str(result.comment))
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notify(f"✗ {symbol} {direction} FAILED\n"
-               f"Time: {current_time}\n"
-               f"Error: {result.comment}")
+        notification_text = f"✗ {symbol} {direction} FAILED\n" \
+                           f"Time: {current_time}\n" \
+                           f"Error: {result.comment}"
+        print(f"{c(Colors.RED, notification_text)}")
+        notify(notification_text)
 
 
 # ---------------------------------------------------------------------------
