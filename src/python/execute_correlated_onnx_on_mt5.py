@@ -370,6 +370,7 @@ def open_position(
     magic:     int,
     deviation: int,
     dry_run:   bool,
+    send_notification: bool = True,
 ) -> None:
     """Open a market position, or log/notify if dry_run is True."""
     sl_offset = atr * sl_mult
@@ -398,16 +399,17 @@ def open_position(
             reason     = 'DRY_RUN',
         )
         # Enhanced dry-run notification with more details
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notification_text = f"[DRY] {symbol} {direction}\n" \
-                           f"Time: {current_time}\n" \
-                           f"Open: {price:.2f}\n" \
-                           f"Lot: {lot}\n" \
-                           f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
-                           f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
-                           f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
-        print(f"{c(Colors.GREEN, notification_text)}")
-        notify(notification_text)
+        if send_notification:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            notification_text = f"[DRY] {symbol} {direction}\n" \
+                               f"Time: {current_time}\n" \
+                               f"Open: {price:.2f}\n" \
+                               f"Lot: {lot}\n" \
+                               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
+                               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
+                               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
+            print(f"{c(Colors.GREEN, notification_text)}")
+            notify(notification_text)
         return
 
     req = {
@@ -434,26 +436,28 @@ def open_position(
              tp_target = round(tp, 5),
              atr       = round(atr, 5))
         # Enhanced real trade notification with more details
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notification_text = f"✓ {symbol} {direction}\n" \
-                           f"Time: {current_time}\n" \
-                           f"Open: {price:.2f}\n" \
-                           f"Lot: {lot}\n" \
-                           f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
-                           f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
-                           f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
-        print(f"{c(Colors.GREEN, notification_text)}")
-        notify(notification_text)
+        if send_notification:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            notification_text = f"✓ {symbol} {direction}\n" \
+                               f"Time: {current_time}\n" \
+                               f"Open: {price:.2f}\n" \
+                               f"Lot: {lot}\n" \
+                               f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n" \
+                               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n" \
+                               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
+            print(f"{c(Colors.GREEN, notification_text)}")
+            notify(notification_text)
     else:
         _log('OPEN_FAILED', symbol,
              direction = direction,
              reason    = str(result.comment))
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        notification_text = f"✗ {symbol} {direction} FAILED\n" \
-                           f"Time: {current_time}\n" \
-                           f"Error: {result.comment}"
-        print(f"{c(Colors.RED, notification_text)}")
-        notify(notification_text)
+        if send_notification:
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            notification_text = f"✗ {symbol} {direction} FAILED\n" \
+                               f"Time: {current_time}\n" \
+                               f"Error: {result.comment}"
+            print(f"{c(Colors.RED, notification_text)}")
+            notify(notification_text)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +505,9 @@ def main() -> None:
 
     # Initialise per-symbol state
     states: Dict[str, SymbolState] = {sym: SymbolState() for sym in symbols}
+    
+    # Track last notified signal to avoid duplicates
+    last_notified_signal: Optional[Tuple[str, str]] = None  # (symbol, direction)
 
     print(f"{c(Colors.CYAN, '=== Correlated Executor Started ===')}  dry_run={args.dry_run}")
     print(f"Symbols  : {', '.join(symbols)}")
@@ -539,29 +546,60 @@ def main() -> None:
                 if best:
                     symbol, score, alignment = best
                     inf = inferences[symbol]
+                    
+                    # Check if we've already notified about this signal
+                    current_signal = (symbol, inf.signal_decision)
+                    already_notified = current_signal == last_notified_signal
+                    
                     print(
                         f"{c(Colors.GREEN, f'[{alignment}]')} {symbol}: {inf.signal_decision} "
                         f"score={score:.4f}  consec={states[symbol].consecutive_count}"
+                        + (" (already notified)" if already_notified else "")
                     )
                     
                     # Log full correlation state snapshot
                     _log_correlation_state(inferences, scores, alignment, symbol, score, 'EXECUTE', symbols)
 
                     if not get_open_position(symbol):
-                        open_position(
-                            symbol    = symbol,
-                            direction = inf.signal_decision,
-                            lot       = args.lot,
-                            sl_mult   = args.sl_mult,
-                            tp_mult   = args.tp_mult,
-                            atr       = inf.atr_value,
-                            magic     = args.magic,
-                            deviation = args.deviation,
-                            dry_run   = args.dry_run,
-                        )
+                        # Only send notification if we haven't already notified about this exact signal
+                        if not already_notified:
+                            open_position(
+                                symbol    = symbol,
+                                direction = inf.signal_decision,
+                                lot       = args.lot,
+                                sl_mult   = args.sl_mult,
+                                tp_mult   = args.tp_mult,
+                                atr       = inf.atr_value,
+                                magic     = args.magic,
+                                deviation = args.deviation,
+                                dry_run   = args.dry_run,
+                                send_notification = True,
+                            )
+                        else:
+                            # Still try to open position (in case previous attempt failed or position was closed)
+                            # but without sending duplicate notification
+                            open_position(
+                                symbol    = symbol,
+                                direction = inf.signal_decision,
+                                lot       = args.lot,
+                                sl_mult   = args.sl_mult,
+                                tp_mult   = args.tp_mult,
+                                atr       = inf.atr_value,
+                                magic     = args.magic,
+                                deviation = args.deviation,
+                                dry_run   = args.dry_run,
+                                send_notification = False,
+                            )
+                            print(f"{c(Colors.YELLOW, '[SKIP]')} {symbol} already notified, skipping duplicate notification")
                     else:
                         print(f"{c(Colors.YELLOW, '[SKIP]')} {symbol} already has an open position")
+                    
+                    # Update last notified signal
+                    last_notified_signal = current_signal
                 else:
+                    # Reset last notified signal when signals are not aligned
+                    last_notified_signal = None
+                    
                     # Log correlation state even when not aligned
                     _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP', symbols)
                     
