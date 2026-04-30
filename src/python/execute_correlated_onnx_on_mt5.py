@@ -375,6 +375,19 @@ def open_position(
     sl_offset = atr * sl_mult
     tp_offset = atr * tp_mult
 
+    # Get current price for both dry-run and real execution
+    tick = mt5.symbol_info_tick(symbol)
+    price = tick.ask if direction == 'BUY' else tick.bid
+
+    if direction == 'BUY':
+        sl = price - sl_offset
+        tp = price + tp_offset
+        order_type = mt5.ORDER_TYPE_BUY
+    else:
+        sl = price + sl_offset
+        tp = price - tp_offset
+        order_type = mt5.ORDER_TYPE_SELL
+
     if dry_run:
         _log(
             'WOULD_EXECUTE', symbol,
@@ -388,23 +401,12 @@ def open_position(
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         notify(f"[DRY] {symbol} {direction}\n"
                f"Time: {current_time}\n"
+               f"Open: {price:.2f}\n"
                f"Lot: {lot}\n"
                f"ATR: {atr:.2f} (SL×{sl_mult:.1f}, TP×{tp_mult:.1f})\n"
-               f"SL offset: ±{sl_offset:.2f}\n"
-               f"TP offset: ±{tp_offset:.2f}")
+               f"SL: {sl:.2f} ({'below' if direction == 'BUY' else 'above'} {price:.2f})\n"
+               f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})")
         return
-
-    tick  = mt5.symbol_info_tick(symbol)
-    price = tick.ask if direction == 'BUY' else tick.bid
-
-    if direction == 'BUY':
-        sl         = price - sl_offset
-        tp         = price + tp_offset
-        order_type = mt5.ORDER_TYPE_BUY
-    else:
-        sl         = price + sl_offset
-        tp         = price - tp_offset
-        order_type = mt5.ORDER_TYPE_SELL
 
     req = {
         'action':       mt5.TRADE_ACTION_DEAL,
