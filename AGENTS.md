@@ -64,6 +64,13 @@ Every `train_*.py` script must accept:
 --forward        forward bars for label (default: 10)
 --min_profit_atr minimum upside in ATR units to label as buy (default: 1.5)
 --output         ONNX output path (auto-generated if omitted)
+--date_col       column name for date (if separate from time)
+--time_col       column name for time (or datetime if combined)
+--open_col       column name for open price (default: open)
+--high_col       column name for high price (default: high)
+--low_col        column name for low price (default: low)
+--close_col      column name for close price (default: close)
+--volume_col     column name for volume (default: tick_volume)
 ```
 Indicator period args: `--atr_period`, `--adx_period`, `--adx_min`, `--stoch_k`, `--stoch_d`, `--vol_window`
 RF-only args: `--n_iter` (RandomizedSearchCV iterations), `--jobs` (parallel jobs)

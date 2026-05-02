@@ -12,6 +12,11 @@ Usage:
 
 Automatically uses training dataset: csv/SYMBOL_TIMEFRAME_part1.csv
 Use --csv to specify a different CSV file.
+
+Flexible CSV support:
+    --date_col, --time_col, --open_col, --high_col, --low_col, --close_col, --volume_col
+    Auto-detects delimiter (comma, tab, semicolon, etc.)
+    Handles separate date/time columns or combined datetime column
 """
 
 import argparse
@@ -44,9 +49,50 @@ FEATURE_COLS = [
 ]
 
 
-def load(path: str) -> pd.DataFrame:
-    df = pd.read_parquet(path) if path.endswith('.parquet') else pd.read_csv(path)
-    df['time'] = pd.to_datetime(df['time'])
+def load(path: str, date_col: str = None, time_col: str = 'time', open_col: str = 'open', high_col: str = 'high',
+          low_col: str = 'low', close_col: str = 'close', volume_col: str = 'tick_volume') -> pd.DataFrame:
+    if path.endswith('.parquet'):
+        df = pd.read_parquet(path)
+    else:
+        # Try auto-detecting delimiter first
+        try:
+            df = pd.read_csv(path, sep=None, engine='python')
+        except:
+            # Fallback to comma
+            df = pd.read_csv(path)
+    
+    # Check if required columns exist
+    required_cols = []
+    if date_col:
+        required_cols.append(date_col)
+    required_cols.extend([time_col, open_col, high_col, low_col, close_col, volume_col])
+    
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns in CSV: {missing_cols}. Available columns: {list(df.columns)}")
+    
+    # Rename columns to standard names
+    col_map = {}
+    if date_col:
+        col_map[date_col] = 'date'
+    col_map.update({
+        time_col: 'time',
+        open_col: 'open',
+        high_col: 'high',
+        low_col: 'low',
+        close_col: 'close',
+        volume_col: 'tick_volume'
+    })
+    df = df.rename(columns=col_map)
+    
+    # Handle date/time columns
+    if 'date' in df.columns:
+        # Combine date and time columns
+        df['time'] = pd.to_datetime(df['date'].astype(str) + ' ' + df['time'].astype(str))
+    else:
+        # Single datetime column
+        df['time'] = pd.to_datetime(df['time'])
+    
     return df.sort_values('time').reset_index(drop=True)
 
 
@@ -116,6 +162,13 @@ def main():
     parser.add_argument('--vol_window',     type=int,   default=20,     help='Volume rolling window')
     parser.add_argument('--n_iter',         type=int,   default=10,     help='RandomizedSearchCV iterations (rf only)')
     parser.add_argument('--jobs',           type=int,   default=3,      help='Parallel jobs for RandomizedSearchCV (rf/xgb)')
+    parser.add_argument('--date_col',      default=None,            help='Column name for date (if separate from time)')
+    parser.add_argument('--time_col',      default='time',         help='Column name for time (or datetime if combined)')
+    parser.add_argument('--open_col',      default='open',         help='Column name for open price')
+    parser.add_argument('--high_col',      default='high',         help='Column name for high price')
+    parser.add_argument('--low_col',       default='low',          help='Column name for low price')
+    parser.add_argument('--close_col',     default='close',        help='Column name for close price')
+    parser.add_argument('--volume_col',    default='tick_volume',  help='Column name for volume')
     parser.add_argument('--csv',           default=None,               help='Optional CSV file path (overrides auto-generated filename)')
     parser.add_argument('--output',         default=None,               help='ONNX output path (auto-generated if omitted)')
     args = parser.parse_args()
@@ -132,7 +185,8 @@ def main():
         input_file = f"csv/{args.symbol}_{args.timeframe}_part1.csv"
     print(c(f"Using training dataset: {input_file}", Colors.YELLOW))
     
-    df = load(input_file)
+    df = load(input_file, args.date_col, args.time_col, args.open_col, args.high_col, 
+              args.low_col, args.close_col, args.volume_col)
     df = add_price_features(df, args.atr_period)
     df = add_adx_features(df, args.adx_period, args.adx_min)
     df = add_stoch_features(df, args.stoch_k, args.stoch_d)
