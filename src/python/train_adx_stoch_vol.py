@@ -61,7 +61,54 @@ def load(path: str, date_col: str = None, time_col: str = 'time', open_col: str 
             # Fallback to comma
             df = pd.read_csv(path)
     
-    # Check if required columns exist
+    # Try to guess column names if defaults don't match
+    def guess_column(patterns, df_columns):
+        # Look for columns containing any of the patterns (case-insensitive)
+        for pattern in patterns:
+            pattern_lower = pattern.lower()
+            for col in df_columns:
+                if pattern_lower in col.lower():
+                    return col
+        return None
+    
+    # If date_col not specified but we have date-like column
+    if not date_col:
+        date_candidates = [c for c in df.columns if 'date' in c.lower()]
+        if date_candidates:
+            date_col = date_candidates[0]
+    
+    # If time_col default doesn't exist, try to guess
+    if time_col not in df.columns:
+        guessed = guess_column(['time', 'datetime', 'timestamp'], df.columns)
+        if guessed:
+            time_col = guessed
+    
+    # Guess other columns if defaults don't exist
+    column_guesses = {
+        'open': (open_col, ['open', 'op']),
+        'high': (high_col, ['high', 'hi', 'max']),
+        'low': (low_col, ['low', 'lo', 'min']),
+        'close': (close_col, ['close', 'cl', 'last']),
+        'volume': (volume_col, ['volume', 'vol', 'tickvol', 'tick_volume', 'tickvolume'])
+    }
+    
+    for default_name, (current_value, patterns) in column_guesses.items():
+        if current_value not in df.columns:
+            guessed = guess_column(patterns, df.columns)
+            if guessed:
+                # Update the parameter value
+                if default_name == 'open':
+                    open_col = guessed
+                elif default_name == 'high':
+                    high_col = guessed
+                elif default_name == 'low':
+                    low_col = guessed
+                elif default_name == 'close':
+                    close_col = guessed
+                elif default_name == 'volume':
+                    volume_col = guessed
+    
+    # Check if required columns exist (after guessing)
     required_cols = []
     if date_col:
         required_cols.append(date_col)
