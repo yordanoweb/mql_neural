@@ -24,6 +24,7 @@ import pandas as pd
 
 from utils.colors import Colors, colorize as c
 from utils.telegram import notify
+from utils.sound import play_sound
 
 # ---------------------------------------------------------------------------
 # Paths & field definitions
@@ -410,6 +411,8 @@ def open_position(
                                f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
             print(f"{c(Colors.GREEN, notification_text)}")
             notify(notification_text)
+            # Play alert sound for trade open (dry run)
+            play_sound("alert")
         return
 
     req = {
@@ -447,6 +450,8 @@ def open_position(
                                f"TP: {tp:.2f} ({'above' if direction == 'BUY' else 'below'} {price:.2f})"
             print(f"{c(Colors.GREEN, notification_text)}")
             notify(notification_text)
+            # Play alert sound for trade open
+            play_sound("alert")
     else:
         _log('OPEN_FAILED', symbol,
              direction = direction,
@@ -458,6 +463,8 @@ def open_position(
                                f"Error: {result.comment}"
             print(f"{c(Colors.RED, notification_text)}")
             notify(notification_text)
+            # Play error sound for trade open failure
+            play_sound("error")
 
 
 # ---------------------------------------------------------------------------

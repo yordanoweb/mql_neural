@@ -40,6 +40,7 @@ from utils.features import (
     add_volume_features, add_label, make_windows,
 )
 from utils.onnx_export import export, export_xgb_to_onnx
+from utils.sound import play_sound
 
 FEATURE_COLS = [
     'feat_body', 'feat_range',
@@ -309,6 +310,9 @@ def main():
 
     elapsed = int(time.time() - t0)
     print(c(f"\n✓ Done in {elapsed // 60}m {elapsed % 60}s", Colors.GREEN))
+    
+    # Play success sound when training completes
+    play_sound("success")
 
 
 if __name__ == '__main__':

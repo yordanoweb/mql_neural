@@ -36,6 +36,7 @@ import ta
 from utils.features import add_price_features, add_adx_features, add_stoch_features, add_volume_features
 from utils.colors import Colors, colorize as c
 from utils.telegram import notify
+from utils.sound import play_sound
 
 TIMEFRAME_MAP = {
     'M1': 1, 'M5': 5, 'M15': 15, 'M30': 30, 'H1': 16385, 'H4': 16388, 'D1': 16408,
@@ -330,6 +331,8 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry
            f"{'✅' if pnl_usd >= 0 else '🔻'} PnL:    {pnl_usd:+.2f} USD\n"
            f"{'📈' if pnl_usd >= 0 else '📉'} Balance: {balance:.2f} USD\n"
            f"🛑 Reason: {reason}")
+    # Play alert sound for trade close
+    play_sound("alert" if pnl_usd >= 0 else "error")
     _state = TradeState()
     # Update last trade time
     _last_trade_time = datetime.now()
@@ -389,6 +392,8 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                f"🛡 SL:         {sl:.5f}\n"
                f"🎯 iTP:        {tp_target:.5f}\n"
                f"📈 Confidence: {confidence:.3f}")
+        # Play alert sound for trade open
+        play_sound("alert")
 
 
 def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
@@ -549,6 +554,8 @@ def run(args):
            f"🔢 Magic: {args.magic}\n"
            f"📁 {os.path.basename(args.model)}"
            f"{daily_loss_line}")
+    # Play success sound for bot start
+    play_sound("success")
 
     try:
         while True:

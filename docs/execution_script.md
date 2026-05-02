@@ -155,6 +155,19 @@ Example messages:
 
 PnL is computed as `pnl_pts / tick_size * tick_value * lot` using MT5 symbol info. The PnL emoji is `✅` for profit and `🔻` for loss.
 
+## Sound Notifications
+The script plays system sounds for key events:
+
+| Event | Sound Type | Description |
+|---|---|---|
+| Bot start | Success | Plays when script starts successfully |
+| Trade open | Alert | Plays when a new position is opened |
+| Trade close (profit) | Alert | Plays when a profitable position closes |
+| Trade close (loss) | Error | Plays when a losing position closes |
+| Trade open failure | Error | Plays when position opening fails |
+
+Sounds are played using system commands appropriate for the platform (macOS, Linux, Windows). On Linux, falls back to terminal bell if sound player not available.
+
 ## Dynamic Lot Sizing
 When `--max_risk > 0`, lot size is computed dynamically instead of using `--lot`:
 

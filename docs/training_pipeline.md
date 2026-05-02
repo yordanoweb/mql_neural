@@ -111,6 +111,9 @@ python src/python/query_onnx_model.py onnx/ustec_m5_16_feat_adx_stoch_vol.onnx
 ```
 Prints: input/output tensor shapes, all metadata keys, and the numbered feature list.
 
+## Sound Notification
+When training completes successfully, the script plays a system success sound. This provides audible feedback for long-running training jobs.
+
 ## See Also
 - `docs/execution_script.md` — live inference + MT5 order execution
 
