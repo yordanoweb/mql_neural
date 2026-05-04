@@ -210,6 +210,7 @@ def main():
     parser.add_argument('--vol_window',     type=int,   default=20,     help='Volume rolling window')
     parser.add_argument('--n_iter',         type=int,   default=10,     help='RandomizedSearchCV iterations (rf only)')
     parser.add_argument('--jobs',           type=int,   default=3,      help='Parallel jobs for RandomizedSearchCV (rf/xgb)')
+    parser.add_argument('--xgb_n_estimators', type=int, default=200,    help='XGBoost n_estimators for final model (controls size)')
     parser.add_argument('--date_col',      default=None,            help='Column name for date (if separate from time)')
     parser.add_argument('--time_col',      default='time',         help='Column name for time (or datetime if combined)')
     parser.add_argument('--open_col',      default='open',         help='Column name for open price')
@@ -269,11 +270,11 @@ def main():
         model.fit(X_train, y_train, sample_weight=sample_weights)
         print(c(f"\nBest CV params: {model.best_params_}", Colors.YELLOW))
         print(c(f"Best CV score : {model.best_score_:.4f}", Colors.YELLOW))
-        # Phase 2: refit best params with n_estimators=1000 + early stopping
+        # Phase 2: refit best params with early stopping
         X_val, y_val = eval_set
         fitted = xgb.XGBClassifier(
             **model.best_params_,
-            n_estimators=1000,
+            n_estimators=args.xgb_n_estimators,
             tree_method='hist',
             random_state=42,
             early_stopping_rounds=50,
@@ -290,6 +291,19 @@ def main():
             verbose=False,
         )
         print(c(f"Best iteration: {fitted.best_iteration}", Colors.YELLOW))
+        # Refit with optimal number of trees to reduce model size
+        if fitted.best_iteration and fitted.best_iteration < args.xgb_n_estimators:
+            print(c(f"Pruning from {args.xgb_n_estimators} to {fitted.best_iteration} trees", Colors.YELLOW))
+            fitted = xgb.XGBClassifier(
+                **model.best_params_,
+                n_estimators=fitted.best_iteration,
+                tree_method='hist',
+                random_state=42,
+                eval_metric='mlogloss',
+                verbosity=0,
+                nthread=-1,
+            )
+            fitted.fit(X_train, y_train, sample_weight=sample_weights)
     else:
         model.fit(X_train, y_train)
         fitted = model.best_estimator_ if hasattr(model, 'best_estimator_') else model
