@@ -67,6 +67,7 @@ class TradeState:
     entry_price:      float = 0.0
     sl_price:         float = 0.0
     tp_target:        float = 0.0   # imaginary TP level
+    lot_size:         float = 0.0   # actual lot size used for the trade
     trailing:         bool  = False # True once imaginary TP has been reached
     last_candle_time: object = None # timestamp of last seen closed candle (profit lock)
 
@@ -220,6 +221,13 @@ def usd_to_lot(symbol: str, usd_amount: float) -> float:
     info = mt5.symbol_info(symbol)
     step = info.volume_step
     lot = step * round(lot / step)
+    
+    # Check if calculated lot is below minimum
+    if lot < info.volume_min:
+        print(c(f"  Warning: ${usd_amount:.2f} translates to {usd_amount/margin_per_lot:.4f} lots, "
+                f"but minimum is {info.volume_min} lots (step={step})", Colors.YELLOW))
+        lot = info.volume_min
+    
     return max(info.volume_min, min(info.volume_max, lot))
 
 
@@ -308,8 +316,9 @@ def get_open_position(symbol: str):
     return positions[0] if positions else None
 
 
-def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry_run: bool = False) -> None:
+def close_position(pos, reason: str, deviation: int, magic: int, dry_run: bool = False) -> None:
     import MetaTrader5 as mt5
+    global _state, _last_trade_time
     direction = mt5.ORDER_TYPE_SELL if pos.type == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
     tick      = mt5.symbol_info_tick(pos.symbol)
     price     = tick.bid if direction == mt5.ORDER_TYPE_SELL else tick.ask
@@ -321,7 +330,7 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry
     req = {
         'action':       mt5.TRADE_ACTION_DEAL,
         'symbol':       pos.symbol,
-        'volume':       lot,
+        'volume':       _state.lot_size,
         'type':         direction,
         'position':     pos.ticket,
         'price':        price,
@@ -334,9 +343,8 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry
     result = mt5.order_send(req)
     print(c(f"  → CLOSED ({reason}): retcode={result.retcode}", Colors.MAGENTA))
     # reset state
-    global _state, _last_trade_time
     pnl_pts = round((price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
-    pnl_usd = _pnl_usd(pos.symbol, pnl_pts, lot)
+    pnl_usd = _pnl_usd(pos.symbol, pnl_pts, _state.lot_size)
     balance = mt5.account_info().balance
     _log(pos.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
          price=price, sl=_state.sl_price, tp_target=_state.tp_target,
@@ -399,6 +407,7 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
             entry_price=price,
             sl_price=sl,
             tp_target=tp_target,
+            lot_size=lot,           # store actual lot size
             trailing=False,
         )
         _log(symbol, 'OPEN', direction='BUY' if is_buy else 'SELL',
@@ -412,7 +421,7 @@ def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
         play_sound("alert")
 
 
-def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
+def print_state(pos, current_price: float, symbol: str) -> None:
     """Print current trade state to stdout."""
     import MetaTrader5 as mt5
     now = datetime.now().strftime('%H:%M:%S')
@@ -425,7 +434,7 @@ def print_state(pos, current_price: float, lot: float, symbol: str) -> None:
     info      = mt5.symbol_info(pos.symbol)
     tick_value = info.trade_tick_value if info else 1.0
     tick_size  = info.trade_tick_size  if info else 1.0
-    pnl_money  = pnl_pts / tick_size * tick_value * lot
+    pnl_money  = pnl_pts / tick_size * tick_value * _state.lot_size
     pnl_color  = Colors.GREEN if pnl_money >= 0 else Colors.RED
     print(
         f"[{now}] {symbol} {direction} | {trailing} | "
@@ -485,7 +494,7 @@ def move_sl_to_previous_candle(pos, tf: int, profit_lock_tf: int) -> None:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
 
-def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int, magic: int, atr_period: int, sl_mult: float, dry_run: bool = False) -> None:
+def manage_open_trade(pos, tf: int, trailing_tf: int, deviation: int, magic: int, atr_period: int, sl_mult: float, dry_run: bool = False) -> None:
     """Check imaginary TP, profit-lock SL, and trailing exit on every cycle."""
     import MetaTrader5 as mt5
     global _state
@@ -535,7 +544,7 @@ def manage_open_trade(pos, lot: float, tf: int, trailing_tf: int, deviation: int
         bearish = candle['close'] < candle['open']
         bullish = candle['close'] > candle['open']
         if (_state.is_buy and bearish) or (not _state.is_buy and bullish):
-            close_position(pos, lot, reason='trailing_exit', deviation=deviation, magic=magic, dry_run=dry_run)
+            close_position(pos, reason='trailing_exit', deviation=deviation, magic=magic, dry_run=dry_run)
 
 
 def run(args):
@@ -588,9 +597,9 @@ def run(args):
             if pos:
                 tick          = mt5.symbol_info_tick(args.symbol)
                 current_price = tick.bid if _state.is_buy else tick.ask
-                print_state(pos, current_price, args.lot, args.symbol)
+                print_state(pos, current_price, args.symbol)
                 had_ticket = _state.ticket
-                manage_open_trade(pos, args.lot, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult, args.dry_run)
+                manage_open_trade(pos, tf, trailing_tf, args.deviation, args.magic, args.atr_period, args.sl_mult, args.dry_run)
                 # daily loss check after trailing exit
                 if had_ticket and _state.ticket == 0 and args.max_daily_loss > 0:
                     loss = _daily_loss(args.symbol)
@@ -605,7 +614,7 @@ def run(args):
                     tick = mt5.symbol_info_tick(args.symbol)
                     close_price = tick.bid if _state.is_buy else tick.ask
                     pnl_pts = round((close_price - _state.entry_price) * (1 if _state.is_buy else -1), 5)
-                    pnl_usd = _pnl_usd(args.symbol, pnl_pts, args.lot)
+                    pnl_usd = _pnl_usd(args.symbol, pnl_pts, _state.lot_size)
                     balance = mt5.account_info().balance
                     print(c(f"[{now}] {args.symbol} position closed by broker (SL hit), PnL={pnl_usd:+.2f} USD", Colors.RED))
                     _log(args.symbol, 'CLOSE', direction='BUY' if _state.is_buy else 'SELL',
