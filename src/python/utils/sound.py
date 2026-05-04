@@ -37,7 +37,8 @@ def play_sound(sound_type="default"):
             elif sound_type == "alert":
                 sound_cmd = "paplay /usr/share/sounds/freedesktop/stereo/message.oga 2>/dev/null || echo -e '\\a'"
             elif sound_type == "error":
-                sound_cmd = "paplay /usr/share/sounds/freedesktop/stereo/dialog-error.oga 2>/dev/null || echo -e '\\a'"
+                # dialog-error.oga is a symlink to dialog-warning.oga, use bell.oga instead for reliability
+                sound_cmd = "paplay /usr/share/sounds/freedesktop/stereo/bell.oga 2>/dev/null || echo -e '\\a'"
             else:
                 sound_cmd = "paplay /usr/share/sounds/freedesktop/stereo/bell.oga 2>/dev/null || echo -e '\\a'"
             
