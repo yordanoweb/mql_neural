@@ -122,7 +122,7 @@ Three events trigger a message:
 
 | Event | Trigger | Message content |
 |---|---|---|
-| Script start | `run()` entry | Symbol, timeframe, balance, confidence, SL/TP multipliers, max daily loss (if enabled), interval, EMA period, magic, model filename |
+| Script start | `run()` entry | Symbol, timeframe, balance, lot size (or max risk %), confidence, SL/TP multipliers, max daily loss (if enabled), interval, EMA period, magic, model filename |
 | Trade open | `open_position()` — retcode 10009 | Direction, symbol, price, SL, iTP, confidence |
 | Trade close | `close_position()` (trailing exit) or SL-hit detection | Direction, symbol, price, PnL pts, reason |
 
@@ -131,6 +131,7 @@ Example messages:
 🚀 Bot started
 📊 NAS100 (M5)
 💰 Balance: 10934.57 USD
+📊 Lot: 1.0
 🎯 Confidence: 0.60
 🛡 SL: 1.0×ATR
 🎯 TP: 1.0×ATR

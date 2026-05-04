@@ -543,9 +543,11 @@ def run(args):
         print(f"Max_daily_loss={args.max_daily_loss} USD")
     balance = mt5.account_info().balance
     daily_loss_line = f"\n📉 Max daily loss: {args.max_daily_loss:.2f} USD" if args.max_daily_loss > 0 else ""
+    lot_info = f"📊 Lot: {args.lot}" if args.max_risk <= 0 else f"📊 Max risk: {args.max_risk*100:.1f}%"
     notify(f"🚀 Bot started\n"
            f"📊 {args.symbol} ({args.timeframe})\n"
            f"💰 Balance: {balance:.2f} USD\n"
+           f"{lot_info}\n"
            f"🎯 Confidence: {args.confidence:.2f}\n"
            f"🛡 SL: {args.sl_mult}×ATR\n"
            f"🎯 TP: {args.tp_mult}×ATR\n"
