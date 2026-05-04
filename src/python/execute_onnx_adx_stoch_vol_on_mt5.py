@@ -490,6 +490,8 @@ def move_sl_to_previous_candle(pos, tf: int, profit_lock_tf: int) -> None:
     if result.retcode == 10009:
         print(c(f"  → SL moved to {new_sl:.5f} (prev {profit_lock_tf} candle {'low' if _state.is_buy else 'high'})", Colors.MAGENTA))
         _state.sl_price = new_sl
+        # Play alert sound for profit lock SL move
+        play_sound("alert")
     else:
         print(c(f"  → SL move failed: retcode={result.retcode}", Colors.RED))
 
@@ -522,6 +524,8 @@ def manage_open_trade(pos, tf: int, trailing_tf: int, deviation: int, magic: int
                 if result.retcode == 10009:
                     print(c(f"  → SL moved to breakeven ({_state.entry_price:.5f}) at {profit_atr:.1f}×ATR profit", Colors.MAGENTA))
                     _state.sl_price = _state.entry_price
+                    # Play alert sound for breakeven SL move
+                    play_sound("alert")
                 else:
                     print(c(f"  → breakeven move failed: retcode={result.retcode}", Colors.RED))
 
@@ -538,6 +542,8 @@ def manage_open_trade(pos, tf: int, trailing_tf: int, deviation: int, magic: int
         if tp_hit:
             print(c(f"  → imaginary TP reached ({current_price:.5f}), trailing mode ON", Colors.MAGENTA))
             _state.trailing = True
+            # Play alert sound for TP hit
+            play_sound("alert")
 
     if _state.trailing:
         candle = last_trailing_candle(pos.symbol, trailing_tf)
@@ -607,6 +613,8 @@ def run(args):
                         msg = f"Daily loss limit reached: {loss:+.2f} USD (limit: -{args.max_daily_loss:.2f})"
                         print(c(f"  🛑 {msg}", Colors.RED))
                         notify(f"🛑 {msg} — {args.symbol}\nBot stopped.")
+                        # Play error sound for daily loss limit
+                        play_sound("error")
                         break
             else:
                 # detect broker-closed position (SL hit)
@@ -626,6 +634,8 @@ def run(args):
                            f"{'✅' if pnl_usd >= 0 else '🔻'} PnL:    {pnl_usd:+.2f} USD\n"
                            f"{'📈' if pnl_usd >= 0 else '📉'} Balance: {balance:.2f} USD\n"
                            f"🛑 Reason: SL hit")
+                    # Play alert sound for SL hit trade close
+                    play_sound("alert" if pnl_usd >= 0 else "error")
                     _state.__init__()
                     # Update last trade time
                     global _last_trade_time
