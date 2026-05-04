@@ -22,8 +22,6 @@ Flexible CSV support:
 import argparse
 import os
 import time
-import sys
-import io
 
 import numpy as np
 import pandas as pd
@@ -50,52 +48,6 @@ FEATURE_COLS = [
     'stoch_momentum', 'stoch_position', 'stoch_velocity', 'stoch_divergence',
     'vol_ratio', 'vol_momentum', 'vol_price_div', 'vol_percentile', 'vol_zscore',
 ]
-
-
-class ProgressTracker:
-    """Track CV progress and add counter to output lines."""
-    def __init__(self, total_fits):
-        self.total_fits = total_fits
-        self.current_fit = 0
-        self.original_stdout = sys.stdout
-        self.buffer = ''
-    
-    def __enter__(self):
-        sys.stdout = self
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout = self.original_stdout
-        # Flush any remaining buffer
-        if self.buffer:
-            self.original_stdout.write(self.buffer)
-    
-    def write(self, text):
-        # Buffer the text and process line by line
-        self.buffer += text
-        lines = self.buffer.split('\n')
-        
-        # Keep the last incomplete line in buffer
-        self.buffer = lines[-1]
-        complete_lines = lines[:-1]
-        
-        for line in complete_lines:
-            # Check if this is a CV line (could be START, END, or just parameters)
-            if line.startswith('[CV '):
-                # Check if this is an END line (completion of a fit)
-                if '] END ' in line:
-                    self.current_fit += 1
-                    # Add counter at the beginning of the line
-                    counter = f"[{self.current_fit}/{self.total_fits}] "
-                    self.original_stdout.write(counter + line + '\n')
-                else:
-                    # Other CV line (START or parameters), just pass through
-                    self.original_stdout.write(line + '\n')
-            else:
-                self.original_stdout.write(line + '\n')
-    
-    def flush(self):
-        self.original_stdout.flush()
 
 
 def load(path: str, date_col: str = None, time_col: str = 'time', open_col: str = 'open', high_col: str = 'high',
@@ -192,7 +144,7 @@ def load(path: str, date_col: str = None, time_col: str = 'time', open_col: str 
     return df.sort_values('time').reset_index(drop=True)
 
 
-def build_model(model_type: str, n_iter: int, jobs: int, X_train, y_train, progress_tracker=None):
+def build_model(model_type: str, n_iter: int, jobs: int, X_train, y_train):
     if model_type == 'rf':
         tscv = TimeSeriesSplit(n_splits=3)
         param_dist = {
@@ -227,7 +179,6 @@ def build_model(model_type: str, n_iter: int, jobs: int, X_train, y_train, progr
             verbosity=0,
             nthread=1 if jobs > 1 else -1,
         )
-        
         search = RandomizedSearchCV(
             cv_estimator, param_dist, n_iter=n_iter,
             cv=tscv, scoring='balanced_accuracy',
@@ -316,13 +267,7 @@ def main():
     if args.model == 'xgb':
         sample_weights = compute_sample_weight('balanced', y_train)
         # Phase 1: CV search (no early stopping, clean folds)
-        # Calculate total fits for progress tracking
-        total_fits = args.n_iter * 7  # 7 folds for xgb
-        print(c(f"Fitting {args.n_iter} folds for each of {7} candidates, totalling {total_fits} fits", Colors.WHITE))
-        
-        with ProgressTracker(total_fits):
-            model.fit(X_train, y_train, sample_weight=sample_weights)
-        
+        model.fit(X_train, y_train, sample_weight=sample_weights)
         print(c(f"\nBest CV params: {model.best_params_}", Colors.YELLOW))
         print(c(f"Best CV score : {model.best_score_:.4f}", Colors.YELLOW))
         # Phase 2: refit best params with early stopping
@@ -360,15 +305,7 @@ def main():
             )
             fitted.fit(X_train, y_train, sample_weight=sample_weights)
     else:
-        # For RF model
-        if args.model == 'rf':
-            total_fits = args.n_iter * 3  # 3 folds for rf
-            print(c(f"Fitting {3} folds for each of {args.n_iter} candidates, totalling {total_fits} fits", Colors.WHITE))
-            with ProgressTracker(total_fits):
-                model.fit(X_train, y_train)
-        else:
-            # MLP - no CV
-            model.fit(X_train, y_train)
+        model.fit(X_train, y_train)
         fitted = model.best_estimator_ if hasattr(model, 'best_estimator_') else model
 
     print(c("\nTest set report:", Colors.CYAN))
