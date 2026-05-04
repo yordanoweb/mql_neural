@@ -207,6 +207,22 @@ def _daily_loss(symbol: str) -> float:
     return sum(d.profit for d in deals if d.symbol == symbol and d.profit < 0)
 
 
+def usd_to_lot(symbol: str, usd_amount: float) -> float:
+    """Convert account currency amount to lot size."""
+    import MetaTrader5 as mt5
+    tick = mt5.symbol_info_tick(symbol)
+    margin_per_lot = mt5.order_calc_margin(mt5.ORDER_TYPE_BUY, symbol, 1.0, tick.ask)
+    if not margin_per_lot or margin_per_lot <= 0:
+        return 1.0  # fallback
+    
+    lot = usd_amount / margin_per_lot
+    
+    info = mt5.symbol_info(symbol)
+    step = info.volume_step
+    lot = step * round(lot / step)
+    return max(info.volume_min, min(info.volume_max, lot))
+
+
 def calc_lot(symbol: str, magic: int, max_risk: float, decrease_factor: float, fallback_lot: float) -> float:
     """Dynamic lot sizing: risk-based + consecutive-loss reduction."""
     import MetaTrader5 as mt5
@@ -341,11 +357,11 @@ def close_position(pos, lot: float, reason: str, deviation: int, magic: int, dry
 def open_position(symbol: str, is_buy: bool, lot: float, tf: int,
                   atr_period: int, sl_mult: float, tp_mult: float,
                   deviation: int, magic: int, confidence: float = 0.0,
-                  max_risk: float = 0.0, decrease_factor: float = 0.0, dry_run: bool = False) -> None:
+                  lot_usd: float = 0.0, dry_run: bool = False) -> None:
     import MetaTrader5 as mt5
     global _state
-    if max_risk > 0:
-        lot = calc_lot(symbol, magic, max_risk, decrease_factor, lot)
+    if lot_usd > 0:
+        lot = usd_to_lot(symbol, lot_usd)
     tick  = mt5.symbol_info_tick(symbol)
     price = tick.ask if is_buy else tick.bid
     atr   = current_atr(symbol, tf, atr_period)
@@ -543,7 +559,12 @@ def run(args):
         print(f"Max_daily_loss={args.max_daily_loss} USD")
     balance = mt5.account_info().balance
     daily_loss_line = f"\n📉 Max daily loss: {args.max_daily_loss:.2f} USD" if args.max_daily_loss > 0 else ""
-    lot_info = f"📊 Lot: {args.lot}" if args.max_risk <= 0 else f"📊 Max risk: {args.max_risk*100:.1f}%"
+    if args.lot_usd > 0:
+        # Calculate equivalent lot size
+        calculated_lot = usd_to_lot(args.symbol, args.lot_usd)
+        lot_info = f"📊 USD: {args.lot_usd:.2f} (Lot: {calculated_lot:.2f})"
+    else:
+        lot_info = f"📊 Lot: {args.lot}"
     notify(f"🚀 Bot started\n"
            f"📊 {args.symbol} ({args.timeframe})\n"
            f"💰 Balance: {balance:.2f} USD\n"
@@ -723,7 +744,7 @@ def run(args):
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_buy,
-                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor,
+                                      lot_usd=args.lot_usd,
                                       dry_run=args.dry_run)
                         # Update last trade time
                         _last_trade_time = datetime.now()
@@ -740,7 +761,7 @@ def run(args):
                                       sl_mult=args.sl_mult, tp_mult=args.tp_mult,
                                       deviation=args.deviation, magic=args.magic,
                                       confidence=p_sell,
-                                      max_risk=args.max_risk, decrease_factor=args.decrease_factor,
+                                      lot_usd=args.lot_usd,
                                       dry_run=args.dry_run)
                         # Update last trade time
                         _last_trade_time = datetime.now()
@@ -767,13 +788,12 @@ def main():
     parser.add_argument('--timeframe',  required=True,  help='M1 M5 M15 M30 H1 H4 D1')
     parser.add_argument('--window',     type=int,   default=20,   help='Window size (must match training)')
     parser.add_argument('--confidence', type=float, default=0.60, help='Min probability to open a trade')
-    parser.add_argument('--lot',        type=float, default=1.0,  help='Order lot size (used when --max_risk is not set)')
+    parser.add_argument('--lot',        type=float, default=1.0,  help='Order lot size (used when --lot_usd is not set)')
+    parser.add_argument('--lot_usd',    type=float, default=0.0,  help='Trade amount in account currency (overrides --lot when > 0)')
     parser.add_argument('--interval',   type=int,   default=60,   help='Seconds between cycles')
     parser.add_argument('--atr_period', type=int,   default=14,   help='ATR period for SL/TP calculation')
     parser.add_argument('--sl_mult',    type=float, default=1.0,  help='SL = ATR * sl_mult')
     parser.add_argument('--tp_mult',    type=float, default=1.0,  help='Imaginary TP = ATR * tp_mult')
-    parser.add_argument('--max_risk',       type=float, default=0.0, help='Fraction of free margin to risk per trade (e.g. 0.01). Overrides --lot when > 0')
-    parser.add_argument('--decrease_factor', type=float, default=0.0, help='Consecutive-loss lot reduction factor (0 = disabled)')
     parser.add_argument('--max_daily_loss', type=float, default=5.0, help='Max daily loss in USD before stopping (0 = disabled)')
     parser.add_argument('--adx_period', type=int,   default=8,    help='ADX indicator period')
     parser.add_argument('--adx_min',    type=float, default=20.0, help='ADX minimum threshold')

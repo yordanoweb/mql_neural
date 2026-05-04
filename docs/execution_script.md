@@ -46,7 +46,8 @@ Only one position at a time. No new trade is opened while one is active.
 --timeframe       M1 M5 M15 M30 H1 H4 D1
 --window          window size — must match training (default: 20)
 --confidence      minimum probability to open a trade (default: 0.60)
---lot             order lot size — used when --max_risk is not set (default: 1.0)
+--lot             order lot size — used when --lot_usd is not set (default: 1.0)
+--lot_usd         trade amount in account currency (overrides --lot when > 0)
 --interval        seconds between cycles (default: 60)
 --atr_period      ATR period for SL/TP calculation (default: 14)
 --sl_mult         SL distance = ATR × sl_mult (default: 1.5)
@@ -54,8 +55,6 @@ Only one position at a time. No new trade is opened while one is active.
 --deviation       max slippage in points for order requests (default: 20)
 --magic           magic number for MT5 orders (default: 0)
 --ema_period      EMA period for trend filter (default: 18)
---max_risk        fraction of free margin to risk per trade (e.g. 0.01 = 1%). Overrides --lot when > 0 (default: 0.0)
---decrease_factor consecutive-loss lot reduction factor — 0 = disabled (default: 0.0)
 --max_daily_loss max daily loss in USD before stopping — 0 = disabled (default: 5.0)
 ```
 Indicator period args (`--adx_period`, `--stoch_k`, `--stoch_d`, `--vol_window`) must match training values.
@@ -169,21 +168,15 @@ The script plays system sounds for key events:
 
 Sounds are played using system commands appropriate for the platform (macOS, Linux, Windows). On Linux, falls back to terminal bell if sound player not available.
 
-## Dynamic Lot Sizing
-When `--max_risk > 0`, lot size is computed dynamically instead of using `--lot`:
+## USD Amount Lot Sizing
+When `--lot_usd > 0`, lot size is computed from the specified account currency amount:
 
 ```
-lot = free_margin × max_risk / margin_per_lot
+lot = usd_amount / margin_per_lot
 ```
 
-If `--decrease_factor > 0`, consecutive losing trades on the same symbol+magic reduce the lot:
-```
-losses = count of consecutive losing deals (same symbol+magic, walking back until a profit)
-if losses > 1:
-    lot = lot - lot × losses / decrease_factor
-```
-Lot is always clamped to `[volume_min, volume_max]` and snapped to `volume_step`.
-Set `--decrease_factor 0` (default) to disable the reduction.
+Where `margin_per_lot` is the margin required for 1.0 lot of the symbol, calculated using `mt5.order_calc_margin()`.
+The lot is then clamped to the symbol's minimum/maximum volume and snapped to the volume step.
 
 ## Daily Loss Limit
 When `--max_daily_loss > 0`, the script sums today's realized losses for the current symbol from MT5 deal history. The check runs:
