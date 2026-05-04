@@ -28,8 +28,8 @@ docs/                 # specs and design docs
 ## ONNX Contract (never break this)
 - Input : `float32[1, WINDOW_SIZE * N_FEATURES]` — flattened window, row-major
 - Output: `float32[1, 3]` — softmax probabilities `[P(hold), P(buy), P(sell)]`
-- Metadata key `feature_names`: comma-separated feature column names (required)
-- Metadata keys `window_size`, `n_features`: integers as strings
+- Required metadata: `feature_names`, `window_size`, `n_features`
+- Training metadata: All CLI arguments used during training (symbol, timeframe, model_type, window, forward, min_profit_atr, indicator periods, etc.) plus `training_date`
 
 ## Naming Conventions
 - ONNX files: `<symbol>_<timeframe>_<n>_feat[_<tag>].onnx`

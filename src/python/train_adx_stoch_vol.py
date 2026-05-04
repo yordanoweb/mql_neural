@@ -20,6 +20,7 @@ Flexible CSV support:
 """
 
 import argparse
+import datetime
 import os
 import time
 
@@ -317,10 +318,37 @@ def main():
     )
     os.makedirs(os.path.dirname(out_path) or '.', exist_ok=True)
 
+    # Prepare training metadata
+    import datetime
+    extra_metadata = {
+        'symbol': args.symbol,
+        'timeframe': args.timeframe,
+        'model_type': args.model,
+        'window': str(args.window),
+        'forward': str(args.forward),
+        'min_profit_atr': str(args.min_profit_atr),
+        'atr_period': str(args.atr_period),
+        'adx_period': str(args.adx_period),
+        'adx_min': str(args.adx_min),
+        'stoch_k': str(args.stoch_k),
+        'stoch_d': str(args.stoch_d),
+        'vol_window': str(args.vol_window),
+        'training_date': datetime.datetime.now().isoformat(),
+    }
+    
+    # Add XGBoost-specific metadata if applicable
     if args.model == 'xgb':
-        export_xgb_to_onnx(fitted, FEATURE_COLS, args.window, out_path)
+        extra_metadata['xgb_n_estimators'] = str(args.xgb_n_estimators)
+    
+    # Add RF-specific metadata if applicable
+    if args.model == 'rf':
+        extra_metadata['n_iter'] = str(args.n_iter)
+        extra_metadata['jobs'] = str(args.jobs)
+
+    if args.model == 'xgb':
+        export_xgb_to_onnx(fitted, FEATURE_COLS, args.window, out_path, extra_metadata)
     else:
-        export(fitted, FEATURE_COLS, args.window, out_path)
+        export(fitted, FEATURE_COLS, args.window, out_path, extra_metadata)
 
     elapsed = int(time.time() - t0)
     print(c(f"\n✓ Done in {elapsed // 60}m {elapsed % 60}s", Colors.GREEN))

@@ -103,7 +103,8 @@ RF-only args: `--n_iter`, `--jobs`
 |---|---|
 | Input  | `float32[1, WINDOW_SIZE * N_FEATURES]` |
 | Output | `float32[1, 3]` — `[P(hold), P(buy), P(sell)]` |
-| Metadata | `feature_names`, `window_size`, `n_features` |
+| Required Metadata | `feature_names`, `window_size`, `n_features` |
+| Training Metadata | `symbol`, `timeframe`, `model_type`, `window`, `forward`, `min_profit_atr`, `atr_period`, `adx_period`, `adx_min`, `stoch_k`, `stoch_d`, `vol_window`, `training_date` (plus model-specific args) |
 
 ## Querying a Model
 ```bash

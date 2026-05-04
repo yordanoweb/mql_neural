@@ -13,7 +13,8 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
 
-def export(model, feature_cols: list[str], window: int, output_path: str) -> None:
+def export(model, feature_cols: list[str], window: int, output_path: str, 
+           extra_metadata: dict = None) -> None:
     """Convert a fitted sklearn model to ONNX and save with required metadata."""
     from sklearn.pipeline import Pipeline
     n_flat = window * len(feature_cols)
@@ -34,13 +35,20 @@ def export(model, feature_cols: list[str], window: int, output_path: str) -> Non
     ]:
         p = onnx_model.metadata_props.add()
         p.key, p.value = key, val
+    
+    # Add extra metadata if provided
+    if extra_metadata:
+        for key, val in extra_metadata.items():
+            p = onnx_model.metadata_props.add()
+            p.key, p.value = str(key), str(val)
 
     onnx.checker.check_model(onnx_model)
     onnx.save(onnx_model, output_path)
     _verify(output_path)
 
 
-def export_xgb_to_onnx(model, feature_cols: list[str], window: int, output_path: str) -> None:
+def export_xgb_to_onnx(model, feature_cols: list[str], window: int, output_path: str,
+                       extra_metadata: dict = None) -> None:
     """Convert a fitted XGBoost model to ONNX and save with required metadata."""
     from onnxmltools.convert import convert_xgboost
     from onnxmltools.convert.common.data_types import FloatTensorType
@@ -58,6 +66,12 @@ def export_xgb_to_onnx(model, feature_cols: list[str], window: int, output_path:
     ]:
         p = onnx_model.metadata_props.add()
         p.key, p.value = key, val
+    
+    # Add extra metadata if provided
+    if extra_metadata:
+        for key, val in extra_metadata.items():
+            p = onnx_model.metadata_props.add()
+            p.key, p.value = str(key), str(val)
     
     onnx.checker.check_model(onnx_model)
     onnx.save(onnx_model, output_path)
