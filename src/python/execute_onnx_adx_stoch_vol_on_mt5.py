@@ -48,8 +48,8 @@ TIMEFRAME_REVERSE_MAP = {v: k for k, v in TIMEFRAME_MAP.items()}
 # One step below the trading timeframe
 TRAILING_TF = {'M5': 'M1', 'M15': 'M5', 'M30': 'M15', 'H1': 'M30', 'H4': 'H1', 'D1': 'H4'}
 
-# Profit lock timeframe: same mapping as trailing
-PROFIT_LOCK_TF = TRAILING_TF
+# Profit lock timeframe: same mapping as trailing, but M15 uses M1 instead of M5
+PROFIT_LOCK_TF = {'M5': 'M1', 'M15': 'M1', 'M30': 'M15', 'H1': 'M30', 'H4': 'H1', 'D1': 'H4'}
 
 FEATURE_COLS = [
     'feat_body', 'feat_range',
