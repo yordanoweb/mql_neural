@@ -97,11 +97,11 @@ passwords.txt
 
 # Do not place rules under here refering ONNX
 onnx/**
-!onnx/ndx100_m15_16_feat_adx_stoch_vol.onnx
-!onnx/sp500_m15_16_feat_adx_stoch_vol.onnx
-!onnx/us30_m15_16_feat_adx_stoch_vol.onnx
-!onnx/us500_m15_16_feat_adx_stoch_vol.onnx
-!onnx/ustec_m15_16_feat_adx_stoch_vol.onnx
+!onnx/BTCUSD_m15_16_feat_adx_stoch_vol.onnx
+!onnx/US30_m15_16_feat_adx_stoch_vol.onnx
+!onnx/US500_m15_16_feat_adx_stoch_vol.onnx
+!onnx/USTEC_m15_16_feat_adx_stoch_vol.onnx
+!onnx/XAUUSD_m15_16_feat_adx_stoch_vol.onnx
 
 data/
 csv/**
