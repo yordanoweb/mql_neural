@@ -685,28 +685,41 @@ def run(args):
                 signal_reason = 'no_signal'
                 ema_filter_passed = False
                 ema_distance_filter_passed = False
+                ema_n_candles_filter_passed = False
                 
                 # Determine signal and filter status
                 if p_buy >= args.confidence:
                     current_signal = 'BUY'
                     ema_filter_passed = last_close > ema_val
                     ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
-                    if ema_filter_passed and ema_distance_filter_passed:
+
+                    # Check if EMA is greater than the N previous candles
+                    ema_n_candles_filter_passed = all(ema_val > prev_ema for prev_ema in df['close'].iloc[-args.ema_period:])
+
+                    if ema_filter_passed and ema_distance_filter_passed and ema_n_candles_filter_passed:
                         signal_decision = 'BUY'
                         signal_reason = 'signal_passed_filters'
                     elif not ema_filter_passed:
                         signal_reason = 'ema_filter_failed'
+                    elif not ema_n_candles_filter_passed:
+                        signal_reason = 'ema_n_candles_filter_failed'
                     else:
                         signal_reason = 'ema_distance_filter_failed'
                 elif p_sell >= args.confidence:
                     current_signal = 'SELL'
                     ema_filter_passed = last_close < ema_val
                     ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
-                    if ema_filter_passed and ema_distance_filter_passed:
+
+                    # Check if EMA is less than the N previous candles
+                    ema_n_candles_filter_passed = all(ema_val < prev_ema for prev_ema in df['close'].iloc[-args.ema_period:])
+
+                    if ema_filter_passed and ema_distance_filter_passed and ema_n_candles_filter_passed:
                         signal_decision = 'SELL'
                         signal_reason = 'signal_passed_filters'
                     elif not ema_filter_passed:
                         signal_reason = 'ema_filter_failed'
+                    elif not ema_n_candles_filter_passed:
+                        signal_reason = 'ema_n_candles_filter_failed'
                     else:
                         signal_reason = 'ema_distance_filter_failed'
                 
