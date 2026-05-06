@@ -835,7 +835,7 @@ def main():
     parser.add_argument('--deviation',  type=int,   default=20,   help='Max price deviation (slippage) in points')
     parser.add_argument('--magic',      type=int,   default=int(time.time()),    help='Magic number for orders')
     parser.add_argument('--ema_period', type=int,   default=18,   help='EMA period for trend filter')
-    parser.add_argument('--ema_distance', type=float, default=0.02, help='Max percentage distance from EMA to allow trades (e.g., 0.02 for 0.02%%)')
+    parser.add_argument('--ema_distance', type=float, default=0.05, help='Max percentage distance from EMA to allow trades (e.g., 0.02 for 0.02%%)')
     parser.add_argument('--dry_run',    action='store_true', help='Prevent trades, log WOULD_EXECUTE instead')
     args = parser.parse_args()
     run(args)
