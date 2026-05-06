@@ -666,6 +666,79 @@ def run(args):
                 last_close = df['close'].iloc[-1]   # forming candle (live price)
                 ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
                 ema_distance_pct = ((last_close - ema_val) / ema_val) * 100
+
+                # Compute EMA series for trend analysis (last period)
+                ema_series = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator()
+                recent_ema = ema_series.iloc[-args.ema_period:]
+                ema_is_climbing = all(prev < nxt for prev, nxt in zip(recent_ema[:-1], recent_ema[1:]))
+                ema_is_falling = all(prev > nxt for prev, nxt in zip(recent_ema[:-1], recent_ema[1:]))
+
+                # Calculate ATR and volume for logging
+                atr_val = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
+                # Handle volume column - MT5 may use 'tick_volume' or 'volume'
+                volume_val = 0.0
+                if 'tick_volume' in df.columns:
+                    volume_val = df['tick_volume'].iloc[-1]
+                elif 'volume' in df.columns:
+                    volume_val = df['volume'].iloc[-1]
+                account_balance = mt5.account_info().balance
+                has_open_position = _state.ticket != 0
+
+                # Track consecutive signals
+                global _last_signal, _consecutive_signal_count
+                current_signal = None
+                signal_decision = 'HOLD'
+                signal_reason = 'no_signal'
+                ema_filter_passed = False
+                ema_distance_filter_passed = False
+                ema_n_candles_filter_passed = False
+                ema_trend_filter_passed = False
+
+                # Determine signal and filter status
+                if p_buy >= args.confidence:
+                    current_signal = 'BUY'
+                    ema_filter_passed = last_close > ema_val
+                    ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
+                    ema_trend_filter_passed = not ema_is_falling
+                    ema_n_candles_filter_passed = all(ema_val > prev_ema for prev_ema in df['close'].iloc[-args.ema_period:])
+
+                    if ema_filter_passed and ema_distance_filter_passed and ema_n_candles_filter_passed and ema_trend_filter_passed:
+                        signal_decision = 'BUY'
+                        signal_reason = 'signal_passed_filters'
+                    elif not ema_filter_passed:
+                        signal_reason = 'ema_filter_failed'
+                    elif not ema_trend_filter_passed:
+                        signal_reason = 'ema_falling_trend'
+                    elif not ema_n_candles_filter_passed:
+                        signal_reason = 'ema_n_candles_filter_failed'
+                    else:
+                        signal_reason = 'ema_distance_filter_failed'
+                elif p_sell >= args.confidence:
+                    current_signal = 'SELL'
+                    ema_filter_passed = last_close < ema_val
+                    ema_distance_filter_passed = abs(ema_distance_pct) <= args.ema_distance
+                    ema_trend_filter_passed = not ema_is_climbing
+                    ema_n_candles_filter_passed = all(ema_val < prev_ema for prev_ema in df['close'].iloc[-args.ema_period:])
+
+                    if ema_filter_passed and ema_distance_filter_passed and ema_n_candles_filter_passed and ema_trend_filter_passed:
+                        signal_decision = 'SELL'
+                        signal_reason = 'signal_passed_filters'
+                    elif not ema_filter_passed:
+                        signal_reason = 'ema_filter_failed'
+                    elif not ema_trend_filter_passed:
+                        signal_reason = 'ema_climbing_trend'
+                    elif not ema_n_candles_filter_passed:
+                        signal_reason = 'ema_n_candles_filter_failed'
+                    else:
+                        signal_reason = 'ema_distance_filter_failed'
+
+                # Update consecutive signal count
+                if current_signal == _last_signal:
+                    _consecutive_signal_count += 1
+                else:
+                    _consecutive_signal_count = 1 if current_signal is not None else 0
+                ema_val    = ta.trend.EMAIndicator(df['close'], window=args.ema_period).ema_indicator().iloc[-1]
+                ema_distance_pct = ((last_close - ema_val) / ema_val) * 100
                 
                 # Calculate ATR and volume for logging
                 atr_val = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=args.atr_period).average_true_range().iloc[-1]
@@ -678,8 +751,9 @@ def run(args):
                 account_balance = mt5.account_info().balance
                 has_open_position = _state.ticket != 0
                 
-                # Track consecutive signals
-                global _last_signal, _consecutive_signal_count
+
+                # Removed duplicate EMA filter block - using earlier logic
+
                 current_signal = None
                 signal_decision = 'HOLD'
                 signal_reason = 'no_signal'
