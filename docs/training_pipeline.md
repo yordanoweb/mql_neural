@@ -70,11 +70,24 @@ for each bar i:
 | Script | Features (n) | Groups |
 |---|---|---|
 | `train_adx_stoch_vol.py` | 16 | Price (2) + ADX (5) + Stochastic (4) + Volume (5) |
+| `train_onnx_from_csv.py` | 3 | ATR-normalized Price (2) + RSI (1) |
 
 ### Price (2): `feat_body`, `feat_range` — normalised by ATR
 ### ADX (5): `adx_strength`, `adx_di_signal`, `adx_di_sep`, `adx_momentum`, `adx_regime`
 ### Stochastic (4): `stoch_momentum`, `stoch_position`, `stoch_velocity`, `stoch_divergence`
 ### Volume (5): `vol_ratio`, `vol_momentum`, `vol_price_div`, `vol_percentile`, `vol_zscore`
+
+### `train_onnx_from_csv.py` feature/label contract
+- Features:
+  - `feat_body = (close - open) / ATR(atr_period)`
+  - `feat_range = (high - low) / ATR(atr_period)`
+  - `feat_rsi = RSI(rsi_period) / 100` (computed with `ta.momentum.RSIIndicator`)
+- Label:
+  - Binary next/forward direction controlled by `--forward` (default `1`)
+  - `target = 1` when `close[t + forward] > close[t]`, else `0`
+- Windowing:
+  - Flattened input shape `[None, window * 3]`
+  - Default `window=20` → input width `60`
 
 ## CLI Contract
 Every `train_*.py` must accept:
@@ -97,6 +110,22 @@ Every `train_*.py` must accept:
 ```
 Indicator period args: `--atr_period`, `--adx_period`, `--adx_min`, `--stoch_k`, `--stoch_d`, `--vol_window`
 RF-only args: `--n_iter`, `--jobs`
+
+### `train_onnx_from_csv.py` CLI (implemented)
+```
+--input       CSV file path (required)
+--output      ONNX output path (default: <input_stem>.onnx)
+--window      window size (default: 20)
+--forward     forward bars for target (default: 1)
+--rsi_period  RSI period (default: 14)
+--atr_period  ATR period (default: 14)
+--n_iter      RandomizedSearchCV iterations (default: 5)
+--cv_splits   TimeSeriesSplit folds (default: 2)
+--jobs        parallel jobs for RandomizedSearchCV (default: -1)
+--random_state random seed (default: 42)
+--opset       ONNX target opset (default: 12)
+--date_col --time_col --open_col --high_col --low_col --close_col --volume_col
+```
 
 ## ONNX Contract
 | Property | Value |
