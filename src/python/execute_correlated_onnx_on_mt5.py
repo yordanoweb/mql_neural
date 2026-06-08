@@ -29,10 +29,11 @@ from utils.sound import play_sound
 # ---------------------------------------------------------------------------
 # Paths & field definitions
 # ---------------------------------------------------------------------------
-_INFERENCE_LOG_FILE = os.path.join('log', 'inference_log.csv')     # written by upstream inference process
-_LOG_FILE           = os.path.join('log', 'correlated_trading_log.csv')
-_CORR_INF_LOG_FILE  = os.path.join('log', 'correlated_inference_log.csv')
-_CORR_STATE_LOG_FILE = os.path.join('log', 'correlation_state_log.csv')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_INFERENCE_LOG_FILE = os.path.join(BASE_DIR, 'log', 'inference_log.csv')     # written by upstream inference process
+_LOG_FILE           = os.path.join(BASE_DIR, 'log', 'correlated_trading_log.csv')
+_CORR_INF_LOG_FILE  = os.path.join(BASE_DIR, 'log', 'correlated_inference_log.csv')
+_CORR_STATE_LOG_FILE = os.path.join(BASE_DIR, 'log', 'correlation_state_log.csv')
 
 _LOG_FIELDS = [
     'timestamp', 'event', 'selected_symbol', 'direction',
@@ -42,7 +43,7 @@ _LOG_FIELDS = [
 _CORR_INF_FIELDS = [
     'timestamp', 'symbol', 'p_buy', 'p_sell', 'p_hold',
     'signal_decision', 'score', 'alignment', 'consecutive_count',
-    'atr_value', 'volume', 'close_price',
+    'atr_value', 'volume', 'close_price', 'exp',
 ]
 
 
@@ -131,6 +132,7 @@ def _log_inference(
                 'atr_value':        inf.atr_value,
                 'volume':           inf.volume,
                 'close_price':      inf.close_price,
+                'exp':              round(inf.p_buy - inf.p_sell, 5),
             })
 
 
@@ -195,6 +197,14 @@ def read_latest_inferences(symbols: list, max_age_sec: int = 30) -> Dict[str, La
         df = pd.read_csv(_INFERENCE_LOG_FILE)
         if df.empty:
             return {}
+
+        # Normalize column names: upstream scripts may use 'hold' instead of 'p_hold'
+        if 'hold' in df.columns and 'p_hold' not in df.columns:
+            df = df.rename(columns={'hold': 'p_hold'})
+        if 'buy' in df.columns and 'p_buy' not in df.columns:
+            df = df.rename(columns={'buy': 'p_buy'})
+        if 'sell' in df.columns and 'p_sell' not in df.columns:
+            df = df.rename(columns={'sell': 'p_sell'})
 
         df['timestamp'] = pd.to_datetime(df['timestamp'])
 
@@ -560,7 +570,8 @@ def main() -> None:
                     
                     print(
                         f"{c(Colors.GREEN, f'[{alignment}]')} {symbol}: {inf.signal_decision} "
-                        f"score={score:.4f}  consec={states[symbol].consecutive_count}"
+                        f"score={score:.4f} consec={states[symbol].consecutive_count} "
+                        f"P(buy)={inf.p_buy:.3f} P(sell)={inf.p_sell:.3f} P(hold)={inf.p_hold:.3f} Exp={inf.p_buy - inf.p_sell:.3f}"
                         + (" (already notified)" if already_notified else "")
                     )
                     
@@ -611,12 +622,14 @@ def main() -> None:
                     _log_correlation_state(inferences, scores, alignment, None, 0.0, 'SKIP', symbols)
                     
                     # Detailed logging of non-aligned state
-                    details = []
-                    for sym in symbols:
-                        if sym in inferences:
-                            inf = inferences[sym]
-                            details.append(f"{sym}:{inf.signal_decision}(s={scores[sym]:.3f})")
-                    print(f"{c(Colors.YELLOW, f'[{alignment}]')} {' | '.join(details)}")
+                details = []
+                for sym in symbols:
+                    if sym in inferences:
+                        inf = inferences[sym]
+                        details.append(
+                            f"{sym}: {inf.signal_decision} (buy={inf.p_buy:.3f}, sell={inf.p_sell:.3f}, hold={inf.p_hold:.3f})"
+                        )
+                print(f"{c(Colors.YELLOW, f'[{alignment}]')} {' | '.join(details)}")
 
                 time.sleep(args.interval)
 
