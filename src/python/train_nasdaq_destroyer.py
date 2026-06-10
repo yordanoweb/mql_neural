@@ -20,22 +20,22 @@ parser = argparse.ArgumentParser(description="Train ONNX model from CSV data wit
 parser.add_argument("--input_csv", type=str, required=True, help="Path to the input CSV file")
 parser.add_argument("--output_dir", type=str, default=".", help="Directory to save the ONNX model (default: current directory)")
 parser.add_argument("--rsi_period", type=int, default=14, help="Period for RSI calculation (default: 14)")
+parser.add_argument("--atr_period", type=int, default=14, help="Period for ATR calculation (default: 14)")
 parser.add_argument("--window", type=int, default=20, help="Window size (number of bars) for features")
 parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
-parser.add_argument("--min_profit_points", type=float, default=10.0, help="Minimum profit points for a positive target")
-parser.add_argument("--pip_unit", type=float, default=0.0001, help="Pip unit for a positive target (NASDAQ: 0.0001, SP500: 0.01)")
+parser.add_argument("--min_profit_atr", type=float, default=1.0, help="Minimum profit in ATR multiples for a positive target")
 
 args = parser.parse_args()
 
 csv_file = args.input_csv
 output_dir = args.output_dir
 rsi_period = args.rsi_period
+atr_period = args.atr_period
 window = args.window
 future = args.future
 n_iter = args.n_iter
-min_profit_points = args.min_profit_points
-pip_unit = args.pip_unit
+min_profit_atr = args.min_profit_atr
 
 if not os.path.exists(csv_file):
     print(colorize(f"Error: File '{csv_file}' not found", Colors.RED))
@@ -46,7 +46,7 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
 # Generate output filename: same basename as CSV but with .onnx extension, in output_dir
-output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_oc_hl_rsi_w{window}_f{future}_minp{min_profit_points}_rsi{rsi_period}_pip{pip_unit}.onnx")
+output_filename = os.path.join(output_dir, Path(csv_file).stem + f"_oc_hl_rsi_w{window}_f{future}_mina{min_profit_atr}_rsi{rsi_period}_atr{atr_period}.onnx")
 output_filename = output_filename.replace("_rates", "")
 
 print(colorize("--- FAST TRAINING ---", Colors.CYAN))
@@ -57,19 +57,25 @@ print(f"Output ONNX will be: {colorize(output_filename, Colors.YELLOW)}")
 df = pd.read_csv(csv_file)
 print(f"Rows loaded: {colorize(str(len(df)), Colors.GREEN)}")
 
-df['feat_body'] = (df['close'] - df['open']) / pip_unit
-df['feat_range'] = (df['high'] - df['low']) / pip_unit
+df['atr'] = ta.volatility.AverageTrueRange(df['high'], df['low'], df['close'], window=atr_period).average_true_range()
+atr_safe = df['atr'].replace(0, np.nan)
+
+df['feat_body'] = (df['close'] - df['open']) / atr_safe
+df['feat_range'] = (df['high'] - df['low']) / atr_safe
 df['feat_rsi'] = ta.momentum.RSIIndicator(df['close'], window=rsi_period).rsi() / 100.0
 
-# 2. GENERATE TARGET (Labeling based on future profit)
-print(f"Generating target with future={colorize(str(future), Colors.MAGENTA)} and min_profit_points={colorize(str(min_profit_points), Colors.MAGENTA)}...")
+# 2. GENERATE TARGET (Labeling based on future profit in ATR multiples)
+print(f"Generating target with future={colorize(str(future), Colors.MAGENTA)} and min_profit_atr={colorize(str(min_profit_atr), Colors.MAGENTA)}...")
 labels = np.zeros(len(df))
 for i in range(len(df) - future):
     entry_price = df['close'].iloc[i]
-    # Check if price reaches target profit point in the next 'future' candles
+    entry_atr = df['atr'].iloc[i]
+    if entry_atr == 0 or np.isnan(entry_atr):
+        continue
+    # Check if price reaches target ATR multiple in the next 'future' candles
     future_prices = df['high'].iloc[i+1 : i+future+1]
-    profit = (future_prices.max() - entry_price) / pip_unit
-    if profit >= min_profit_points:
+    profit_atr = (future_prices.max() - entry_price) / entry_atr
+    if profit_atr >= min_profit_atr:
         labels[i] = 1
 
 df['target'] = labels
