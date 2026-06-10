@@ -2,6 +2,9 @@
 *.ex5
 src/*.ex5
 
+.env
+
+
 # Common executable formats
 # Windows executables
 *.exe
@@ -104,3 +107,6 @@ data/
 csv/**
 
 *.html
+
+# Local environment file (keep ignored after wildcard negations)
+.env
