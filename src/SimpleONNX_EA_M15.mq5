@@ -39,7 +39,8 @@ double   g_close[];  // Close prices
 double   g_open[];   // Open prices
 double   g_high[];   // High prices
 double   g_low[];    // Low prices
-float    g_input_buffer[];  // Input buffer for inference 
+float    g_input_buffer[];  // Input buffer for inference
+string   pred_text = "";  // Prediction text for display
 
 int OnInit()
 {
@@ -182,7 +183,7 @@ void OnTimer()
    PerformInference();
    
    // Update display
-   string pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
+   pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nLogic: ", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"),
@@ -200,4 +201,6 @@ void PerformInference()
    g_confidence = (g_prediction == 1) ? output_probs[1] : output_probs[0];
 
    Print("Inference Result: Prediction = ", g_prediction, ", Confidence = ", DoubleToString(g_confidence*100, 2), "%");
+   Print("Prediction: ", pred_text);
+   Print("Probabilities: [", DoubleToString(output_probs[0]*100, 2), "%, ", DoubleToString(output_probs[1]*100, 2), "%]");
 }
