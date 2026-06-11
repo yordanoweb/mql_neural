@@ -99,7 +99,8 @@ void OnTick()
    BuildInputBuffer();
 
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
-   if(!PositionSelect(_Symbol) && g_valid_time && g_confidence >= InpMinConf)
+   bool no_open_pos = !PositionSelect(_Symbol);
+   if(no_open_pos && g_valid_time && g_confidence >= InpMinConf)
    {
       double sl_dist = g_current_atr * InpMultiplier;
       double tp_dist = sl_dist * 1.5;
