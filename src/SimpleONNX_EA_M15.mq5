@@ -44,8 +44,18 @@ string   pred_text = "";  // Prediction text for display
 
 int OnInit()
 {
-   // Load ONNX model directly from file
-   onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   // Check if we are in tester
+   if(!MQLInfoInteger(MQL_TESTER))
+   {
+      // The ONNX path must be hardcoded in "ExtModel" resource
+      // due to MQL5 file access restrictions in live environment.
+      // This is the only way to load ONNX for backtesting.
+      onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+   } else
+   {
+      // In live, we can load ONNX dynamically from InpModelFile.
+      onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
+   }
    
    if(onnx_handle == INVALID_HANDLE)
    {
