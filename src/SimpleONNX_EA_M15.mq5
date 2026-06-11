@@ -175,6 +175,8 @@ string GetTimeframeString(ENUM_TIMEFRAMES tf)
 
 void OnTimer()
 {
+   Print("\n--- Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
+
    PerformInference();
    
    // Update display
@@ -191,4 +193,6 @@ void PerformInference()
 
    g_prediction = output_label[0];
    g_confidence = (g_prediction == 1) ? output_probs[1] : output_probs[0];
+
+   Print("Inference Result: Prediction = ", g_prediction, ", Confidence = ", DoubleToString(g_confidence*100, 2), "%");
 }
