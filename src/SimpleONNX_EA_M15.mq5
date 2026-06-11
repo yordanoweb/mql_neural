@@ -22,12 +22,17 @@ input double     InpLot        = 1;
 input int        InpMagic      = 123456;       
 input int        InpATR        = 6;           
 input double     InpMultiplier = 1.5;          
+input group "Timer Settings"
+input int        InpTimerSeconds = 60;  // Timer interval in seconds          
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
 const int WINDOW_SIZE = 20; // For M15 we use window of 20
-const int FEATURES    = 3; 
+const int FEATURES    = 3;
+long     g_prediction = 0;  // Last inference prediction
+float    g_confidence = 0.0;  // Last inference confidence
+bool     g_valid_time = false;  // Last time filter result 
 
 int OnInit()
 {
@@ -51,17 +56,22 @@ int OnInit()
    OnnxSetOutputShape(onnx_handle, 1, out_shape_probs);
 
    m_trade.SetExpertMagicNumber(InpMagic);
+   EventSetTimer(InpTimerSeconds);  // Set timer to configured interval
    return(INIT_SUCCEEDED);
 }
 
-void OnDeinit(const int reason) { if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle); }
+void OnDeinit(const int reason) 
+{ 
+   EventKillTimer();  // Stop timer
+   if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle); 
+}
 
 void OnTick()
 {
    // 1. CORRECT TIME FILTER
    MqlDateTime dt;
    TimeCurrent(dt); 
-   bool valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+   g_valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
 
    // 2. CANDLE CONTROL
    static datetime last_bar = 0;
@@ -103,22 +113,23 @@ void OnTick()
       input_buffer[i * 3 + 1] = (float)((iHigh(_Symbol, _Period, mql_idx) - iLow(_Symbol, _Period, mql_idx)) / pip_unit);
       input_buffer[i * 3 + 2] = (float)(rsi_buffer[mql_idx] / 100.0);
    }
+   
+   // Store input buffer for OnTimer use
+   static float s_input_buffer[];
+   ArrayResize(s_input_buffer, ArraySize(input_buffer));
+   ArrayCopy(s_input_buffer, input_buffer);
+   
+   // Store data for OnTimer use
+   static double s_current_atr = 0;
+   s_current_atr = current_atr;
 
-   // 6. INFERENCE
-   long output_label[]; float output_probs[];
-   ArrayResize(output_label, 1); ArrayResize(output_probs, 2);
-   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, input_buffer, output_label, output_probs)) return;
-
-   long  prediction = output_label[0];
-   float confidence = (prediction == 1) ? output_probs[1] : output_probs[0];
-
-   // 7. EXECUTION WITH TIME FILTER
-   if(!PositionSelect(_Symbol) && valid_time && confidence >= InpMinConf)
+   // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
+   if(!PositionSelect(_Symbol) && g_valid_time && g_confidence >= InpMinConf)
    {
-      double sl_dist = current_atr * InpMultiplier;
+      double sl_dist = s_current_atr * InpMultiplier;
       double tp_dist = sl_dist * 1.5;
 
-      if((InpLogic == LOGIC_MIRROR && prediction == 1) || (InpLogic == LOGIC_NORMAL && prediction == 0))
+      if((InpLogic == LOGIC_MIRROR && g_prediction == 1) || (InpLogic == LOGIC_NORMAL && g_prediction == 0))
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI M15");
@@ -129,9 +140,6 @@ void OnTick()
          m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI M15");
       }
    }
-   
-   Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(confidence*100, 2), "%",
-           "\nTime: ", (valid_time ? "ACTIVE" : "RESTRICTED"));
 }
 
 string GetTimeframeString(ENUM_TIMEFRAMES tf)
@@ -147,4 +155,26 @@ string GetTimeframeString(ENUM_TIMEFRAMES tf)
       case PERIOD_D1: return "D1";
       default: return "Unknown TF";
    }
+}
+
+void OnTimer()
+{
+   PerformInference();
+   
+   // Update display
+   Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
+           "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"));
+}
+
+void PerformInference()
+{
+   // 6. INFERENCE
+   static float s_input_buffer[];
+   
+   long output_label[]; float output_probs[];
+   ArrayResize(output_label, 1); ArrayResize(output_probs, 2);
+   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, s_input_buffer, output_label, output_probs)) return;
+
+   g_prediction = output_label[0];
+   g_confidence = (g_prediction == 1) ? output_probs[1] : output_probs[0];
 }
