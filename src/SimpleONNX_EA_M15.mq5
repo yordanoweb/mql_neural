@@ -191,9 +191,13 @@ void OnTimer()
 {
    Print("\n--- Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
 
-   PerformInference();
-   
-   // Update display
+   PerformInference(); 
+   UpdateComment();
+}
+
+void UpdateComment()
+{
+   // This function can be called to update the comment display with latest info
    pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
