@@ -113,7 +113,7 @@ void OnTick()
    if(no_open_pos && g_valid_time && g_confidence >= InpMinConf)
    {
       double sl_dist = g_current_atr * InpMultiplier;
-      double tp_dist = sl_dist * 1.5;
+      double tp_dist = sl_dist;
 
       if((InpLogic == LOGIC_MIRROR && g_prediction == 1) || (InpLogic == LOGIC_NORMAL && g_prediction == 0))
       {
