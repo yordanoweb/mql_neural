@@ -91,3 +91,6 @@ tmp/**
 
 *.onnx
 *.csv
+
+data/*
+secrets.txt
