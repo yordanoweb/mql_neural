@@ -70,7 +70,9 @@ int OnInit()
 void OnDeinit(const int reason) 
 { 
    EventKillTimer();  // Stop timer
-   if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle); 
+   if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle);
+
+   Comment("");  // Clear comment on deinit
 }
 
 void OnTick()
@@ -180,8 +182,11 @@ void OnTimer()
    PerformInference();
    
    // Update display
+   string pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
-           "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"));
+           "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
+           "\nLogic: ", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"),
+           "\nPrediction: ", pred_text);
 }
 
 void PerformInference()
