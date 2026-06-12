@@ -251,6 +251,8 @@ int OnInit()
       return(INIT_PARAMETERS_INCORRECT);
    }
 
+   bool loaded_from_resource = false;
+
    // Check if we are in tester
    if(!MQLInfoInteger(MQL_TESTER))
    {
@@ -258,6 +260,7 @@ int OnInit()
       // due to MQL5 file access restrictions in live environment.
       // This is the only way to load ONNX for backtesting.
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
+      loaded_from_resource = true;
    } else
    {
       // In live, we can load ONNX dynamically from InpModelFile.
@@ -271,6 +274,8 @@ int OnInit()
       Print("Make sure the file is in: C:\\Program Files\\MetaTrader 5\\MQL5\\Files\\");
       return(INIT_FAILED);
    }
+
+   Print("ONNX loaded successfully: ", (loaded_from_resource ? "[RESOURCE] ExtModel" : InpModelFile));
 
    long input_shape[] = {1, InpWindow * FEATURES};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
