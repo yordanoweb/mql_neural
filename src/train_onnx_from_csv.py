@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
@@ -108,13 +109,18 @@ for i in range(window, len(df) - 1):
 
 X = np.array(X).astype(np.float32)
 y = np.array(y)
+class_counts = Counter(y.tolist())
+print(f"Target class distribution: {dict(class_counts)}")
+if len(class_counts) < 2:
+    raise ValueError(f"Training target has only one class: {dict(class_counts)}")
 
 # 3. FAST OPTIMIZATION
 print("Searching for efficient configuration (Random Search)...")
 param_dist = {
     'n_estimators': [100, 150, 200],
     'max_depth': [5, 8, 12],
-    'min_samples_leaf': [1, 5]
+    'min_samples_leaf': [1, 5],
+    'class_weight': [None, 'balanced', 'balanced_subsample']
 }
 
 tscv = TimeSeriesSplit(n_splits=args.n_splits)
@@ -124,13 +130,18 @@ search = RandomizedSearchCV(
     param_distributions=param_dist,
     n_iter=args.n_iter,
     cv=tscv,
-    scoring='accuracy',
+    scoring='balanced_accuracy',
     n_jobs=args.n_jobs
 )
 
 search.fit(X, y)
 model = search.best_estimator_
 print(f"Best configuration: {search.best_params_}")
+y_pred = model.predict(X)
+pred_counts = Counter(y_pred.tolist())
+print(f"Train prediction distribution: {dict(pred_counts)}")
+if len(pred_counts) < 2:
+    print("WARNING: Model predicts only one class on training windows.")
 
 # 4. EXPORT TO ONNX
 initial_type = [('float_input', FloatTensorType([None, window * len(features)]))]
@@ -160,11 +171,14 @@ metadata = {
     "training.records_after_dropna": int(len(df)),
     "training.samples_used": int(len(X)),
     "training.target": "close[t+1] > close[t]",
+    "training.target_class_distribution": dict(class_counts),
     "training.model_type": "RandomForestClassifier",
     "training.random_state": 42,
     "training.param_dist": param_dist,
     "training.best_params": search.best_params_,
     "training.best_cv_score": float(search.best_score_),
+    "training.scoring": "balanced_accuracy",
+    "training.train_prediction_distribution": dict(pred_counts),
     "training.cli_args": vars(args)
 }
 set_onnx_metadata(onx, metadata)
