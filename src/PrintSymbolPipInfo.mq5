@@ -21,4 +21,11 @@ void OnStart()
    Print("Tick Size: ", DoubleToString(tick_size, digits));
    Print("Tick Value: ", DoubleToString(tick_value, 6));
    Print("Rule: pip = point * 10 when digits are 3 or 5; otherwise pip = point");
+
+   Alert("PIP INFORMATION\nSymbol: ", symbol,
+         "\nDigits: ", digits,
+         "\nPoint: ", DoubleToString(point, digits),
+         "\nPip Unit: ", DoubleToString(pip_unit, digits),
+         "\nTick Size: ", DoubleToString(tick_size, digits),
+         "\nTick Value: ", DoubleToString(tick_value, 6));
 }
