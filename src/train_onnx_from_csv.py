@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
-import sys
+import argparse
 import os
-from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import RandomizedSearchCV, TimeSeriesSplit
 from skl2onnx import convert_sklearn
@@ -10,19 +9,35 @@ from skl2onnx.common.data_types import FloatTensorType
 from indicators import calculate_rsi  as rsi
 import onnx
 
-# --- CONFIGURATION ---
-if len(sys.argv) < 2:
-    print("Usage: python train_onnx_from_csv.py <csv_file>")
-    print("Example: python train_onnx_from_csv.py eurusd_m15_2024.csv")
-    sys.exit(1)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train RandomForest and export ONNX from OHLC CSV.")
+    parser.add_argument("--input-csv", required=True, help="Input CSV file path")
+    parser.add_argument("--output-filename", required=True, help="Output ONNX filename/path")
+    parser.add_argument("--window", type=int, default=20, help="Feature window size in bars (default: 20)")
+    parser.add_argument("--pip-unit", type=float, default=0.0001, help="Pip unit for body/range normalization (default: 0.0001)")
+    parser.add_argument("--rsi-period", type=int, default=14, help="RSI period (default: 14)")
+    parser.add_argument("--n-iter", type=int, default=5, help="RandomizedSearchCV iterations (default: 5)")
+    parser.add_argument("--n-splits", type=int, default=2, help="TimeSeriesSplit folds (default: 2)")
+    parser.add_argument("--n-jobs", type=int, default=-1, help="Parallel jobs for search (default: -1)")
+    return parser.parse_args()
 
-csv_file = sys.argv[1]
+args = parse_args()
+csv_file = args.input_csv
 if not os.path.exists(csv_file):
-    print(f"Error: File '{csv_file}' not found")
-    sys.exit(1)
+    raise FileNotFoundError(f"Input CSV not found: {csv_file}")
 
-# Generate output filename: same basename as CSV but with .onnx extension
-output_filename = Path(csv_file).stem + ".onnx"
+if args.window <= 0:
+    raise ValueError("--window must be greater than 0")
+if args.pip_unit <= 0:
+    raise ValueError("--pip-unit must be greater than 0")
+if args.rsi_period <= 0:
+    raise ValueError("--rsi-period must be greater than 0")
+if args.n_iter <= 0:
+    raise ValueError("--n-iter must be greater than 0")
+if args.n_splits < 2:
+    raise ValueError("--n-splits must be at least 2")
+
+output_filename = args.output_filename
 print(f"--- FAST TRAINING ---")
 print(f"Loading rates from: {csv_file}")
 print(f"Output ONNX will be: {output_filename}")
@@ -36,18 +51,16 @@ def calculate_rsi(series, period=14):
 df = pd.read_csv(csv_file)
 print(f"Records loaded: {len(df)}")
 
-# Infer pip unit from data (optional, or set based on symbol detection if available)
-# If symbol info is not available, we'll use a reasonable default
-pip_unit = 0.0001  # Default for most pairs; could be refined if symbol is known
+pip_unit = args.pip_unit
 
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
-df['feat_rsi'] = calculate_rsi(df['close'], 14) / 100.0
+df['feat_rsi'] = calculate_rsi(df['close'], args.rsi_period) / 100.0
 df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
 df.dropna(inplace=True)
 
-# 2. PREPARE WINDOWS (60 inputs)
-window = 20
+# 2. PREPARE WINDOWS
+window = args.window
 X, y = [], []
 features = ['feat_body', 'feat_range', 'feat_rsi']
 
@@ -59,7 +72,7 @@ for i in range(window, len(df) - 1):
 X = np.array(X).astype(np.float32)
 y = np.array(y)
 
-# 3. FAST OPTIMIZATION (Only 5 iterations)
+# 3. FAST OPTIMIZATION
 print("Searching for efficient configuration (Random Search)...")
 param_dist = {
     'n_estimators': [100, 150, 200],
@@ -67,24 +80,23 @@ param_dist = {
     'min_samples_leaf': [1, 5]
 }
 
-# TimeSeriesSplit with 2 folds for speed
-tscv = TimeSeriesSplit(n_splits=2)
+tscv = TimeSeriesSplit(n_splits=args.n_splits)
 
 search = RandomizedSearchCV(
     RandomForestClassifier(random_state=42),
     param_distributions=param_dist,
-    n_iter=5, # Only test 5 random combinations (very fast)
+    n_iter=args.n_iter,
     cv=tscv,
     scoring='accuracy',
-    n_jobs=-1
+    n_jobs=args.n_jobs
 )
 
 search.fit(X, y)
 model = search.best_estimator_
 print(f"Best configuration: {search.best_params_}")
 
-# 4. EXPORT WITH NAME BASED ON CSV
-initial_type = [('float_input', FloatTensorType([None, 60]))]
+# 4. EXPORT TO ONNX
+initial_type = [('float_input', FloatTensorType([None, window * len(features)]))]
 # Use target_opset=12 for MetaTrader 5 compatibility (MT5 supports opset 1-21, but lower is safer)
 onx = convert_sklearn(model, initial_types=initial_type, target_opset=12, options={type(model): {'zipmap': False}})
 
