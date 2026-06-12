@@ -11,25 +11,25 @@
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
-input group "AI Configuration"
+input group "======== AI Configuration ========"
 input string     InpModelFile  = "US100.cash_M15_20220311_20251230.onnx";  // Dynamic model filename
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
 input float      InpMinConf    = 0.62;         
 input int        InpStartHour  = 9;            
 input int        InpEndHour    = 18;           
 input int        InpWindow     = 20;           // Must match training --window
-input group "Risk Management"
+input group "======== Risk Management ========"
 input double     InpLot        = 1;          
 input int        InpMagic      = 123456;       
 input int        InpATR        = 6;           
 input double     InpMultiplier = 1.5;          
-input group "Entry Protection"
+input group "======== Entry Protection ========"
 input double     InpMinBodyATR        = 0.35;  // Min candle body / ATR on bar[1]
 input double     InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
 input double     InpMinBodyRatio      = 0.55;  // Min body/range ratio on bar[1]
 input double     InpMaxSpreadATRRatio = 0.15;  // Max spread / ATR allowed to enter
 input int        InpCooldownBars      = 2;     // Bars to wait after position close
-input group "Timer Settings"
+input group "======== Timer Settings ========"
 input int        InpTimerSeconds = 60;  // Timer interval in seconds          
 
 //--- GLOBAL VARIABLES
