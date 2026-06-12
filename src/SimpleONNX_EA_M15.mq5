@@ -424,11 +424,21 @@ void OnTimer()
    UpdateComment();
 }
 
+string GetConfidenceStrength(const float confidence)
+{
+   if(confidence < InpMinConf)
+      return "WEAK";
+   if(confidence < (InpMinConf + 0.10))
+      return "MEDIUM";
+   return "STRONG";
+}
+
 void UpdateComment()
 {
    // This function can be called to update the comment display with latest info
    pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
+           "\nConfidence Strength: ", GetConfidenceStrength(g_confidence),
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nLogic: ", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"),
            "\nWindow: ", InpWindow,
