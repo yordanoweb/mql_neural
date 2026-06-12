@@ -22,6 +22,12 @@ input double     InpLot        = 1;
 input int        InpMagic      = 123456;       
 input int        InpATR        = 6;           
 input double     InpMultiplier = 1.5;          
+input group "Entry Protection"
+input double     InpMinBodyATR        = 0.35;  // Min candle body / ATR on bar[1]
+input double     InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
+input double     InpMinBodyRatio      = 0.55;  // Min body/range ratio on bar[1]
+input double     InpMaxSpreadATRRatio = 0.15;  // Max spread / ATR allowed to enter
+input int        InpCooldownBars      = 2;     // Bars to wait after position close
 input group "Timer Settings"
 input int        InpTimerSeconds = 60;  // Timer interval in seconds          
 
@@ -41,6 +47,61 @@ double   g_high[];   // High prices
 double   g_low[];    // Low prices
 float    g_input_buffer[];  // Input buffer for inference
 string   pred_text = "";  // Prediction text for display
+datetime g_last_position_close_time = 0;
+bool     g_prev_position_open = false;
+
+void UpdatePositionState()
+{
+   bool has_position = PositionSelect(_Symbol);
+   if(g_prev_position_open && !has_position)
+      g_last_position_close_time = TimeCurrent();
+   g_prev_position_open = has_position;
+}
+
+bool IsCooldownFinished()
+{
+   if(InpCooldownBars <= 0 || g_last_position_close_time <= 0)
+      return true;
+
+   int bars_since_close = iBarShift(_Symbol, _Period, g_last_position_close_time, false);
+   if(bars_since_close < 0)
+      return false;
+
+   return (bars_since_close >= InpCooldownBars);
+}
+
+bool IsSpreadAcceptable()
+{
+   if(g_current_atr <= 0.0)
+      return false;
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   if(ask <= 0.0 || bid <= 0.0 || ask < bid)
+      return false;
+
+   double spread = ask - bid;
+   return (spread <= g_current_atr * InpMaxSpreadATRRatio);
+}
+
+bool HasStrongMovement()
+{
+   if(g_current_atr <= 0.0)
+      return false;
+
+   double body  = MathAbs(g_close[1] - g_open[1]);
+   double range = g_high[1] - g_low[1];
+   if(range <= 0.0)
+      return false;
+
+   double body_atr   = body / g_current_atr;
+   double range_atr  = range / g_current_atr;
+   double body_ratio = body / range;
+
+   return (body_atr >= InpMinBodyATR &&
+           range_atr >= InpMinRangeATR &&
+           body_ratio >= InpMinBodyRatio);
+}
 
 int OnInit()
 {
@@ -92,6 +153,7 @@ void OnTick()
    MqlDateTime dt;
    TimeCurrent(dt); 
    g_valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+   UpdatePositionState();
 
    // 2. CANDLE CONTROL
    static datetime last_bar = 0;
@@ -110,7 +172,10 @@ void OnTick()
 
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
-   if(no_open_pos && g_valid_time && g_confidence >= InpMinConf)
+   bool cooldown_ok = IsCooldownFinished();
+   bool spread_ok = IsSpreadAcceptable();
+   bool strong_move = HasStrongMovement();
+   if(no_open_pos && g_valid_time && g_confidence >= InpMinConf && cooldown_ok && spread_ok && strong_move)
    {
       double sl_dist = g_current_atr * InpMultiplier;
       double tp_dist = sl_dist;
