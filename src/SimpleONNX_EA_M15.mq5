@@ -70,8 +70,10 @@ bool IsCooldownFinished()
    return (bars_since_close >= InpCooldownBars);
 }
 
-bool IsSpreadAcceptable()
+bool IsSpreadAcceptable(double &spread, double &spread_atr)
 {
+   spread = 0.0;
+   spread_atr = 0.0;
    if(g_current_atr <= 0.0)
       return false;
 
@@ -80,12 +82,16 @@ bool IsSpreadAcceptable()
    if(ask <= 0.0 || bid <= 0.0 || ask < bid)
       return false;
 
-   double spread = ask - bid;
-   return (spread <= g_current_atr * InpMaxSpreadATRRatio);
+   spread = ask - bid;
+   spread_atr = spread / g_current_atr;
+   return (spread_atr <= InpMaxSpreadATRRatio);
 }
 
-bool HasStrongMovement()
+bool HasStrongMovement(double &body_atr, double &range_atr, double &body_ratio)
 {
+   body_atr = 0.0;
+   range_atr = 0.0;
+   body_ratio = 0.0;
    if(g_current_atr <= 0.0)
       return false;
 
@@ -94,13 +100,94 @@ bool HasStrongMovement()
    if(range <= 0.0)
       return false;
 
-   double body_atr   = body / g_current_atr;
-   double range_atr  = range / g_current_atr;
-   double body_ratio = body / range;
+   body_atr = body / g_current_atr;
+   range_atr = range / g_current_atr;
+   body_ratio = body / range;
 
    return (body_atr >= InpMinBodyATR &&
            range_atr >= InpMinRangeATR &&
            body_ratio >= InpMinBodyRatio);
+}
+
+string GetDealReasonText(const long reason)
+{
+   switch((ENUM_DEAL_REASON)reason)
+   {
+      case DEAL_REASON_SL:     return "STOP_LOSS";
+      case DEAL_REASON_TP:     return "TAKE_PROFIT";
+      case DEAL_REASON_SO:     return "STOP_OUT";
+      case DEAL_REASON_CLIENT: return "MANUAL_CLIENT";
+      case DEAL_REASON_MOBILE: return "MANUAL_MOBILE";
+      case DEAL_REASON_WEB:    return "MANUAL_WEB";
+      case DEAL_REASON_EXPERT: return "EXPERT";
+      default:                 return "OTHER";
+   }
+}
+
+void ReportEntryInfo(const string side,
+                     const double entry_price,
+                     const double sl_price,
+                     const double tp_price,
+                     const double sl_dist,
+                     const double tp_dist,
+                     const double spread,
+                     const double spread_atr,
+                     const double body_atr,
+                     const double range_atr,
+                     const double body_ratio,
+                     const bool time_ok,
+                     const bool cooldown_ok,
+                     const bool spread_ok,
+                     const bool strong_move_ok)
+{
+   Print("\n--- Entry Report at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
+   Print("Side: ", side, " | Symbol: ", _Symbol, " | TF: ", GetTimeframeString(_Period), " | Magic: ", InpMagic);
+   Print("Lot: ", DoubleToString(InpLot, 2), " | Entry: ", DoubleToString(entry_price, _Digits),
+         " | SL: ", DoubleToString(sl_price, _Digits), " | TP: ", DoubleToString(tp_price, _Digits));
+   Print("ATR: ", DoubleToString(g_current_atr, _Digits), " | SL_dist: ", DoubleToString(sl_dist, _Digits),
+         " | TP_dist: ", DoubleToString(tp_dist, _Digits), " | Spread: ", DoubleToString(spread, _Digits),
+         " | Spread/ATR: ", DoubleToString(spread_atr, 4));
+   Print("AI: prediction=", g_prediction, " confidence=", DoubleToString(g_confidence * 100.0, 2), "%",
+         " | logic=", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"));
+   Print("Protections: time_ok=", (time_ok ? "true" : "false"),
+         " cooldown_ok=", (cooldown_ok ? "true" : "false"),
+         " spread_ok=", (spread_ok ? "true" : "false"),
+         " strong_move_ok=", (strong_move_ok ? "true" : "false"));
+   Print("Strength: body_atr=", DoubleToString(body_atr, 4),
+         " range_atr=", DoubleToString(range_atr, 4),
+         " body_ratio=", DoubleToString(body_ratio, 4));
+}
+
+void ReportExitInfo(const ulong deal_ticket)
+{
+   if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))
+      return;
+
+   string symbol = HistoryDealGetString(deal_ticket, DEAL_SYMBOL);
+   long magic = HistoryDealGetInteger(deal_ticket, DEAL_MAGIC);
+   long entry = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+   if(symbol != _Symbol || magic != InpMagic || (entry != DEAL_ENTRY_OUT && entry != DEAL_ENTRY_OUT_BY))
+      return;
+
+   datetime deal_time = (datetime)HistoryDealGetInteger(deal_ticket, DEAL_TIME);
+   long reason = HistoryDealGetInteger(deal_ticket, DEAL_REASON);
+   long deal_type = HistoryDealGetInteger(deal_ticket, DEAL_TYPE);
+   double price = HistoryDealGetDouble(deal_ticket, DEAL_PRICE);
+   double volume = HistoryDealGetDouble(deal_ticket, DEAL_VOLUME);
+   double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
+   double commission = HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+   double swap = HistoryDealGetDouble(deal_ticket, DEAL_SWAP);
+   double net = profit + commission + swap;
+   string comment = HistoryDealGetString(deal_ticket, DEAL_COMMENT);
+   string side = (deal_type == DEAL_TYPE_BUY ? "BUY_DEAL" : (deal_type == DEAL_TYPE_SELL ? "SELL_DEAL" : "OTHER"));
+
+   Print("\n--- Exit Report at ", TimeToString(deal_time, TIME_SECONDS), " ---");
+   Print("Ticket: ", deal_ticket, " | Symbol: ", symbol, " | Magic: ", magic, " | Side: ", side);
+   Print("Reason: ", GetDealReasonText(reason), " | Price: ", DoubleToString(price, _Digits),
+         " | Volume: ", DoubleToString(volume, 2));
+   Print("P/L: ", DoubleToString(profit, 2), " | Commission: ", DoubleToString(commission, 2),
+         " | Swap: ", DoubleToString(swap, 2), " | Net: ", DoubleToString(net, 2));
+   Print("Comment: ", comment);
 }
 
 int OnInit()
@@ -173,8 +260,10 @@ void OnTick()
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
    bool cooldown_ok = IsCooldownFinished();
-   bool spread_ok = IsSpreadAcceptable();
-   bool strong_move = HasStrongMovement();
+   double spread = 0.0, spread_atr = 0.0;
+   bool spread_ok = IsSpreadAcceptable(spread, spread_atr);
+   double body_atr = 0.0, range_atr = 0.0, body_ratio = 0.0;
+   bool strong_move = HasStrongMovement(body_atr, range_atr, body_ratio);
    if(no_open_pos && g_valid_time && g_confidence >= InpMinConf && cooldown_ok && spread_ok && strong_move)
    {
       double sl_dist = g_current_atr * InpMultiplier;
@@ -183,14 +272,28 @@ void OnTick()
       if((InpLogic == LOGIC_MIRROR && g_prediction == 1) || (InpLogic == LOGIC_NORMAL && g_prediction == 0))
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         m_trade.Sell(InpLot, _Symbol, price, price + sl_dist, price - tp_dist, "AI SELL");
+         double sl = price + sl_dist;
+         double tp = price - tp_dist;
+         if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, "AI SELL"))
+            ReportEntryInfo("SELL", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
       }
       else
       {
          double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         m_trade.Buy(InpLot, _Symbol, price, price - sl_dist, price + tp_dist, "AI BUY");
+         double sl = price - sl_dist;
+         double tp = price + tp_dist;
+         if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
+            ReportEntryInfo("BUY", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
       }
    }
+}
+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+{
+   if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
+      ReportExitInfo(trans.deal);
 }
 
 void GetData()
