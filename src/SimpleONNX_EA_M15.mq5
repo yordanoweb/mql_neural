@@ -49,6 +49,10 @@ float    g_input_buffer[];  // Input buffer for inference
 string   pred_text = "";  // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
+double   g_last_body_atr = 0.0;
+double   g_last_range_atr = 0.0;
+double   g_last_body_ratio = 0.0;
+bool     g_last_strong_move = false;
 
 void UpdatePositionState()
 {
@@ -320,6 +324,10 @@ void OnTick()
    bool spread_ok = IsSpreadAcceptable(spread, spread_atr);
    double body_atr = 0.0, range_atr = 0.0, body_ratio = 0.0;
    bool strong_move = HasStrongMovement(body_atr, range_atr, body_ratio);
+   g_last_body_atr = body_atr;
+   g_last_range_atr = range_atr;
+   g_last_body_ratio = body_ratio;
+   g_last_strong_move = strong_move;
    if(no_open_pos && g_valid_time && confidence_ok && cooldown_ok && spread_ok && strong_move)
    {
       double sl_dist = g_current_atr * InpMultiplier;
@@ -424,24 +432,18 @@ void OnTimer()
    UpdateComment();
 }
 
-string GetConfidenceStrength(const float confidence)
-{
-   if(confidence < InpMinConf)
-      return "WEAK";
-   if(confidence < (InpMinConf + 0.10))
-      return "MEDIUM";
-   return "STRONG";
-}
-
 void UpdateComment()
 {
    // This function can be called to update the comment display with latest info
    pred_text = (g_prediction == 1 && InpLogic == LOGIC_MIRROR) || (g_prediction == 0 && InpLogic == LOGIC_NORMAL) ? "SELL" : "BUY";
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
-           "\nConfidence Strength: ", GetConfidenceStrength(g_confidence),
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nLogic: ", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"),
            "\nWindow: ", InpWindow,
+           "\nMove Strength: ", (g_last_strong_move ? "PASS" : "BLOCK"),
+           " | body_atr=", DoubleToString(g_last_body_atr, 3),
+           " range_atr=", DoubleToString(g_last_range_atr, 3),
+           " body_ratio=", DoubleToString(g_last_body_ratio, 3),
            "\nPrediction: ", pred_text);
 }
 
