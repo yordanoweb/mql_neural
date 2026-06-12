@@ -183,8 +183,12 @@ void ReportEntryBypassInfo(const bool no_open_pos,
    if(!no_open_pos)
       Print("Bypass reason: Existing position is open for symbol ", _Symbol);
    if(!time_ok)
-      Print("Bypass reason: Trading window blocked. Current hour=", TimeHour(TimeCurrent()),
+   {
+      MqlDateTime now_dt;
+      TimeCurrent(now_dt);
+      Print("Bypass reason: Trading window blocked. Current hour=", now_dt.hour,
             " | allowed=[", InpStartHour, ", ", InpEndHour, ")");
+   }
    if(!confidence_ok)
       Print("Bypass reason: Confidence below threshold. current=", DoubleToString(g_confidence, 4),
             " | required>=", DoubleToString(InpMinConf, 4));
