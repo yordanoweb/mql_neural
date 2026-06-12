@@ -158,6 +158,51 @@ void ReportEntryInfo(const string side,
          " body_ratio=", DoubleToString(body_ratio, 4));
 }
 
+void ReportEntryBypassInfo(const bool no_open_pos,
+                           const bool time_ok,
+                           const bool confidence_ok,
+                           const bool cooldown_ok,
+                           const bool spread_ok,
+                           const bool strong_move_ok,
+                           const double spread,
+                           const double spread_atr,
+                           const double body_atr,
+                           const double range_atr,
+                           const double body_ratio)
+{
+   Print("\n--- Entry Bypassed at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
+   Print("Symbol: ", _Symbol, " | TF: ", GetTimeframeString(_Period), " | Magic: ", InpMagic);
+   Print("AI: prediction=", g_prediction, " confidence=", DoubleToString(g_confidence * 100.0, 2), "% | min_conf=",
+         DoubleToString(InpMinConf * 100.0, 2), "%");
+   Print("Gate States: no_open_pos=", (no_open_pos ? "true" : "false"),
+         " time_ok=", (time_ok ? "true" : "false"),
+         " confidence_ok=", (confidence_ok ? "true" : "false"),
+         " cooldown_ok=", (cooldown_ok ? "true" : "false"),
+         " spread_ok=", (spread_ok ? "true" : "false"),
+         " strong_move_ok=", (strong_move_ok ? "true" : "false"));
+   if(!no_open_pos)
+      Print("Bypass reason: Existing position is open for symbol ", _Symbol);
+   if(!time_ok)
+      Print("Bypass reason: Trading window blocked. Current hour=", TimeHour(TimeCurrent()),
+            " | allowed=[", InpStartHour, ", ", InpEndHour, ")");
+   if(!confidence_ok)
+      Print("Bypass reason: Confidence below threshold. current=", DoubleToString(g_confidence, 4),
+            " | required>=", DoubleToString(InpMinConf, 4));
+   if(!cooldown_ok)
+      Print("Bypass reason: Cooldown active. Required bars=", InpCooldownBars,
+            " | last_close_time=", TimeToString(g_last_position_close_time, TIME_SECONDS));
+   if(!spread_ok)
+      Print("Bypass reason: Spread filter blocked. spread=", DoubleToString(spread, _Digits),
+            " spread_atr=", DoubleToString(spread_atr, 4),
+            " | max_spread_atr=", DoubleToString(InpMaxSpreadATRRatio, 4));
+   if(!strong_move_ok)
+      Print("Bypass reason: Movement strength below thresholds. body_atr=", DoubleToString(body_atr, 4),
+            " range_atr=", DoubleToString(range_atr, 4),
+            " body_ratio=", DoubleToString(body_ratio, 4),
+            " | mins=[", DoubleToString(InpMinBodyATR, 4), ", ",
+            DoubleToString(InpMinRangeATR, 4), ", ", DoubleToString(InpMinBodyRatio, 4), "]");
+}
+
 void ReportExitInfo(const ulong deal_ticket)
 {
    if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))
@@ -259,12 +304,13 @@ void OnTick()
 
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
+   bool confidence_ok = (g_confidence >= InpMinConf);
    bool cooldown_ok = IsCooldownFinished();
    double spread = 0.0, spread_atr = 0.0;
    bool spread_ok = IsSpreadAcceptable(spread, spread_atr);
    double body_atr = 0.0, range_atr = 0.0, body_ratio = 0.0;
    bool strong_move = HasStrongMovement(body_atr, range_atr, body_ratio);
-   if(no_open_pos && g_valid_time && g_confidence >= InpMinConf && cooldown_ok && spread_ok && strong_move)
+   if(no_open_pos && g_valid_time && confidence_ok && cooldown_ok && spread_ok && strong_move)
    {
       double sl_dist = g_current_atr * InpMultiplier;
       double tp_dist = sl_dist;
@@ -285,6 +331,11 @@ void OnTick()
          if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
             ReportEntryInfo("BUY", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
       }
+   }
+   else
+   {
+      ReportEntryBypassInfo(no_open_pos, g_valid_time, confidence_ok, cooldown_ok, spread_ok, strong_move,
+                            spread, spread_atr, body_atr, range_atr, body_ratio);
    }
 }
 
