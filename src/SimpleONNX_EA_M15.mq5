@@ -17,6 +17,7 @@ input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
 input float      InpMinConf    = 0.62;         
 input int        InpStartHour  = 9;            
 input int        InpEndHour    = 18;           
+input int        InpWindow     = 20;           // Must match training --window
 input group "Risk Management"
 input double     InpLot        = 1;          
 input int        InpMagic      = 123456;       
@@ -34,12 +35,11 @@ input int        InpTimerSeconds = 60;  // Timer interval in seconds
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
 CTrade   m_trade;
-const int WINDOW_SIZE = 20; // For M15 we use window of 20
 const int FEATURES    = 3;
 long     g_prediction = 0;  // Last inference prediction
 float    g_confidence = 0.0;  // Last inference confidence
 bool     g_valid_time = false;  // Last time filter result
-double   g_rsi_buffer[20];  // RSI values
+double   g_rsi_buffer[];  // RSI values
 double   g_current_atr = 0;  // Current ATR value
 double   g_close[];  // Close prices
 double   g_open[];   // Open prices
@@ -241,6 +241,12 @@ void ReportExitInfo(const ulong deal_ticket)
 
 int OnInit()
 {
+   if(InpWindow < 2)
+   {
+      Print("ERROR: InpWindow must be >= 2. Current value: ", InpWindow);
+      return(INIT_PARAMETERS_INCORRECT);
+   }
+
    // Check if we are in tester
    if(!MQLInfoInteger(MQL_TESTER))
    {
@@ -262,7 +268,7 @@ int OnInit()
       return(INIT_FAILED);
    }
 
-   long input_shape[] = {1, 60}; // 20 candles * 3 features
+   long input_shape[] = {1, InpWindow * FEATURES};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
 
    long out_shape_label[] = {1};
@@ -357,11 +363,11 @@ void GetData()
    ArraySetAsSeries(g_close, true); ArraySetAsSeries(g_open, true);
    ArraySetAsSeries(g_high, true);  ArraySetAsSeries(g_low, true);
 
-   if(CopyClose(_Symbol, _Period, 0, WINDOW_SIZE + 15, g_close) < WINDOW_SIZE + 15 ||
-      CopyOpen(_Symbol, _Period, 0, WINDOW_SIZE, g_open) < WINDOW_SIZE) return;
+   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15 ||
+      CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow) return;
    
-   CopyHigh(_Symbol, _Period, 0, WINDOW_SIZE, g_high);
-   CopyLow(_Symbol, _Period, 0, WINDOW_SIZE, g_low);
+   CopyHigh(_Symbol, _Period, 0, InpWindow, g_high);
+   CopyLow(_Symbol, _Period, 0, InpWindow, g_low);
 }
 
 void GetIndicators()
@@ -369,7 +375,7 @@ void GetIndicators()
    // 4. INDICATORS - Get RSI and ATR values
    int rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
    ArraySetAsSeries(g_rsi_buffer, true);
-   CopyBuffer(rsi_handle, 0, 0, WINDOW_SIZE, g_rsi_buffer);
+   CopyBuffer(rsi_handle, 0, 0, InpWindow, g_rsi_buffer);
 
    int atr_handle = iATR(_Symbol, _Period, InpATR);
    double atr_buffer[];
@@ -381,14 +387,14 @@ void GetIndicators()
 void BuildInputBuffer()
 {
    // 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
-   ArrayResize(g_input_buffer, WINDOW_SIZE * FEATURES);
+   ArrayResize(g_input_buffer, InpWindow * FEATURES);
    
    // _Digits is the correct variable. If 5 or 3 decimals, we adjust to pips (x10).
    double pip_unit = _Point * (_Digits == 5 || _Digits == 3 ? 10 : 1);
 
-   for(int i=0; i < WINDOW_SIZE; i++)
+   for(int i=0; i < InpWindow; i++)
    {
-      int mql_idx = WINDOW_SIZE - 1 - i;
+      int mql_idx = InpWindow - 1 - i;
       g_input_buffer[i * 3 + 0] = (float)((g_close[mql_idx] - g_open[mql_idx]) / pip_unit);
       g_input_buffer[i * 3 + 1] = (float)((g_high[mql_idx] - g_low[mql_idx]) / pip_unit);
       g_input_buffer[i * 3 + 2] = (float)(g_rsi_buffer[mql_idx] / 100.0);
@@ -425,6 +431,7 @@ void UpdateComment()
    Comment("\n\n\nAI " + GetTimeframeString(_Period) + " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nLogic: ", (InpLogic == LOGIC_MIRROR ? "MIRROR" : "NORMAL"),
+           "\nWindow: ", InpWindow,
            "\nPrediction: ", pred_text);
 }
 
