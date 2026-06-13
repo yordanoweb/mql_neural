@@ -14,6 +14,17 @@ enum ADX_SIGNAL_STRENGTH { ADX_SIGNAL_NONE, ADX_SIGNAL_STRONG, ADX_SIGNAL_WEAK }
 enum ADX_SIGNAL_SIDE { ADX_SIDE_NONE, ADX_SIDE_BUY, ADX_SIDE_SELL };
 
 //--- INPUTS
+input group "General"
+
+input group "Stochastic"
+input int        InpKPeriod    = 5;
+input int        InpDPeriod    = 3;
+input int        InpSlowing    = 3;
+
+input group "ADX"
+input int        InpADXPeriod  = 8;
+input double     InpADXLevel   = 25;
+
 input group "Risk"
 input double     InpLot        = 1;
 input int        InpMagic      = 8812345688;
@@ -73,10 +84,10 @@ STOCH_SIGNAL GetStochasticSignal()
   {
    STOCH_SIGNAL stoch_signal = SIGNAL_NONE;
 
-   float stoch_k_1 = GetStochK(5, 3, 3, 1);
-   float stoch_d_1 = GetStochD(5, 3, 3, 1);
-   float stoch_k_2 = GetStochK(5, 3, 3, 2);
-   float stoch_d_2 = GetStochD(5, 3, 3, 2);
+   float stoch_k_1 = GetStochK(InpKPeriod, InpDPeriod, InpSlowing, 1);
+   float stoch_d_1 = GetStochD(InpKPeriod, InpDPeriod, InpSlowing, 1);
+   float stoch_k_2 = GetStochK(InpKPeriod, InpDPeriod, InpSlowing, 2);
+   float stoch_d_2 = GetStochD(InpKPeriod, InpDPeriod, InpSlowing, 2);
 
    if(stoch_k_2 < stoch_d_2 && stoch_k_1 > stoch_d_1)
      {
@@ -97,12 +108,12 @@ STOCH_SIGNAL GetStochasticSignal()
 
 ADX_SIGNAL_STRENGTH GetADXSignalStrength()
   {
-   float adx_value = GetADX(8, 1);
-   if(adx_value > 25)
+   float adx_value = GetADX(InpADXPeriod, 1);
+   if(adx_value > InpADXLevel)
      {
       return ADX_SIGNAL_STRONG;
      }
-   else if(adx_value < 25)
+   else if(adx_value < InpADXLevel)
      {
       return ADX_SIGNAL_WEAK;
      }
@@ -114,8 +125,8 @@ ADX_SIGNAL_STRENGTH GetADXSignalStrength()
 
 ADX_SIGNAL_SIDE GetADXSignalSide()
   {
-   float di_plus = GetDIPlus(8, 1);
-   float di_minus = GetDIMinus(8, 1);
+   float di_plus = GetDIPlus(InpADXPeriod, 1);
+   float di_minus = GetDIMinus(InpADXPeriod, 1);
 
    if(di_plus > di_minus)
      {
