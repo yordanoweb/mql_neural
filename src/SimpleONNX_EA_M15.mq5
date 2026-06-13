@@ -340,19 +340,27 @@ void OnTick()
 
       if((InpLogic == LOGIC_MIRROR && g_prediction == 1) || (InpLogic == LOGIC_NORMAL && g_prediction == 0))
       {
-         double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         double sl = price + sl_dist;
-         double tp = price - tp_dist;
-         if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, "AI SELL"))
-            ReportEntryInfo("SELL", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
+         // SELL - Check if previous candle is bearish
+         if(g_close[1] < g_open[1])
+         {
+            double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+            double sl = price + sl_dist;
+            double tp = price - tp_dist;
+            if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, "AI SELL"))
+               ReportEntryInfo("SELL", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
+         }
       }
       else
       {
-         double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         double sl = price - sl_dist;
-         double tp = price + tp_dist;
-         if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
-            ReportEntryInfo("BUY", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
+         // BUY - Check if previous candle is bullish
+         if(g_close[1] > g_open[1])
+         {
+            double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+            double sl = price - sl_dist;
+            double tp = price + tp_dist;
+            if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
+               ReportEntryInfo("BUY", price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio, g_valid_time, cooldown_ok, spread_ok, strong_move);
+         }
       }
    }
    else
