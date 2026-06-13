@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\US100.cash_M15_20220311_20251230.onnx" as uchar ExtModel[];
+#resource "\\Files\\US100_M5_202606121518.onnx" as uchar ExtModel[];
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
