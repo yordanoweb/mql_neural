@@ -198,22 +198,22 @@ void PlaceOrder(ENUM_ORDER_TYPE order_type, double atr)
    if(HasOpenPosition()) return;
    if(atr <= 0) return;
 
-   double spread       = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) * _Point;
-   double atr_distance = atr * InpMultiplier;
+   double risk_distance   = atr * InpMultiplier;
+   double reward_distance = risk_distance * 1.5;
    double price, sl, tp;
 
    if(order_type == ORDER_TYPE_BUY)
      {
       price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      sl = price - atr_distance - spread;
-      tp = price + atr_distance;
+      sl = price - risk_distance;
+      tp = price + reward_distance;
       g_trade.Buy(InpLot, _Symbol, price, sl, tp, "NSDQ_PA_BREAKOUT");
      }
    else if(order_type == ORDER_TYPE_SELL)
      {
       price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      sl = price + atr_distance + spread;
-      tp = price - atr_distance;
+      sl = price + risk_distance;
+      tp = price - reward_distance;
       g_trade.Sell(InpLot, _Symbol, price, sl, tp, "NSDQ_PA_BREAKOUT");
      }
   }
