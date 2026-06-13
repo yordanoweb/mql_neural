@@ -544,14 +544,15 @@ int EvaluateSetup()
       return SIGNAL_NONE;
 
    // We need at least 2 candles after the opening range candle to evaluate
-   // (test candle + follow candle). Determine how many candles have closed
-   // since the range candle.
-   // Range candle is at InpRangeCandleShift. Candles after it are at
-   // shifts InpRangeCandleShift-1, InpRangeCandleShift-2, ... down to 1 (last closed).
-   int availableAfterRange = InpRangeCandleShift - 1; // shift of the most recent candle after the range candle... 
-   // availableAfterRange counts how many bars have closed after the range candle:
-   // if InpRangeCandleShift == 1, the range candle IS the last closed bar -> 0 candles after it yet.
-   int candlesAfterRange = InpRangeCandleShift - 1;
+   // (test candle + follow candle). Determine how many M15 candles have
+   // closed since the range candle by counting bars using the stored
+   // g_rangeCandleTime (the range candle's open time).
+   if(g_rangeCandleTime <= 0)
+      return SIGNAL_NONE;
+
+   int candlesAfterRange = Bars(_Symbol, PERIOD_M15, g_rangeCandleTime, TimeCurrent()) - 1;
+   if(candlesAfterRange < 0)
+      candlesAfterRange = 0;
 
    if(candlesAfterRange < 2)
       return SIGNAL_NONE; // need at least a test candle and a follow candle
