@@ -47,10 +47,120 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
   {
-    if(IsNewCandle())
+    if(!IsNewCandle())
       {
-       
+       return;
       }
+  }
+
+float GetADX(int period, int shift = 0)
+  {
+   int adx_handle = 0, copied = 0;
+   double adx_b[];
+   
+   adx_handle = iADX(_Symbol, _Period, period);
+   if(adx_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create ADX indicator");
+      return 0;
+     }
+   
+   copied = CopyBuffer(adx_handle, 0, 0, 1, adx_b);
+   if(copied != 1)
+     {
+      Print("[ERROR] CopyBuffer ADX failed");
+      return 0;
+     }
+   
+   return adx_b[0];
+  }
+
+float GetDIPlus(int period, int shift = 0)
+  {
+   int adx_handle = 0, copied = 0;
+   double di_b[];
+   
+   adx_handle = iADX(_Symbol, _Period, period);
+   if(adx_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create ADX indicator");
+      return 0;
+     }
+   
+   copied = CopyBuffer(adx_handle, 1, 0, 1, di_b);
+   if(copied != 1)
+     {
+      Print("[ERROR] CopyBuffer DI+ failed");
+      return 0;
+     }
+   
+   return di_b[0];
+  }
+
+float GetDIMinus(int period, int shift = 0)
+  {
+   int adx_handle = 0, copied = 0;
+   double di_b[];
+   
+   adx_handle = iADX(_Symbol, _Period, period);
+   if(adx_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create ADX indicator");
+      return 0;
+     }
+   
+   copied = CopyBuffer(adx_handle, 2, 0, 1, di_b);
+   if(copied != 1)
+     {
+      Print("[ERROR] CopyBuffer DI- failed");
+      return 0;
+     }
+   
+   return di_b[0];
+  }
+
+float GetStochK(int k_period, int d_period = 3, int slowing = 3, int shift = 0)
+  {
+   int stoch_handle = 0, copied = 0;
+   double stoch_b[];
+   
+   stoch_handle = iStochastic(_Symbol, _Period, k_period, d_period, slowing, MODE_SMA, STO_LOWHIGH);
+   if(stoch_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create Stochastic indicator");
+      return 0;
+     }
+   
+   copied = CopyBuffer(stoch_handle, 0, 0, 1, stoch_b);
+   if(copied != 1)
+     {
+      Print("[ERROR] CopyBuffer Stochastic K failed");
+      return 0;
+     }
+   
+   return stoch_b[0];
+  }
+
+float GetStochD(int k_period, int d_period = 3, int slowing = 3, int shift = 0)
+  {
+   int stoch_handle = 0, copied = 0;
+   double stoch_d[];
+   
+   stoch_handle = iStochastic(_Symbol, _Period, k_period, d_period, slowing, MODE_SMA, STO_LOWHIGH);
+   if(stoch_handle == INVALID_HANDLE)
+     {
+      Print("[ERROR] Cannot create Stochastic indicator");
+      return 0;
+     }
+   
+   copied = CopyBuffer(stoch_handle, 1, 0, 1, stoch_d);
+   if(copied != 1)
+     {
+      Print("[ERROR] CopyBuffer Stochastic D failed");
+      return 0;
+     }
+   
+   return stoch_d[0];
   }
 
 bool IsNewCandle()
