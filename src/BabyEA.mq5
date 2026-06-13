@@ -1,274 +1,173 @@
 //+------------------------------------------------------------------+
-//|                                              SimpleONNX_EA.mq5   |
+//|                                         Relaxed_M15_Trend_EA.mq5 |
 //+------------------------------------------------------------------+
 #property strict
 
 #include <Trade\Trade.mqh>
 
 //--- ENUMERATIONS
-enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
-
 enum STOCH_SIGNAL { SIGNAL_NONE, SIGNAL_BUY, SIGNAL_SELL };
 
-enum ADX_SIGNAL_STRENGTH { ADX_SIGNAL_NONE, ADX_SIGNAL_STRONG, ADX_SIGNAL_WEAK };
-enum ADX_SIGNAL_SIDE { ADX_SIDE_NONE, ADX_SIDE_BUY, ADX_SIDE_SELL };
-
 //--- INPUTS
-input group "General"
+input group "Stochastic (M15 Swing Settings)"
+input int        InpKPeriod      = 14;    // Increased for macro swing tracking
+input int        InpDPeriod      = 3;
+input int        InpSlowing      = 3;
+input double     InpStochBuyZone = 45.0;  // Relaxed: Allow buy crosses in lower half
+input double     InpStochSellZone= 55.0;  // Relaxed: Allow sell crosses in upper half
 
-input group "Stochastic"
-input int        InpKPeriod    = 5;
-input int        InpDPeriod    = 3;
-input int        InpSlowing    = 3;
+input group "ADX (M15 Trend Settings)"
+input int        InpADXPeriod    = 14;    // Standard smoothing for M15+
+input double     InpADXLevel     = 20.0;  // Relaxed: Catch trends earlier
 
-input group "ADX"
-input int        InpADXPeriod  = 8;
-input double     InpADXLevel   = 25;
-
-input group "Risk"
-input double     InpLot        = 1;
-input int        InpMagic      = 8812345688;
-input int        InpATR        = 6;
-input double     InpMultiplier = 1.1;
+input group "Risk & Volatility"
+input double     InpLot          = 1.0;
+input ulong      InpMagic        = 8812345688;
+input int        InpATR          = 14;    // Smooth volatility tracking
+input double     InpMultiplier   = 1.5;
 
 //--- GLOBAL VARIABLES
-double session_start_balance = AccountInfoDouble(ACCOUNT_BALANCE);
 string program_name = MQLInfoString(MQL_PROGRAM_NAME);
 
-//+------------------------------------------------------------------+
-//|                                                                  |
+//--- INDICATOR HANDLES
+int g_atr_handle   = INVALID_HANDLE;
+int g_adx_handle   = INVALID_HANDLE;
+int g_stoch_handle = INVALID_HANDLE;
+
+//--- TRADE OBJECT
+CTrade g_trade;
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
+   g_trade.SetExpertMagicNumber(InpMagic);
+   g_trade.SetDeviationInPoints(10);
+
+   g_atr_handle = iATR(_Symbol, _Period, InpATR);
+   if(g_atr_handle == INVALID_HANDLE)
+     { Print("[ERROR] Cannot create ATR indicator"); return(INIT_FAILED); }
+
+   g_adx_handle = iADX(_Symbol, _Period, InpADXPeriod);
+   if(g_adx_handle == INVALID_HANDLE)
+     { Print("[ERROR] Cannot create ADX indicator"); return(INIT_FAILED); }
+
+   g_stoch_handle = iStochastic(_Symbol, _Period, InpKPeriod, InpDPeriod, InpSlowing, MODE_SMA, STO_LOWHIGH);
+   if(g_stoch_handle == INVALID_HANDLE)
+     { Print("[ERROR] Cannot create Stochastic indicator"); return(INIT_FAILED); }
+
    return(INIT_SUCCEEDED);
   }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
    Comment("");
+   if(g_atr_handle   != INVALID_HANDLE) IndicatorRelease(g_atr_handle);
+   if(g_adx_handle   != INVALID_HANDLE) IndicatorRelease(g_adx_handle);
+   if(g_stoch_handle != INVALID_HANDLE) IndicatorRelease(g_stoch_handle);
   }
 
-//+------------------------------------------------------------------+
-//|                                                                  |
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   if(!IsNewCandle())
-     {
-      return;
-     }
+   if(!IsNewCandle()) return;
 
-   STOCH_SIGNAL stoch_signal = GetStochasticSignal();
-   ADX_SIGNAL_STRENGTH adx_strength = GetADXSignalStrength();
-   ADX_SIGNAL_SIDE adx_side = GetADXSignalSide();
+   // Dynamic arrays
+   double stoch_k[], stoch_d[], adx_val[], di_plus[], di_minus[], atr_val[];
 
-   if(stoch_signal == SIGNAL_BUY && adx_strength == ADX_SIGNAL_STRONG && adx_side == ADX_SIDE_BUY)
+   // Set TimeSeries indexing: [0] is Bar 1 (closed), [1] is Bar 2
+   ArraySetAsSeries(stoch_k, true);
+   ArraySetAsSeries(stoch_d, true);
+   ArraySetAsSeries(adx_val, true);
+   ArraySetAsSeries(di_plus, true);
+   ArraySetAsSeries(di_minus, true);
+   ArraySetAsSeries(atr_val, true);
+
+   // Fetch indicator data
+   if(CopyBuffer(g_stoch_handle, 0, 1, 3, stoch_k)  != 3) { Print("[WARN] Stoch K not ready");  return; }
+   if(CopyBuffer(g_stoch_handle, 1, 1, 3, stoch_d)  != 3) { Print("[WARN] Stoch D not ready");  return; }
+   if(CopyBuffer(g_adx_handle,   0, 1, 3, adx_val)  != 3) { Print("[WARN] ADX Main not ready"); return; }
+   if(CopyBuffer(g_adx_handle,   1, 1, 3, di_plus)  != 3) { Print("[WARN] DI+ not ready");       return; }
+   if(CopyBuffer(g_adx_handle,   2, 1, 3, di_minus) != 3) { Print("[WARN] DI- not ready");       return; }
+   if(CopyBuffer(g_atr_handle,   0, 1, 1, atr_val)  != 1) { Print("[WARN] ATR not ready");       return; }
+
+   // Map variables to human-readable format
+   double k1 = stoch_k[0];  // Bar 1
+   double d1 = stoch_d[0];
+   double k2 = stoch_k[1];  // Bar 2
+   double d2 = stoch_d[1];
+
+   double adx1 = adx_val[0]; // Bar 1
+   double adx2 = adx_val[1]; // Bar 2
+   
+   double dip1 = di_plus[0];
+   double dim1 = di_minus[0];
+   double atr  = atr_val[0];
+
+   // 1. Stochastic Crossover with Relaxed Pullback Filtering
+   STOCH_SIGNAL signal = SIGNAL_NONE;
+   if(k2 <= d2 && k1 > d1 && k1 <= InpStochBuyZone)   signal = SIGNAL_BUY;
+   if(k2 >= d2 && k1 < d1 && k1 >= InpStochSellZone)  signal = SIGNAL_SELL;
+
+   // 2. Optimized ADX/DMI Environment Rules
+   bool adx_active = adx1 > InpADXLevel;
+   bool adx_rising = adx1 > adx2;
+   bool trend_up   = dip1 > dim1;
+   bool trend_down = dim1 > dip1;
+
+   // 3. Trade Routing Matrix
+   if(signal == SIGNAL_BUY && adx_active && adx_rising && trend_up)
      {
-      //--- Place buy order
-      Print("Placing BUY order");
+      PrintFormat(">>> M15 Trend BUY Triggered. ADX: %.2f, Stoch K: %.2f", adx1, k1);
+      PlaceOrder(ORDER_TYPE_BUY, atr);
      }
-   else if(stoch_signal == SIGNAL_SELL && adx_strength == ADX_SIGNAL_STRONG && adx_side == ADX_SIDE_SELL)
+   else if(signal == SIGNAL_SELL && adx_active && adx_rising && trend_down)
      {
-      //--- Place sell order
-      Print("Placing SELL order");
+      PrintFormat(">>> M15 Trend SELL Triggered. ADX: %.2f, Stoch K: %.2f", adx1, k1);
+      PlaceOrder(ORDER_TYPE_SELL, atr);
      }
   }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-STOCH_SIGNAL GetStochasticSignal()
+bool HasOpenPosition()
   {
-   STOCH_SIGNAL stoch_signal = SIGNAL_NONE;
-
-   float stoch_k_1 = GetStochK(InpKPeriod, InpDPeriod, InpSlowing, 1);
-   float stoch_d_1 = GetStochD(InpKPeriod, InpDPeriod, InpSlowing, 1);
-   float stoch_k_2 = GetStochK(InpKPeriod, InpDPeriod, InpSlowing, 2);
-   float stoch_d_2 = GetStochD(InpKPeriod, InpDPeriod, InpSlowing, 2);
-
-   if(stoch_k_2 < stoch_d_2 && stoch_k_1 > stoch_d_1)
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
-      //--- Buy signal
-      stoch_signal = SIGNAL_BUY;
-      Print("Buy signal detected");
+      if(PositionGetTicket(i) == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL)   == _Symbol &&
+         PositionGetInteger(POSITION_MAGIC)   == (long)InpMagic)
+         return true;
      }
-
-   if(stoch_k_2 > stoch_d_2 && stoch_k_1 < stoch_d_1)
-     {
-      //--- Sell signal
-      stoch_signal = SIGNAL_SELL;
-      Print("Sell signal detected");
-     }
-
-   return stoch_signal;
+   return false;
   }
 
-ADX_SIGNAL_STRENGTH GetADXSignalStrength()
+//+------------------------------------------------------------------+
+void PlaceOrder(ENUM_ORDER_TYPE order_type, double atr)
   {
-   float adx_value = GetADX(InpADXPeriod, 1);
-   if(adx_value > InpADXLevel)
-     {
-      return ADX_SIGNAL_STRONG;
-     }
-   else if(adx_value < InpADXLevel)
-     {
-      return ADX_SIGNAL_WEAK;
-     }
-   else
-     {
-      return ADX_SIGNAL_NONE;
-     }
-  }
+   if(HasOpenPosition()) return;
+   if(atr <= 0) return;
 
-ADX_SIGNAL_SIDE GetADXSignalSide()
-  {
-   float di_plus = GetDIPlus(InpADXPeriod, 1);
-   float di_minus = GetDIMinus(InpADXPeriod, 1);
+   double spread       = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD) * _Point;
+   double atr_distance = atr * InpMultiplier;
+   double price, sl, tp;
 
-   if(di_plus > di_minus)
+   if(order_type == ORDER_TYPE_BUY)
      {
-      return ADX_SIDE_BUY;
+      price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      sl = price - atr_distance - spread;
+      tp = price + atr_distance;
+      g_trade.Buy(InpLot, _Symbol, price, sl, tp, "M15_BUY");
      }
-   else if(di_plus < di_minus)
+     
+   else if(order_type == ORDER_TYPE_SELL)
      {
-      return ADX_SIDE_SELL;
-     }
-   else
-     {
-      return ADX_SIDE_NONE;
+      price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      sl = price + atr_distance + spread;
+      tp = price - atr_distance;
+      g_trade.Sell(InpLot, _Symbol, price, sl, tp, "M15_SELL");
      }
   }
 
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-float GetADX(int period, int shift = 0)
-  {
-   int adx_handle = 0, copied = 0;
-   double adx_b[];
-
-   adx_handle = iADX(_Symbol, _Period, period);
-   if(adx_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create ADX indicator");
-      return 0;
-     }
-
-   copied = CopyBuffer(adx_handle, 0, 0, 1, adx_b);
-   if(copied != 1)
-     {
-      Print("[ERROR] CopyBuffer ADX failed");
-      return 0;
-     }
-
-   return adx_b[0];
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-float GetDIPlus(int period, int shift = 0)
-  {
-   int adx_handle = 0, copied = 0;
-   double di_b[];
-
-   adx_handle = iADX(_Symbol, _Period, period);
-   if(adx_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create ADX indicator");
-      return 0;
-     }
-
-   copied = CopyBuffer(adx_handle, 1, 0, 1, di_b);
-   if(copied != 1)
-     {
-      Print("[ERROR] CopyBuffer DI+ failed");
-      return 0;
-     }
-
-   return di_b[0];
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-float GetDIMinus(int period, int shift = 0)
-  {
-   int adx_handle = 0, copied = 0;
-   double di_b[];
-
-   adx_handle = iADX(_Symbol, _Period, period);
-   if(adx_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create ADX indicator");
-      return 0;
-     }
-
-   copied = CopyBuffer(adx_handle, 2, 0, 1, di_b);
-   if(copied != 1)
-     {
-      Print("[ERROR] CopyBuffer DI- failed");
-      return 0;
-     }
-
-   return di_b[0];
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-float GetStochK(int k_period, int d_period = 3, int slowing = 3, int shift = 0)
-  {
-   int stoch_handle = 0, copied = 0;
-   double stoch_b[];
-
-   stoch_handle = iStochastic(_Symbol, _Period, k_period, d_period, slowing, MODE_SMA, STO_LOWHIGH);
-   if(stoch_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create Stochastic indicator");
-      return 0;
-     }
-
-   copied = CopyBuffer(stoch_handle, 0, 0, 1, stoch_b);
-   if(copied != 1)
-     {
-      Print("[ERROR] CopyBuffer Stochastic K failed");
-      return 0;
-     }
-
-   return stoch_b[0];
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-float GetStochD(int k_period, int d_period = 3, int slowing = 3, int shift = 0)
-  {
-   int stoch_handle = 0, copied = 0;
-   double stoch_d[];
-
-   stoch_handle = iStochastic(_Symbol, _Period, k_period, d_period, slowing, MODE_SMA, STO_LOWHIGH);
-   if(stoch_handle == INVALID_HANDLE)
-     {
-      Print("[ERROR] Cannot create Stochastic indicator");
-      return 0;
-     }
-
-   copied = CopyBuffer(stoch_handle, 1, 0, 1, stoch_d);
-   if(copied != 1)
-     {
-      Print("[ERROR] CopyBuffer Stochastic D failed");
-      return 0;
-     }
-
-   return stoch_d[0];
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
 //+------------------------------------------------------------------+
 bool IsNewCandle()
   {
@@ -281,43 +180,3 @@ bool IsNewCandle()
      }
    return false;
   }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-string GetPeriodString()
-  {
-   ENUM_TIMEFRAMES period = _Period;
-   switch(period)
-     {
-      case PERIOD_M1:
-         return "M1";
-      case PERIOD_M2:
-         return "M2";
-      case PERIOD_M3:
-         return "M3";
-      case PERIOD_M5:
-         return "M5";
-      case PERIOD_M10:
-         return "M10";
-      case PERIOD_M15:
-         return "M15";
-      case PERIOD_M20:
-         return "M20";
-      case PERIOD_M30:
-         return "M30";
-      case PERIOD_H1:
-         return "H1";
-      case PERIOD_H2:
-         return "H2";
-      case PERIOD_H3:
-         return "H3";
-      case PERIOD_H4:
-         return "H4";
-      case PERIOD_D1:
-         return "D1";
-      default:
-         return "Unknown";
-     }
-  }
-//+------------------------------------------------------------------+
