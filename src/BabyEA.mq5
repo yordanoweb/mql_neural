@@ -10,6 +10,9 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 enum STOCH_SIGNAL { SIGNAL_NONE, SIGNAL_BUY, SIGNAL_SELL };
 
+enum ADX_SIGNAL_STRENGTH { ADX_SIGNAL_NONE, ADX_SIGNAL_STRONG, ADX_SIGNAL_WEAK };
+enum ADX_SIGNAL_SIDE { ADX_SIDE_NONE, ADX_SIDE_BUY, ADX_SIDE_SELL };
+
 //--- INPUTS
 input group "Risk"
 input double     InpLot        = 1;
@@ -48,7 +51,19 @@ void OnTick()
      }
 
    STOCH_SIGNAL stoch_signal = GetStochasticSignal();
+   ADX_SIGNAL_STRENGTH adx_strength = GetADXSignalStrength();
+   ADX_SIGNAL_SIDE adx_side = GetADXSignalSide();
 
+   if(stoch_signal == SIGNAL_BUY && adx_strength == ADX_SIGNAL_STRONG && adx_side == ADX_SIDE_BUY)
+     {
+      //--- Place buy order
+      Print("Placing BUY order");
+     }
+   else if(stoch_signal == SIGNAL_SELL && adx_strength == ADX_SIGNAL_STRONG && adx_side == ADX_SIDE_SELL)
+     {
+      //--- Place sell order
+      Print("Placing SELL order");
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -78,6 +93,42 @@ STOCH_SIGNAL GetStochasticSignal()
      }
 
    return stoch_signal;
+  }
+
+ADX_SIGNAL_STRENGTH GetADXSignalStrength()
+  {
+   float adx_value = GetADX(8, 1);
+   if(adx_value > 25)
+     {
+      return ADX_SIGNAL_STRONG;
+     }
+   else if(adx_value < 25)
+     {
+      return ADX_SIGNAL_WEAK;
+     }
+   else
+     {
+      return ADX_SIGNAL_NONE;
+     }
+  }
+
+ADX_SIGNAL_SIDE GetADXSignalSide()
+  {
+   float di_plus = GetDIPlus(8, 1);
+   float di_minus = GetDIMinus(8, 1);
+
+   if(di_plus > di_minus)
+     {
+      return ADX_SIDE_BUY;
+     }
+   else if(di_plus < di_minus)
+     {
+      return ADX_SIDE_SELL;
+     }
+   else
+     {
+      return ADX_SIDE_NONE;
+     }
   }
 
 //+------------------------------------------------------------------+
