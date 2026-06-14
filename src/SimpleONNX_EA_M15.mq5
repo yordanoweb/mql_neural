@@ -53,6 +53,22 @@ double   g_last_body_atr = 0.0;
 double   g_last_range_atr = 0.0;
 double   g_last_body_ratio = 0.0;
 bool     g_last_strong_move = false;
+int      g_rsi_handle = INVALID_HANDLE;
+int      g_atr_handle = INVALID_HANDLE;
+
+bool RefreshMarketSnapshot();
+bool GetData();
+bool GetIndicators();
+bool BuildInputBuffer();
+bool PerformInference();
+string GetTimeframeString(ENUM_TIMEFRAMES tf);
+
+void UpdateTimeFilter()
+{
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   g_valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+}
 
 void UpdatePositionState()
 {
@@ -97,6 +113,9 @@ bool HasStrongMovement(double &body_atr, double &range_atr, double &body_ratio)
    range_atr = 0.0;
    body_ratio = 0.0;
    if(g_current_atr <= 0.0)
+      return false;
+   if(ArraySize(g_close) < 2 || ArraySize(g_open) < 2 ||
+      ArraySize(g_high) < 2 || ArraySize(g_low) < 2)
       return false;
 
    double body  = MathAbs(g_close[1] - g_open[1]);
@@ -275,6 +294,20 @@ int OnInit()
 
    Print("ONNX loaded successfully: ", (loaded_from_resource ? "[RESOURCE] ExtModel" : InpModelFile));
 
+   g_rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
+   if(g_rsi_handle == INVALID_HANDLE)
+   {
+      Print("ERROR: Failed to create RSI handle. Error Code: ", GetLastError());
+      return(INIT_FAILED);
+   }
+
+   g_atr_handle = iATR(_Symbol, _Period, InpATR);
+   if(g_atr_handle == INVALID_HANDLE)
+   {
+      Print("ERROR: Failed to create ATR handle. Error Code: ", GetLastError());
+      return(INIT_FAILED);
+   }
+
    long input_shape[] = {1, InpWindow * FEATURES};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
 
@@ -285,6 +318,12 @@ int OnInit()
 
    m_trade.SetExpertMagicNumber(InpMagic);
    EventSetTimer(InpTimerSeconds);  // Set timer to configured interval
+
+   UpdateTimeFilter();
+   UpdatePositionState();
+   if(RefreshMarketSnapshot() && PerformInference())
+      UpdateComment();
+
    return(INIT_SUCCEEDED);
 }
 
@@ -292,6 +331,8 @@ void OnDeinit(const int reason)
 { 
    EventKillTimer();  // Stop timer
    if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle);
+   if(g_rsi_handle != INVALID_HANDLE) IndicatorRelease(g_rsi_handle);
+   if(g_atr_handle != INVALID_HANDLE) IndicatorRelease(g_atr_handle);
 
    Comment("");  // Clear comment on deinit
 }
@@ -299,9 +340,7 @@ void OnDeinit(const int reason)
 void OnTick()
 {
    // 1. CORRECT TIME FILTER
-   MqlDateTime dt;
-   TimeCurrent(dt); 
-   g_valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
+   UpdateTimeFilter();
    UpdatePositionState();
 
    // 2. CANDLE CONTROL
@@ -309,15 +348,6 @@ void OnTick()
    datetime current_bar = iTime(_Symbol, _Period, 0);
    if(current_bar == last_bar) return;
    last_bar = current_bar;
-
-   // 3. DATA
-   GetData();
-
-   // 4. INDICATORS
-   GetIndicators();
-
-   // 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
-   BuildInputBuffer();
 
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
@@ -376,36 +406,56 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
       ReportExitInfo(trans.deal);
 }
 
-void GetData()
+bool RefreshMarketSnapshot()
+{
+   return (GetData() && GetIndicators() && BuildInputBuffer());
+}
+
+bool GetData()
 {
    // 3. DATA - Load OHLC prices
    ArraySetAsSeries(g_close, true); ArraySetAsSeries(g_open, true);
    ArraySetAsSeries(g_high, true);  ArraySetAsSeries(g_low, true);
 
-   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15 ||
-      CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow) return;
-   
-   CopyHigh(_Symbol, _Period, 0, InpWindow, g_high);
-   CopyLow(_Symbol, _Period, 0, InpWindow, g_low);
+   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15)
+      return false;
+   if(CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow)
+      return false;
+   if(CopyHigh(_Symbol, _Period, 0, InpWindow, g_high) < InpWindow)
+      return false;
+   if(CopyLow(_Symbol, _Period, 0, InpWindow, g_low) < InpWindow)
+      return false;
+
+   return true;
 }
 
-void GetIndicators()
+bool GetIndicators()
 {
    // 4. INDICATORS - Get RSI and ATR values
-   int rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
-   ArraySetAsSeries(g_rsi_buffer, true);
-   CopyBuffer(rsi_handle, 0, 0, InpWindow, g_rsi_buffer);
+   if(g_rsi_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE)
+      return false;
 
-   int atr_handle = iATR(_Symbol, _Period, InpATR);
+   ArraySetAsSeries(g_rsi_buffer, true);
+   if(CopyBuffer(g_rsi_handle, 0, 0, InpWindow, g_rsi_buffer) < InpWindow)
+      return false;
+
    double atr_buffer[];
    ArraySetAsSeries(atr_buffer, true);
-   CopyBuffer(atr_handle, 0, 0, 1, atr_buffer);
+   if(CopyBuffer(g_atr_handle, 0, 0, 1, atr_buffer) < 1)
+      return false;
+
    g_current_atr = atr_buffer[0];
+   return (g_current_atr > 0.0);
 }
 
-void BuildInputBuffer()
+bool BuildInputBuffer()
 {
    // 5. INPUT BUFFER WITH NORMALIZATION BY _Digits
+   if(ArraySize(g_close) < InpWindow || ArraySize(g_open) < InpWindow ||
+      ArraySize(g_high) < InpWindow || ArraySize(g_low) < InpWindow ||
+      ArraySize(g_rsi_buffer) < InpWindow)
+      return false;
+
    ArrayResize(g_input_buffer, InpWindow * FEATURES);
    
    // _Digits is the correct variable. If 5 or 3 decimals, we adjust to pips (x10).
@@ -418,6 +468,8 @@ void BuildInputBuffer()
       g_input_buffer[i * 3 + 1] = (float)((g_high[mql_idx] - g_low[mql_idx]) / pip_unit);
       g_input_buffer[i * 3 + 2] = (float)(g_rsi_buffer[mql_idx] / 100.0);
    }
+
+   return true;
 }
 
 string GetTimeframeString(ENUM_TIMEFRAMES tf)
@@ -438,8 +490,12 @@ string GetTimeframeString(ENUM_TIMEFRAMES tf)
 void OnTimer()
 {
    Print("\n--- Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
-
-   PerformInference(); 
+   UpdateTimeFilter();
+   UpdatePositionState();
+   if(!RefreshMarketSnapshot())
+      return;
+   if(!PerformInference())
+      return;
    UpdateComment();
 }
 
@@ -458,12 +514,13 @@ void UpdateComment()
            "\nPrediction: ", pred_text);
 }
 
-void PerformInference()
+bool PerformInference()
 {
    // 6. INFERENCE
    long output_label[]; float output_probs[];
    ArrayResize(output_label, 1); ArrayResize(output_probs, 2);
-   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, g_input_buffer, output_label, output_probs)) return;
+   if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, g_input_buffer, output_label, output_probs))
+      return false;
 
    g_prediction = output_label[0];
    g_confidence = (g_prediction == 1) ? output_probs[1] : output_probs[0];
@@ -471,4 +528,5 @@ void PerformInference()
    Print("Inference Result: Prediction = ", g_prediction, ", Confidence = ", DoubleToString(g_confidence*100, 2), "%");
    Print("Prediction: ", pred_text);
    Print("Probabilities: [", DoubleToString(output_probs[0]*100, 2), "%, ", DoubleToString(output_probs[1]*100, 2), "%]");
+   return true;
 }
