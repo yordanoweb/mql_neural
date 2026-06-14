@@ -5,14 +5,14 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\US100_M5_202606121518.onnx" as uchar ExtModel[];
+#resource "\\Files\\BTCUSD_M15_202606121618.onnx" as uchar ExtModel[];
 
 //--- ENUMERATIONS
 enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 
 //--- INPUTS
 input group "======== AI Configuration ========"
-input string     InpModelFile  = "US100.cash_M15_20220311_20251230.onnx";  // Dynamic model filename
+input string     InpModelFile  = "BTCUSD_M15_202606121618.onnx";  // Dynamic model filename
 input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
 input float      InpMinConf    = 0.62;         
 input int        InpStartHour  = 9;            
@@ -253,17 +253,15 @@ int OnInit()
 
    bool loaded_from_resource = false;
 
-   // Check if we are in tester
-   if(!MQLInfoInteger(MQL_TESTER))
+   // Check if we are in backtesting environment
+   if(MQLInfoInteger(MQL_TESTER))
    {
-      // The ONNX path must be hardcoded in "ExtModel" resource
-      // due to MQL5 file access restrictions in live environment.
-      // This is the only way to load ONNX for backtesting.
+      // In backtesting - load ONNX from resource buffer (ExtModel)
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
       loaded_from_resource = true;
    } else
    {
-      // In live, we can load ONNX dynamically from InpModelFile.
+      // Live trading - load ONNX dynamically from InpModelFile
       onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
    }
    
