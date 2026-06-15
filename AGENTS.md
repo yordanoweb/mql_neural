@@ -105,3 +105,4 @@ Exit logic: hard SL on broker + imaginary TP tracked in Python → trailing exit
 - All `argparse.ArgumentParser` instances must use `formatter_class=argparse.ArgumentDefaultsHelpFormatter`
 - **After every implementation, feature addition, bug fix, or test: update `docs/execution_script.md` and/or `docs/training_pipeline.md` to reflect the current behaviour before committing**
 - **Never break working features** — see the Regression Contract in `docs/execution_script.md`. Any change that would alter a listed behaviour must be explicitly requested and the contract updated accordingly.
+- **Any finished change must be committed and pushed to the current branch immediately**

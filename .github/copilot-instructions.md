@@ -76,3 +76,6 @@ pre-commit run gitleaks --all-files
 
 8. **Docs are part of the change contract**
    - When behavior changes in training or execution scripts, update `docs/training_pipeline.md` and/or `docs/execution_script.md` in the same change.
+
+9. **Always commit and push finished work**
+   - Any finished change must be committed and pushed to the current branch immediately.
