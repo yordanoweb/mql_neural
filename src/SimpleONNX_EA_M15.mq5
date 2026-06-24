@@ -23,7 +23,7 @@ input double     InpLot        = 1;
 input int        InpMagic      = 123456;
 input int        InpATR        = 6;
 input double     InpMultiplier = 1.5;
-input int        InpMinDollars = 5;            // Minimum money to close trade
+input int        InpMinDollars = 5;            // Minimum money to close trade (0=disabled)
 input group "======== Entry Protection ========"
 input double     InpMinBodyATR        = 0.35;  // Min candle body / ATR on bar[1]
 input double     InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
@@ -110,6 +110,9 @@ bool IsSpreadAcceptable(double &spread, double &spread_atr)
 
 bool IsEntryPriceProfitable()
 {
+   if(InpMinDollars <= 0)
+      return false;
+
    if(!PositionSelect(_Symbol))
       return false;
 
