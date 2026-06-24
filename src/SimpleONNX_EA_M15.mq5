@@ -13,16 +13,17 @@ enum ENUM_LOGIC { LOGIC_NORMAL, LOGIC_MIRROR };
 //--- INPUTS
 input group "======== AI Configuration ========"
 input string     InpModelFile  = "BTCUSD_M15_202606121618.onnx";  // Dynamic model filename
-input ENUM_LOGIC InpLogic      = LOGIC_MIRROR; 
-input float      InpMinConf    = 0.62;         
-input int        InpStartHour  = 9;            
-input int        InpEndHour    = 18;           
+input ENUM_LOGIC InpLogic      = LOGIC_MIRROR;
+input float      InpMinConf    = 0.62;
+input int        InpStartHour  = 9;
+input int        InpEndHour    = 18;
 input int        InpWindow     = 20;           // Must match training --window
 input group "======== Risk Management ========"
-input double     InpLot        = 1;          
-input int        InpMagic      = 123456;       
-input int        InpATR        = 6;           
-input double     InpMultiplier = 1.5;          
+input double     InpLot        = 1;
+input int        InpMagic      = 123456;
+input int        InpATR        = 6;
+input double     InpMultiplier = 1.5;
+input int        InpMinDollars = 5;            // Minimum money to close trade
 input group "======== Entry Protection ========"
 input double     InpMinBodyATR        = 0.35;  // Min candle body / ATR on bar[1]
 input double     InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
@@ -105,6 +106,19 @@ bool IsSpreadAcceptable(double &spread, double &spread_atr)
    spread = ask - bid;
    spread_atr = spread / g_current_atr;
    return (spread_atr <= InpMaxSpreadATRRatio);
+}
+
+bool IsEntryPriceProfitable()
+{
+   if(!PositionSelect(_Symbol))
+      return false;
+
+   double profit = PositionGetDouble(POSITION_PROFIT);
+   double commission = PositionGetDouble(POSITION_COMMISSION);
+   double swap = PositionGetDouble(POSITION_SWAP);
+   double net_profit = profit + commission + swap;
+
+   return (net_profit >= InpMinDollars);
 }
 
 bool HasStrongMovement(double &body_atr, double &range_atr, double &body_ratio)
