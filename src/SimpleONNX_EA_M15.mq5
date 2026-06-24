@@ -367,6 +367,12 @@ void OnTick()
    if(!RefreshMarketSnapshot())
       return;
 
+   if(PositionSelect(_Symbol) && IsEntryPriceProfitable())
+   {
+      if(m_trade.PositionClose(_Symbol))
+         return;
+   }
+
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
    bool confidence_ok = (g_confidence >= InpMinConf);
