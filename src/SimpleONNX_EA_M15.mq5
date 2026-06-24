@@ -360,6 +360,12 @@ void OnTick()
    UpdateTimeFilter();
    UpdatePositionState();
 
+   if(PositionSelect(_Symbol) && IsEntryPriceProfitable())
+   {
+      if(m_trade.PositionClose(_Symbol))
+         return;
+   }
+
    // 2. CANDLE CONTROL
    static datetime last_bar = 0;
    datetime current_bar = iTime(_Symbol, _Period, 0);
@@ -369,12 +375,6 @@ void OnTick()
    // Refresh series at bar open so bar[1] checks always use the just-closed candle.
    if(!RefreshMarketSnapshot())
       return;
-
-   if(PositionSelect(_Symbol) && IsEntryPriceProfitable())
-   {
-      if(m_trade.PositionClose(_Symbol))
-         return;
-   }
 
    // 7. EXECUTION WITH TIME FILTER (using global inference results from OnTimer)
    bool no_open_pos = !PositionSelect(_Symbol);
