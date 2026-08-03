@@ -23,3 +23,28 @@ python src/train_buy_only.py \
   --forward 10 \
   --rsi-period 14
 ```
+
+### `src/BuyOnly_ONNX_EA.mq5`
+MetaTrader 5 Expert Advisor that trades only long positions using the ONNX model from `train_buy_only.py`.
+
+**Input contract:** `float32[1, window * 3]` with raw-price body/range + RSI/100.
+
+**Output contract:** `float32[1, 2]` → `[P(no_buy), P(buy)]`. The EA enters a **BUY** when `P(buy) >= InpMinConf`.
+
+**Key inputs:**
+- `InpModelFile` — ONNX filename in `MQL5/Files/`
+- `InpMinConf` — minimum buy probability to enter (default `0.62`)
+- `InpWindow` — must match the training `--window`
+- `InpATR` / `InpMultiplier` — SL/TP distance = ATR * multiplier
+- `InpStartHour` / `InpEndHour` — trading time window
+- `InpCooldownBars` — bars to wait after a close
+- `InpMinBodyATR` / `InpMinRangeATR` / `InpMinBodyRatio` — movement-strength filters
+- `InpMaxSpreadATRRatio` — spread/ATR filter
+
+**Behavior:**
+- Removes pip-unit normalization so feature scaling matches `train_buy_only.py`.
+- Removes all SELL logic and the mirror/normal logic switch.
+- Removes the previous-candle bullish filter.
+- Keeps `OnTick` + `OnTimer` inference and optional early close when profit reaches `InpMinDollars`.
+
+For backtesting, embed the ONNX model as a resource and rename the `#resource` directive at the top of the file.
