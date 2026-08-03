@@ -52,6 +52,9 @@ bool     g_last_strong_move = false;
 int      g_rsi_handle = INVALID_HANDLE;
 int      g_atr_handle = INVALID_HANDLE;
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool RefreshMarketSnapshot();
 bool GetData();
 bool GetIndicators();
@@ -59,23 +62,32 @@ bool BuildInputBuffer();
 bool PerformInference();
 string GetTimeframeString(ENUM_TIMEFRAMES tf);
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void UpdateTimeFilter()
-{
+  {
    MqlDateTime dt;
    TimeCurrent(dt);
    g_valid_time = (dt.hour >= InpStartHour && dt.hour < InpEndHour);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void UpdatePositionState()
-{
+  {
    bool has_position = PositionSelect(_Symbol);
    if(g_prev_position_open && !has_position)
       g_last_position_close_time = TimeCurrent();
    g_prev_position_open = has_position;
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool IsCooldownFinished()
-{
+  {
    if(InpCooldownBars <= 0 || g_last_position_close_time <= 0)
       return true;
 
@@ -84,10 +96,13 @@ bool IsCooldownFinished()
       return false;
 
    return (bars_since_close >= InpCooldownBars);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool IsEntryPriceProfitable()
-{
+  {
    if(InpMinDollars <= 0)
       return false;
 
@@ -100,25 +115,39 @@ bool IsEntryPriceProfitable()
    double net_profit = profit + commission + swap;
 
    return (net_profit >= InpMinDollars);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 string GetDealReasonText(const long reason)
-{
+  {
    switch((ENUM_DEAL_REASON)reason)
-   {
-      case DEAL_REASON_SL:     return "STOP_LOSS";
-      case DEAL_REASON_TP:     return "TAKE_PROFIT";
-      case DEAL_REASON_SO:     return "STOP_OUT";
-      case DEAL_REASON_CLIENT: return "MANUAL_CLIENT";
-      case DEAL_REASON_MOBILE: return "MANUAL_MOBILE";
-      case DEAL_REASON_WEB:    return "MANUAL_WEB";
-      case DEAL_REASON_EXPERT: return "EXPERT";
-      default:                 return "OTHER";
-   }
-}
+     {
+      case DEAL_REASON_SL:
+         return "STOP_LOSS";
+      case DEAL_REASON_TP:
+         return "TAKE_PROFIT";
+      case DEAL_REASON_SO:
+         return "STOP_OUT";
+      case DEAL_REASON_CLIENT:
+         return "MANUAL_CLIENT";
+      case DEAL_REASON_MOBILE:
+         return "MANUAL_MOBILE";
+      case DEAL_REASON_WEB:
+         return "MANUAL_WEB";
+      case DEAL_REASON_EXPERT:
+         return "EXPERT";
+      default:
+         return "OTHER";
+     }
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void ReportExitInfo(const ulong deal_ticket)
-{
+  {
    if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))
       return;
 
@@ -147,56 +176,61 @@ void ReportExitInfo(const ulong deal_ticket)
    Print("P/L: ", DoubleToString(profit, 2), " | Commission: ", DoubleToString(commission, 2),
          " | Swap: ", DoubleToString(swap, 2), " | Net: ", DoubleToString(net, 2));
    Print("Comment: ", comment);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 int OnInit()
-{
+  {
    if(InpWindow < 2)
-   {
+     {
       Print("ERROR: InpWindow must be >= 2. Current value: ", InpWindow);
       return(INIT_PARAMETERS_INCORRECT);
-   }
+     }
 
    bool loaded_from_resource = false;
 
-   // Check if we are in backtesting environment
+// Check if we are in backtesting environment
    if(MQLInfoInteger(MQL_TESTER))
-   {
+     {
       // In backtesting - load ONNX from resource buffer (ExtModel)
       onnx_handle = OnnxCreateFromBuffer(ExtModel, ONNX_DEFAULT);
       loaded_from_resource = true;
-   } else
-   {
+     }
+   else
+     {
       // Live trading - load ONNX dynamically from InpModelFile
       onnx_handle = OnnxCreate(InpModelFile, ONNX_DEFAULT);
-   }
+     }
 
    if(onnx_handle == INVALID_HANDLE)
-   {
+     {
       Print("ERROR: Failed to load ONNX model: ", InpModelFile);
       Print("Error Code: ", GetLastError());
       Print("Make sure the file is in: C:\\Program Files\\MetaTrader 5\\MQL5\\Files\\");
       return(INIT_FAILED);
-   }
+     }
 
    Print("ONNX loaded successfully: ", (loaded_from_resource ? "[RESOURCE] ExtModel" : InpModelFile));
 
    g_rsi_handle = iRSI(_Symbol, _Period, 14, PRICE_CLOSE);
    if(g_rsi_handle == INVALID_HANDLE)
-   {
+     {
       Print("ERROR: Failed to create RSI handle. Error Code: ", GetLastError());
       return(INIT_FAILED);
-   }
+     }
 
    g_atr_handle = iATR(_Symbol, _Period, InpATR);
    if(g_atr_handle == INVALID_HANDLE)
-   {
+     {
       Print("ERROR: Failed to create ATR handle. Error Code: ", GetLastError());
       return(INIT_FAILED);
-   }
+     }
 
    long input_shape[] = {1, InpWindow * FEATURES};
-   if(!OnnxSetInputShape(onnx_handle, 0, input_shape)) return(INIT_FAILED);
+   if(!OnnxSetInputShape(onnx_handle, 0, input_shape))
+      return(INIT_FAILED);
 
    long out_shape_label[] = {1};
    OnnxSetOutputShape(onnx_handle, 0, out_shape_label);
@@ -212,42 +246,52 @@ int OnInit()
       UpdateComment();
 
    return(INIT_SUCCEEDED);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void OnDeinit(const int reason)
-{
+  {
    EventKillTimer();
-   if(onnx_handle != INVALID_HANDLE) OnnxRelease(onnx_handle);
-   if(g_rsi_handle != INVALID_HANDLE) IndicatorRelease(g_rsi_handle);
-   if(g_atr_handle != INVALID_HANDLE) IndicatorRelease(g_atr_handle);
+   if(onnx_handle != INVALID_HANDLE)
+      OnnxRelease(onnx_handle);
+   if(g_rsi_handle != INVALID_HANDLE)
+      IndicatorRelease(g_rsi_handle);
+   if(g_atr_handle != INVALID_HANDLE)
+      IndicatorRelease(g_atr_handle);
 
    Comment("");
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void OnTick()
-{
-   // 1. Time filter and position tracking
+  {
+// 1. Time filter and position tracking
    UpdateTimeFilter();
    UpdatePositionState();
 
-   // Optional: close profitable position early
+// Optional: close profitable position early
    if(PositionSelect(_Symbol) && IsEntryPriceProfitable())
-   {
+     {
       if(m_trade.PositionClose(_Symbol))
          return;
-   }
+     }
 
-   // 2. Candle control
+// 2. Candle control
    static datetime last_bar = 0;
    datetime current_bar = iTime(_Symbol, _Period, 0);
-   if(current_bar == last_bar) return;
+   if(current_bar == last_bar)
+      return;
    last_bar = current_bar;
 
-   // Refresh series at bar open
+// Refresh series at bar open
    if(!RefreshMarketSnapshot())
       return;
 
-   // 3. Buy-only execution
+// 3. Buy-only execution
    bool no_open_pos = !PositionSelect(_Symbol);
    bool confidence_ok = (g_confidence >= InpMinConf);
    bool cooldown_ok = IsCooldownFinished();
@@ -257,39 +301,53 @@ void OnTick()
       entry_allowed = entry_allowed && confidence_ok;
 
    if(entry_allowed)
-   {
+     {
       double sl_dist = g_current_atr * InpMultiplier;
       double tp_dist = sl_dist;
 
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double sl = InpUseSL ? (price - sl_dist) : 0;
+      // Before using dynamic low
+      // double sl = InpUseSL ? (price - sl_dist) : 0;
+      double dynamic_low = GetRecentBounceStopLoss(5, 5);
+      double sl = InpUseSL ? dynamic_low : 0;
       double tp = price + tp_dist;
       if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI BUY (TEST MODE)" : "AI BUY"))
          Print("=== Buy Executed @ " + price + " | sl: " + sl + " | tp: " + tp);
-   }
+     }
    else
-   {
+     {
       Print("BUY ENTRY BYPASSED");
-   }
-}
+     }
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void OnTradeTransaction(const MqlTradeTransaction &trans,
                         const MqlTradeRequest &request,
                         const MqlTradeResult &result)
-{
+  {
    if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
       ReportExitInfo(trans.deal);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool RefreshMarketSnapshot()
-{
+  {
    return (GetData() && GetIndicators() && BuildInputBuffer());
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool GetData()
-{
-   ArraySetAsSeries(g_close, true); ArraySetAsSeries(g_open, true);
-   ArraySetAsSeries(g_high, true);  ArraySetAsSeries(g_low, true);
+  {
+   ArraySetAsSeries(g_close, true);
+   ArraySetAsSeries(g_open, true);
+   ArraySetAsSeries(g_high, true);
+   ArraySetAsSeries(g_low, true);
 
    if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15)
       return false;
@@ -301,10 +359,13 @@ bool GetData()
       return false;
 
    return true;
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool GetIndicators()
-{
+  {
    if(g_rsi_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE)
       return false;
 
@@ -319,11 +380,14 @@ bool GetIndicators()
 
    g_current_atr = atr_buffer[0];
    return (g_current_atr > 0.0);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool BuildInputBuffer()
-{
-   // Build input buffer matching train_buy_only.py: raw price body/range + RSI/100
+  {
+// Build input buffer matching train_buy_only.py: raw price body/range + RSI/100
    if(ArraySize(g_close) < InpWindow || ArraySize(g_open) < InpWindow ||
       ArraySize(g_high) < InpWindow || ArraySize(g_low) < InpWindow ||
       ArraySize(g_rsi_buffer) < InpWindow)
@@ -332,33 +396,47 @@ bool BuildInputBuffer()
    ArrayResize(g_input_buffer, InpWindow * FEATURES);
 
    for(int i=0; i < InpWindow; i++)
-   {
+     {
       int mql_idx = InpWindow - 1 - i;
       g_input_buffer[i * 3 + 0] = (float)(g_close[mql_idx] - g_open[mql_idx]);
       g_input_buffer[i * 3 + 1] = (float)(g_high[mql_idx] - g_low[mql_idx]);
       g_input_buffer[i * 3 + 2] = (float)(g_rsi_buffer[mql_idx] / 100.0);
-   }
+     }
 
    return true;
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 string GetTimeframeString(ENUM_TIMEFRAMES tf)
-{
+  {
    switch(tf)
-   {
-      case PERIOD_M1: return "M1";
-      case PERIOD_M5: return "M5";
-      case PERIOD_M15: return "M15";
-      case PERIOD_M30: return "M30";
-      case PERIOD_H1: return "H1";
-      case PERIOD_H4: return "H4";
-      case PERIOD_D1: return "D1";
-      default: return "Unknown TF";
-   }
-}
+     {
+      case PERIOD_M1:
+         return "M1";
+      case PERIOD_M5:
+         return "M5";
+      case PERIOD_M15:
+         return "M15";
+      case PERIOD_M30:
+         return "M30";
+      case PERIOD_H1:
+         return "H1";
+      case PERIOD_H4:
+         return "H4";
+      case PERIOD_D1:
+         return "D1";
+      default:
+         return "Unknown TF";
+     }
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void OnTimer()
-{
+  {
    Print("\n--- Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
    UpdateTimeFilter();
    UpdatePositionState();
@@ -367,21 +445,29 @@ void OnTimer()
    if(!PerformInference())
       return;
    UpdateComment();
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void UpdateComment()
-{
+  {
    pred_text = (g_prediction == 1 ? "BUY" : "NO_BUY");
    Comment("\n\n\nAI BUY-ONLY ", GetTimeframeString(_Period), " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
            "\nPrediction: ", pred_text);
-}
+  }
 
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 bool PerformInference()
-{
-   long output_label[]; float output_probs[];
-   ArrayResize(output_label, 1); ArrayResize(output_probs, 2);
+  {
+   long output_label[];
+   float output_probs[];
+   ArrayResize(output_label, 1);
+   ArrayResize(output_probs, 2);
    if(!OnnxRun(onnx_handle, ONNX_NO_CONVERSION, g_input_buffer, output_label, output_probs))
       return false;
 
@@ -392,4 +478,75 @@ bool PerformInference()
    Print("Prediction: ", (g_prediction == 1 ? "BUY" : "NO_BUY"));
    Print("Probabilities: [no_buy=", DoubleToString(output_probs[0]*100, 2), "%, buy=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
-}
+  }
+
+//+------------------------------------------------------------------+
+//| Devuelve el Swing Low (rebote) más reciente de la sesión actual  |
+//+------------------------------------------------------------------+
+double GetRecentBounceStopLoss(int leftBars = 3, int rightBars = 2)
+  {
+// 1. Obtener la hora de inicio de la sesión actual (00:00)
+   datetime currentTime = TimeCurrent();
+   MqlDateTime dt;
+   TimeToStruct(currentTime, dt);
+   dt.hour = 0;
+   dt.min  = 0;
+   dt.sec  = 0;
+   datetime startOfDay = StructToTime(dt);
+
+// 2. Buscar el índice de la vela de inicio de día
+   int startBarIndex = iBarShift(_Symbol, _Period, startOfDay, false);
+
+   if(startBarIndex < 0)
+      return 0.0;
+
+// 3. Buscar el pivote (Swing Low) hacia atrás, desde la vela más reciente hacia la apertura
+// Comenzamos en rightBars + 1 para asegurar que las velas de la derecha estén CERRADAS
+// (evita que el punto de rebote cambie con los movimientos de la vela 0 en formación)
+   for(int i = rightBars + 1; i <= startBarIndex - leftBars; i++)
+     {
+      bool isSwingLow = true;
+      double currentLow = iLow(_Symbol, _Period, i);
+
+      // Comprobar las velas a la derecha (velas más recientes)
+      for(int r = 1; r <= rightBars; r++)
+        {
+         if(iLow(_Symbol, _Period, i - r) <= currentLow)
+           {
+            isSwingLow = false;
+            break; // No es un rebote válido, alguna vela más reciente rompió este mínimo
+           }
+        }
+
+      if(!isSwingLow)
+         continue; // Pasar a la siguiente vela
+
+      // Comprobar las velas a la izquierda (velas más antiguas)
+      for(int l = 1; l <= leftBars; l++)
+        {
+         if(iLow(_Symbol, _Period, i + l) <= currentLow)
+           {
+            isSwingLow = false;
+            break; // No es un rebote válido, el precio venía de un nivel más bajo muy reciente
+           }
+        }
+
+      // Si sobrevive a ambas comprobaciones, ¡hemos encontrado el rebote más reciente!
+      if(isSwingLow)
+        {
+         return currentLow;
+        }
+     }
+
+// 4. Mecanismo de seguridad (Fallback)
+// Si el día acaba de empezar y no ha habido tiempo de formar un rebote,
+// o si el precio ha caído en picada sin rebotes, devolvemos el mínimo absoluto del día.
+   int fallbackIndex = iLowest(_Symbol, _Period, MODE_LOW, startBarIndex + 1, 0);
+   if(fallbackIndex >= 0)
+     {
+      return iLow(_Symbol, _Period, fallbackIndex);
+     }
+
+   return 0.0;
+  }
+//+------------------------------------------------------------------+
