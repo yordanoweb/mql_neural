@@ -375,10 +375,6 @@ void UpdateComment()
    Comment("\n\n\nAI BUY-ONLY ", GetTimeframeString(_Period), " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
-           "\nMove Strength: ", (g_last_strong_move ? "PASS" : "BLOCK"),
-           "\n- body_atr=", DoubleToString(g_last_body_atr, 3),
-           "\n- range_atr=", DoubleToString(g_last_range_atr, 3),
-           "\n- body_ratio=", DoubleToString(g_last_body_ratio, 3),
            "\nPrediction: ", pred_text);
 }
 
