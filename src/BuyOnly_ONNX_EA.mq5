@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\BTCUSD_M15_202606121618.onnx" as uchar ExtModel[];
+#resource "\\Files\\US100.cash_M15_buy_only.onnx" as uchar ExtModel[];
 
 //--- INPUTS
 input group "======== AI Configuration ========"
