@@ -28,6 +28,8 @@ input double  InpMaxSpreadATRRatio = 0.15;  // Max spread / ATR allowed to enter
 input int     InpCooldownBars      = 2;     // Bars to wait after position close
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
+input group "======== Debug / Test ========="
+input bool    InpTestMode     = false; // Bypass confidence/spread/move filters to verify entries
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
@@ -204,7 +206,8 @@ void ReportEntryBypassInfo(const bool no_open_pos,
                            const double range_atr,
                            const double body_ratio)
 {
-   Print("\n--- Entry Bypassed at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
+   Print("\n--- Entry Bypassed at ", TimeToString(TimeCurrent(), TIME_SECONDS),
+         InpTestMode ? " [TEST MODE: filters relaxed]" : "", " ---");
    Print("Symbol: ", _Symbol, " | TF: ", GetTimeframeString(_Period), " | Magic: ", InpMagic);
    Print("AI: prediction=", g_prediction, " buy_confidence=", DoubleToString(g_confidence * 100.0, 2), "% | min_conf=",
          DoubleToString(InpMinConf * 100.0, 2), "%");
@@ -384,7 +387,11 @@ void OnTick()
    g_last_body_ratio = body_ratio;
    g_last_strong_move = strong_move;
 
-   if(no_open_pos && g_valid_time && confidence_ok && cooldown_ok && spread_ok && strong_move)
+   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok;
+   if(!InpTestMode)
+      entry_allowed = entry_allowed && confidence_ok && spread_ok && strong_move;
+
+   if(entry_allowed)
    {
       double sl_dist = g_current_atr * InpMultiplier;
       double tp_dist = sl_dist;
@@ -392,7 +399,7 @@ void OnTick()
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl = price - sl_dist;
       double tp = price + tp_dist;
-      if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
+      if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI BUY (TEST MODE)" : "AI BUY"))
          ReportEntryInfo(price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio,
                          g_valid_time, cooldown_ok, spread_ok, strong_move);
    }

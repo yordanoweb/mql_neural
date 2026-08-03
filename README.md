@@ -40,6 +40,7 @@ MetaTrader 5 Expert Advisor that trades only long positions using the ONNX model
 - `InpCooldownBars` — bars to wait after a close
 - `InpMinBodyATR` / `InpMinRangeATR` / `InpMinBodyRatio` — movement-strength filters
 - `InpMaxSpreadATRRatio` — spread/ATR filter
+- `InpTestMode` — when `true`, bypasses confidence/spread/movement filters so you can verify order execution (still respects time window and one open position)
 
 **Behavior:**
 - Removes pip-unit normalization so feature scaling matches `train_buy_only.py`.
