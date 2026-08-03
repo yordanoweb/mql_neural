@@ -1,0 +1,9 @@
+*.ex5
+csv/
+data/
+log/
+onnx/
+src/__pycache__/
+tmp/
+trades.csv
+trading_log.csv
