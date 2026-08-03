@@ -20,13 +20,9 @@ input int     InpMagic      = 123456;
 input int     InpATR        = 6;
 input double  InpMultiplier = 1.5;
 input int     InpMinDollars = 5;            // Minimum money to close trade (0=disabled)
+input bool    InpUseSL      = true;        // Use Stop Loss
 input group "======== Entry Protection ========"
-input double  InpMinBodyATR        = 0.35;  // Min candle body / ATR on bar[1]
-input double  InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
-input double  InpMinBodyRatio      = 0.55;  // Min body/range ratio on bar[1]
-input double  InpMaxSpreadATRRatio = 0.15;  // Max spread / ATR allowed to enter
 input int     InpCooldownBars      = 2;     // Bars to wait after position close
-input bool    InpBypassProtections = false; // Bypass Protections
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
 input group "======== Debug / Test ========="
@@ -90,24 +86,6 @@ bool IsCooldownFinished()
    return (bars_since_close >= InpCooldownBars);
 }
 
-bool IsSpreadAcceptable(double &spread, double &spread_atr)
-{
-   if(InpBypassProtections) return true;
-   spread = 0.0;
-   spread_atr = 0.0;
-   if(g_current_atr <= 0.0)
-      return false;
-
-   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   if(ask <= 0.0 || bid <= 0.0 || ask < bid)
-      return false;
-
-   spread = ask - bid;
-   spread_atr = spread / g_current_atr;
-   return (spread_atr <= InpMaxSpreadATRRatio);
-}
-
 bool IsEntryPriceProfitable()
 {
    if(InpMinDollars <= 0)
@@ -124,32 +102,6 @@ bool IsEntryPriceProfitable()
    return (net_profit >= InpMinDollars);
 }
 
-bool HasStrongMovement(double &body_atr, double &range_atr, double &body_ratio)
-{
-   if(InpBypassProtections) return true;
-   body_atr = 0.0;
-   range_atr = 0.0;
-   body_ratio = 0.0;
-   if(g_current_atr <= 0.0)
-      return false;
-   if(ArraySize(g_close) < 2 || ArraySize(g_open) < 2 ||
-      ArraySize(g_high) < 2 || ArraySize(g_low) < 2)
-      return false;
-
-   double body  = MathAbs(g_close[1] - g_open[1]);
-   double range = g_high[1] - g_low[1];
-   if(range <= 0.0)
-      return false;
-
-   body_atr = body / g_current_atr;
-   range_atr = range / g_current_atr;
-   body_ratio = body / range;
-
-   return (body_atr >= InpMinBodyATR &&
-           range_atr >= InpMinRangeATR &&
-           body_ratio >= InpMinBodyRatio);
-}
-
 string GetDealReasonText(const long reason)
 {
    switch((ENUM_DEAL_REASON)reason)
@@ -163,88 +115,6 @@ string GetDealReasonText(const long reason)
       case DEAL_REASON_EXPERT: return "EXPERT";
       default:                 return "OTHER";
    }
-}
-
-void ReportEntryInfo(const double entry_price,
-                     const double sl_price,
-                     const double tp_price,
-                     const double sl_dist,
-                     const double tp_dist,
-                     const double spread,
-                     const double spread_atr,
-                     const double body_atr,
-                     const double range_atr,
-                     const double body_ratio,
-                     const bool time_ok,
-                     const bool cooldown_ok,
-                     const bool spread_ok,
-                     const bool strong_move_ok)
-{
-   Print("\n--- Entry Report at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
-   Print("Side: BUY | Symbol: ", _Symbol, " | TF: ", GetTimeframeString(_Period), " | Magic: ", InpMagic);
-   Print("Lot: ", DoubleToString(InpLot, 2), " | Entry: ", DoubleToString(entry_price, _Digits),
-         " | SL: ", DoubleToString(sl_price, _Digits), " | TP: ", DoubleToString(tp_price, _Digits));
-   Print("ATR: ", DoubleToString(g_current_atr, _Digits), " | SL_dist: ", DoubleToString(sl_dist, _Digits),
-         " | TP_dist: ", DoubleToString(tp_dist, _Digits), " | Spread: ", DoubleToString(spread, _Digits),
-         " | Spread/ATR: ", DoubleToString(spread_atr, 4));
-   Print("AI: prediction=", g_prediction, " buy_confidence=", DoubleToString(g_confidence * 100.0, 2), "%");
-   Print("Protections: time_ok=", (time_ok ? "true" : "false"),
-         " cooldown_ok=", (cooldown_ok ? "true" : "false"),
-         " spread_ok=", (spread_ok ? "true" : "false"),
-         " strong_move_ok=", (strong_move_ok ? "true" : "false"));
-   Print("Strength: body_atr=", DoubleToString(body_atr, 4),
-         " range_atr=", DoubleToString(range_atr, 4),
-         " body_ratio=", DoubleToString(body_ratio, 4));
-}
-
-void ReportEntryBypassInfo(const bool no_open_pos,
-                           const bool time_ok,
-                           const bool confidence_ok,
-                           const bool cooldown_ok,
-                           const bool spread_ok,
-                           const bool strong_move_ok,
-                           const double spread,
-                           const double spread_atr,
-                           const double body_atr,
-                           const double range_atr,
-                           const double body_ratio)
-{
-   Print("\n--- Entry Bypassed at ", TimeToString(TimeCurrent(), TIME_SECONDS),
-         InpTestMode ? " [TEST MODE: filters relaxed]" : "", " ---");
-   Print("Symbol: ", _Symbol, " | TF: ", GetTimeframeString(_Period), " | Magic: ", InpMagic);
-   Print("AI: prediction=", g_prediction, " buy_confidence=", DoubleToString(g_confidence * 100.0, 2), "% | min_conf=",
-         DoubleToString(InpMinConf * 100.0, 2), "%");
-   Print("Gate States: no_open_pos=", (no_open_pos ? "true" : "false"),
-         " time_ok=", (time_ok ? "true" : "false"),
-         " confidence_ok=", (confidence_ok ? "true" : "false"),
-         " cooldown_ok=", (cooldown_ok ? "true" : "false"),
-         " spread_ok=", (spread_ok ? "true" : "false"),
-         " strong_move_ok=", (strong_move_ok ? "true" : "false"));
-   if(!no_open_pos)
-      Print("Bypass reason: Existing position is open for symbol ", _Symbol);
-   if(!time_ok)
-   {
-      MqlDateTime now_dt;
-      TimeCurrent(now_dt);
-      Print("Bypass reason: Trading window blocked. Current hour=", now_dt.hour,
-            " | allowed=[", InpStartHour, ", ", InpEndHour, ")");
-   }
-   if(!confidence_ok)
-      Print("Bypass reason: Buy confidence below threshold. current=", DoubleToString(g_confidence, 4),
-            " | required>=", DoubleToString(InpMinConf, 4));
-   if(!cooldown_ok)
-      Print("Bypass reason: Cooldown active. Required bars=", InpCooldownBars,
-            " | last_close_time=", TimeToString(g_last_position_close_time, TIME_SECONDS));
-   if(!spread_ok)
-      Print("Bypass reason: Spread filter blocked. spread=", DoubleToString(spread, _Digits),
-            " spread_atr=", DoubleToString(spread_atr, 4),
-            " | max_spread_atr=", DoubleToString(InpMaxSpreadATRRatio, 4));
-   if(!strong_move_ok)
-      Print("Bypass reason: Movement strength below thresholds. body_atr=", DoubleToString(body_atr, 4),
-            " range_atr=", DoubleToString(range_atr, 4),
-            " body_ratio=", DoubleToString(body_ratio, 4),
-            " | mins=[", DoubleToString(InpMinBodyATR, 4), ", ",
-            DoubleToString(InpMinRangeATR, 4), ", ", DoubleToString(InpMinBodyRatio, 4), "]");
 }
 
 void ReportExitInfo(const ulong deal_ticket)
@@ -381,18 +251,10 @@ void OnTick()
    bool no_open_pos = !PositionSelect(_Symbol);
    bool confidence_ok = (g_confidence >= InpMinConf);
    bool cooldown_ok = IsCooldownFinished();
-   double spread = 0.0, spread_atr = 0.0;
-   bool spread_ok = IsSpreadAcceptable(spread, spread_atr);
-   double body_atr = 0.0, range_atr = 0.0, body_ratio = 0.0;
-   bool strong_move = HasStrongMovement(body_atr, range_atr, body_ratio);
-   g_last_body_atr = body_atr;
-   g_last_range_atr = range_atr;
-   g_last_body_ratio = body_ratio;
-   g_last_strong_move = strong_move;
 
    bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok;
    if(!InpTestMode)
-      entry_allowed = entry_allowed && confidence_ok && spread_ok && strong_move;
+      entry_allowed = entry_allowed && confidence_ok;
 
    if(entry_allowed)
    {
@@ -400,16 +262,14 @@ void OnTick()
       double tp_dist = sl_dist;
 
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double sl = price - sl_dist;
+      double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
       if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI BUY (TEST MODE)" : "AI BUY"))
-         ReportEntryInfo(price, sl, tp, sl_dist, tp_dist, spread, spread_atr, body_atr, range_atr, body_ratio,
-                         g_valid_time, cooldown_ok, spread_ok, strong_move);
+         Print("=== Buy Executed @ " + price + " | sl: " + sl + " | tp: " + tp);
    }
    else
    {
-      ReportEntryBypassInfo(no_open_pos, g_valid_time, confidence_ok, cooldown_ok, spread_ok, strong_move,
-                            spread, spread_atr, body_atr, range_atr, body_ratio);
+      Print("BUY ENTRY BYPASSED");
    }
 }
 
