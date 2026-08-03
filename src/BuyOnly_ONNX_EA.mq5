@@ -307,9 +307,7 @@ void OnTick()
 
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       // Before using dynamic low
-      // double sl = InpUseSL ? (price - sl_dist) : 0;
-      double dynamic_low = GetRecentBounceStopLoss(5, 5);
-      double sl = InpUseSL ? dynamic_low : 0;
+      double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
       if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI BUY (TEST MODE)" : "AI BUY"))
          Print("=== Buy Executed @ " + price + " | sl: " + sl + " | tp: " + tp);
