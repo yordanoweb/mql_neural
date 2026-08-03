@@ -26,6 +26,7 @@ input double  InpMinRangeATR       = 0.60;  // Min candle range / ATR on bar[1]
 input double  InpMinBodyRatio      = 0.55;  // Min body/range ratio on bar[1]
 input double  InpMaxSpreadATRRatio = 0.15;  // Max spread / ATR allowed to enter
 input int     InpCooldownBars      = 2;     // Bars to wait after position close
+input bool    InpBypassProtections = false; // Bypass Protections
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
 input group "======== Debug / Test ========="
@@ -91,6 +92,7 @@ bool IsCooldownFinished()
 
 bool IsSpreadAcceptable(double &spread, double &spread_atr)
 {
+   if(InpBypassProtections) return true;
    spread = 0.0;
    spread_atr = 0.0;
    if(g_current_atr <= 0.0)
@@ -124,6 +126,7 @@ bool IsEntryPriceProfitable()
 
 bool HasStrongMovement(double &body_atr, double &range_atr, double &body_ratio)
 {
+   if(InpBypassProtections) return true;
    body_atr = 0.0;
    range_atr = 0.0;
    body_ratio = 0.0;
