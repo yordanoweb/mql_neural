@@ -45,10 +45,6 @@ float    g_input_buffer[];      // Input buffer for inference
 string   pred_text = "";        // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
-double   g_last_body_atr = 0.0;
-double   g_last_range_atr = 0.0;
-double   g_last_body_ratio = 0.0;
-bool     g_last_strong_move = false;
 int      g_rsi_handle = INVALID_HANDLE;
 int      g_atr_handle = INVALID_HANDLE;
 
@@ -477,74 +473,3 @@ bool PerformInference()
    Print("Probabilities: [no_buy=", DoubleToString(output_probs[0]*100, 2), "%, buy=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
   }
-
-//+------------------------------------------------------------------+
-//| Devuelve el Swing Low (rebote) más reciente de la sesión actual  |
-//+------------------------------------------------------------------+
-double GetRecentBounceStopLoss(int leftBars = 3, int rightBars = 2)
-  {
-// 1. Obtener la hora de inicio de la sesión actual (00:00)
-   datetime currentTime = TimeCurrent();
-   MqlDateTime dt;
-   TimeToStruct(currentTime, dt);
-   dt.hour = 0;
-   dt.min  = 0;
-   dt.sec  = 0;
-   datetime startOfDay = StructToTime(dt);
-
-// 2. Buscar el índice de la vela de inicio de día
-   int startBarIndex = iBarShift(_Symbol, _Period, startOfDay, false);
-
-   if(startBarIndex < 0)
-      return 0.0;
-
-// 3. Buscar el pivote (Swing Low) hacia atrás, desde la vela más reciente hacia la apertura
-// Comenzamos en rightBars + 1 para asegurar que las velas de la derecha estén CERRADAS
-// (evita que el punto de rebote cambie con los movimientos de la vela 0 en formación)
-   for(int i = rightBars + 1; i <= startBarIndex - leftBars; i++)
-     {
-      bool isSwingLow = true;
-      double currentLow = iLow(_Symbol, _Period, i);
-
-      // Comprobar las velas a la derecha (velas más recientes)
-      for(int r = 1; r <= rightBars; r++)
-        {
-         if(iLow(_Symbol, _Period, i - r) <= currentLow)
-           {
-            isSwingLow = false;
-            break; // No es un rebote válido, alguna vela más reciente rompió este mínimo
-           }
-        }
-
-      if(!isSwingLow)
-         continue; // Pasar a la siguiente vela
-
-      // Comprobar las velas a la izquierda (velas más antiguas)
-      for(int l = 1; l <= leftBars; l++)
-        {
-         if(iLow(_Symbol, _Period, i + l) <= currentLow)
-           {
-            isSwingLow = false;
-            break; // No es un rebote válido, el precio venía de un nivel más bajo muy reciente
-           }
-        }
-
-      // Si sobrevive a ambas comprobaciones, ¡hemos encontrado el rebote más reciente!
-      if(isSwingLow)
-        {
-         return currentLow;
-        }
-     }
-
-// 4. Mecanismo de seguridad (Fallback)
-// Si el día acaba de empezar y no ha habido tiempo de formar un rebote,
-// o si el precio ha caído en picada sin rebotes, devolvemos el mínimo absoluto del día.
-   int fallbackIndex = iLowest(_Symbol, _Period, MODE_LOW, startBarIndex + 1, 0);
-   if(fallbackIndex >= 0)
-     {
-      return iLow(_Symbol, _Period, fallbackIndex);
-     }
-
-   return 0.0;
-  }
-//+------------------------------------------------------------------+
