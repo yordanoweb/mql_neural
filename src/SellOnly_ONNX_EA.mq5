@@ -23,6 +23,8 @@ input int     InpMinDollars = 5;            // Minimum money to close trade (0=d
 input bool    InpUseSL      = true;        // Use Stop Loss
 input group "======== Entry Protection ========"
 input int     InpCooldownBars      = 2;     // Bars to wait after position close
+input bool    InpRequirePrevCandleDir = true; // Require previous candle bearish
+input bool    InpRequireCurrCandleDir = true; // Require current candle bearish
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
 input group "======== Debug / Test ========="
@@ -287,12 +289,18 @@ void OnTick()
    if(!RefreshMarketSnapshot())
       return;
 
-// 3. Sell-only execution
+// 3. Candle-direction filters
+   bool prev_candle_bearish = (g_open[1] > g_close[1]);
+   bool curr_candle_bearish = (g_open[0] > g_close[0]);
+   bool prev_candle_ok = !InpRequirePrevCandleDir || prev_candle_bearish;
+   bool curr_candle_ok = !InpRequireCurrCandleDir || curr_candle_bearish;
+
+// 4. Sell-only execution
    bool no_open_pos = !PositionSelect(_Symbol);
    bool confidence_ok = (g_confidence >= InpMinConf);
    bool cooldown_ok = IsCooldownFinished();
 
-   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok;
+   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok;
    if(!InpTestMode)
       entry_allowed = entry_allowed && confidence_ok;
 
@@ -310,7 +318,8 @@ void OnTick()
      }
    else
      {
-      Print("SELL ENTRY BYPASSED");
+      Print("SELL ENTRY BYPASSED | PrevBear: ", prev_candle_bearish, " CurrBear: ", curr_candle_bearish,
+            " PrevOK: ", prev_candle_ok, " CurrOK: ", curr_candle_ok);
      }
   }
 
@@ -447,10 +456,19 @@ void OnTimer()
 void UpdateComment()
   {
    pred_text = (g_prediction == 1 ? "SELL" : "NO_SELL");
+   string prev_candle_txt = "N/A";
+   string curr_candle_txt = "N/A";
+   if(ArraySize(g_open) > 1 && ArraySize(g_close) > 1)
+     {
+      prev_candle_txt = (g_open[1] > g_close[1] ? "BEARISH" : "BULLISH");
+      curr_candle_txt = (g_open[0] > g_close[0] ? "BEARISH" : "BULLISH");
+     }
    Comment("\n\n\nAI SELL-ONLY ", GetTimeframeString(_Period), " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
-           "\nPrediction: ", pred_text);
+           "\nPrediction: ", pred_text,
+           "\nPrev Candle: ", prev_candle_txt, " (req=", InpRequirePrevCandleDir, ")",
+           "\nCurr Candle: ", curr_candle_txt, " (req=", InpRequireCurrCandleDir, ")");
   }
 
 //+------------------------------------------------------------------+
