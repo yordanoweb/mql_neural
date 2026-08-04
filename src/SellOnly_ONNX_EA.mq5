@@ -58,6 +58,7 @@ bool GetData();
 bool GetIndicators();
 bool BuildInputBuffer();
 bool PerformInference();
+void TryExecuteSellEntry();
 string GetTimeframeString(ENUM_TIMEFRAMES tf);
 
 //+------------------------------------------------------------------+
@@ -277,50 +278,6 @@ void OnTick()
       if(m_trade.PositionClose(_Symbol))
          return;
      }
-
-// 2. Candle control
-   static datetime last_bar = 0;
-   datetime current_bar = iTime(_Symbol, _Period, 0);
-   if(current_bar == last_bar)
-      return;
-   last_bar = current_bar;
-
-// Refresh series at bar open
-   if(!RefreshMarketSnapshot())
-      return;
-
-// 3. Candle-direction filters
-   bool prev_candle_bearish = (g_open[1] > g_close[1]);
-   bool curr_candle_bearish = (g_open[0] > g_close[0]);
-   bool prev_candle_ok = !InpRequirePrevCandleDir || prev_candle_bearish;
-   bool curr_candle_ok = !InpRequireCurrCandleDir || curr_candle_bearish;
-
-// 4. Sell-only execution
-   bool no_open_pos = !PositionSelect(_Symbol);
-   bool confidence_ok = (g_confidence >= InpMinConf);
-   bool cooldown_ok = IsCooldownFinished();
-
-   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok;
-   if(!InpTestMode)
-      entry_allowed = entry_allowed && confidence_ok;
-
-   if(entry_allowed)
-     {
-      double sl_dist = g_current_atr * InpMultiplier;
-      double tp_dist = sl_dist;
-
-      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      // Before using dynamic high
-      double sl = InpUseSL ? (price + sl_dist) : 0;
-      double tp = price - tp_dist;
-      if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI SELL (TEST MODE)" : "AI SELL"))
-         Print("=== Sell Executed @ " + price + " | sl: " + sl + " | tp: " + tp);
-     }
-   else
-     {
-      Print("SELL ENTRY BYPASSED | PrevBear: ", prev_candle_bearish, " CurrBear: ", curr_candle_bearish,
-            " PrevOK: ", prev_candle_ok, " CurrOK: ", curr_candle_ok);
-     }
   }
 
 //+------------------------------------------------------------------+
@@ -447,6 +404,7 @@ void OnTimer()
       return;
    if(!PerformInference())
       return;
+   TryExecuteSellEntry();
    UpdateComment();
   }
 
@@ -490,5 +448,54 @@ bool PerformInference()
    Print("Prediction: ", (g_prediction == 1 ? "SELL" : "NO_SELL"));
    Print("Probabilities: [no_sell=", DoubleToString(output_probs[0]*100, 2), "%, sell=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void TryExecuteSellEntry()
+  {
+   if(ArraySize(g_open) < 2 || ArraySize(g_close) < 2)
+      return;
+
+   bool prev_candle_bearish = (g_open[1] > g_close[1]);
+   bool curr_candle_bearish = (g_open[0] > g_close[0]);
+   bool prev_candle_ok = !InpRequirePrevCandleDir || prev_candle_bearish;
+   bool curr_candle_ok = !InpRequireCurrCandleDir || curr_candle_bearish;
+
+   bool no_open_pos = !PositionSelect(_Symbol);
+   bool cooldown_ok = IsCooldownFinished();
+   bool prediction_ok = (g_prediction == 1);
+   bool confidence_ok = (g_confidence >= InpMinConf);
+
+   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok;
+   if(!InpTestMode)
+      entry_allowed = entry_allowed && confidence_ok;
+
+   if(entry_allowed)
+     {
+      double sl_dist = g_current_atr * InpMultiplier;
+      double tp_dist = sl_dist;
+      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double sl = InpUseSL ? (price + sl_dist) : 0;
+      double tp = price - tp_dist;
+      if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI SELL (TEST MODE)" : "AI SELL"))
+         Print("=== Sell Executed @ ", DoubleToString(price, _Digits),
+               " | sl: ", DoubleToString(sl, _Digits),
+               " | tp: ", DoubleToString(tp, _Digits));
+      else
+         Print("SELL ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
+      return;
+     }
+
+   Print("SELL ENTRY BYPASSED | PredOK: ", prediction_ok,
+         " ConfOK: ", confidence_ok,
+         " TimeOK: ", g_valid_time,
+         " CooldownOK: ", cooldown_ok,
+         " NoPos: ", no_open_pos,
+         " PrevBear: ", prev_candle_bearish,
+         " CurrBear: ", curr_candle_bearish,
+         " PrevOK: ", prev_candle_ok,
+         " CurrOK: ", curr_candle_ok);
   }
 //+------------------------------------------------------------------+
