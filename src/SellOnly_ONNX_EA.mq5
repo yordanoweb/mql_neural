@@ -467,8 +467,8 @@ void UpdateComment()
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
            "\nPrediction: ", pred_text,
-           "\nPrev Candle: ", prev_candle_txt, " (req=", InpRequirePrevCandleDir, ")",
-           "\nCurr Candle: ", curr_candle_txt, " (req=", InpRequireCurrCandleDir, ")");
+           "\nPrev: ", prev_candle_txt, " (req=", InpRequirePrevCandleDir, ")",
+           "\nCurr: ", curr_candle_txt, " (req=", InpRequireCurrCandleDir, ")");
   }
 
 //+------------------------------------------------------------------+
@@ -491,3 +491,4 @@ bool PerformInference()
    Print("Probabilities: [no_sell=", DoubleToString(output_probs[0]*100, 2), "%, sell=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
   }
+//+------------------------------------------------------------------+
