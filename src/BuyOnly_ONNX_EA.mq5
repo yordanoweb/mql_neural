@@ -277,6 +277,43 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
   {
    if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
       ReportExitInfo(trans.deal);
+
+// 1. Validar que la transacción sea un Deal añadido al historial
+   if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
+     {
+      // 2. Filtrar solo para el símbolo actual del gráfico
+      if(trans.symbol == _Symbol)
+        {
+         // Cargar la información completa del deal recién ejecutado desde el historial
+         if(HistoryDealSelect(trans.deal))
+           {
+            ENUM_DEAL_ENTRY dealEntry   = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
+            ENUM_DEAL_REASON dealReason = (ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal, DEAL_REASON);
+
+            // --- CASO 1: APERTURA DE OPERACIÓN ---
+            if(dealEntry == DEAL_ENTRY_IN)
+               PlaySound("ok.wav"); // Sonido para Apertura
+              
+            // --- CASO 2 y 3: CIERRE POR TP O SL ---
+            else
+               if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
+                 {
+                  // Verificar si el cierre fue provocado por el Take Profit
+                  if(dealReason == DEAL_REASON_TP)
+                     PlaySound("news.wav"); // Sonido para Take Profit
+                  // Verificar si el cierre fue provocado por el Stop Loss
+                  else
+                     if(dealReason == DEAL_REASON_SL)
+                        PlaySound("timeout.wav"); // Sonido para Stop Loss
+                     // Cierre manual o por bot (opcional)
+                     else
+                        if(dealReason == DEAL_REASON_CLIENT || dealReason == DEAL_REASON_EXPERT)
+                           PlaySound("alert.wav");
+                 }
+           }
+        }
+     }
+
   }
 
 //+------------------------------------------------------------------+
