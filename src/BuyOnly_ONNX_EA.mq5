@@ -5,7 +5,7 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\US100.cash_M15_buy_only.onnx" as uchar ExtModel[];
+#resource "\\Files\\XAU_M15_buy_only.onnx" as uchar ExtModel[];
 
 //--- INPUTS
 input group "======== AI Configuration ========"
@@ -17,8 +17,8 @@ input int     InpWindow     = 20;           // Must match training --window
 input group "======== Risk Management ========"
 input double  InpLot        = 1;
 input int     InpMagic      = 123456;
-input int     InpATR        = 6;
-input double  InpMultiplier = 1.5;
+input int     InpSLPoints   = 600;          // Stop Loss distance in points
+input int     InpTPPoints   = 600;          // Take Profit distance in points
 input int     InpMinDollars = 5;            // Minimum money to close trade (0=disabled)
 input bool    InpUseSL      = true;        // Use Stop Loss
 input group "======== Entry Protection ========"
@@ -38,7 +38,6 @@ long     g_prediction = 0;      // Last inference label (0=no_buy, 1=buy)
 float    g_confidence = 0.0;    // Last buy probability
 bool     g_valid_time = false;  // Last time filter result
 double   g_rsi_buffer[];        // RSI values
-double   g_current_atr = 0;     // Current ATR value
 double   g_close[];             // Close prices
 double   g_open[];              // Open prices
 double   g_high[];              // High prices
@@ -48,7 +47,6 @@ string   pred_text = "";        // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
 int      g_rsi_handle = INVALID_HANDLE;
-int      g_atr_handle = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -220,13 +218,6 @@ int OnInit()
       return(INIT_FAILED);
      }
 
-   g_atr_handle = iATR(_Symbol, _Period, InpATR);
-   if(g_atr_handle == INVALID_HANDLE)
-     {
-      Print("ERROR: Failed to create ATR handle. Error Code: ", GetLastError());
-      return(INIT_FAILED);
-     }
-
    long input_shape[] = {1, InpWindow * FEATURES};
    if(!OnnxSetInputShape(onnx_handle, 0, input_shape))
       return(INIT_FAILED);
@@ -257,9 +248,6 @@ void OnDeinit(const int reason)
       OnnxRelease(onnx_handle);
    if(g_rsi_handle != INVALID_HANDLE)
       IndicatorRelease(g_rsi_handle);
-   if(g_atr_handle != INVALID_HANDLE)
-      IndicatorRelease(g_atr_handle);
-
    Comment("");
   }
 
@@ -326,20 +314,14 @@ bool GetData()
 //+------------------------------------------------------------------+
 bool GetIndicators()
   {
-   if(g_rsi_handle == INVALID_HANDLE || g_atr_handle == INVALID_HANDLE)
+   if(g_rsi_handle == INVALID_HANDLE)
       return false;
 
    ArraySetAsSeries(g_rsi_buffer, true);
    if(CopyBuffer(g_rsi_handle, 0, 0, InpWindow, g_rsi_buffer) < InpWindow)
       return false;
 
-   double atr_buffer[];
-   ArraySetAsSeries(atr_buffer, true);
-   if(CopyBuffer(g_atr_handle, 0, 0, 1, atr_buffer) < 1)
-      return false;
-
-   g_current_atr = atr_buffer[0];
-   return (g_current_atr > 0.0);
+   return true;
   }
 
 //+------------------------------------------------------------------+
@@ -473,8 +455,8 @@ void TryExecuteBuyEntry()
 
    if(entry_allowed)
      {
-      double sl_dist = g_current_atr * InpMultiplier;
-      double tp_dist = sl_dist;
+      double sl_dist = InpSLPoints * _Point;
+      double tp_dist = InpTPPoints * _Point;
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
