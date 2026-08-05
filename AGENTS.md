@@ -66,24 +66,24 @@ tmp/
 ## CLI Contract
 Every `train_*.py` script must accept:
 ```
---input          CSV or Parquet path
---symbol         symbol name (used in output filename)
---timeframe      M1 M5 M15 M30 H1 H4 D1
---model          mlp | rf  (default: rf)
---window         window size (default: 20)
---forward        forward bars for label (default: 10)
---min_profit_atr minimum upside in ATR units to label as buy (default: 1.5)
---output         ONNX output path (auto-generated if omitted)
---date_col       column name for date (if separate from time)
---time_col       column name for time (or datetime if combined)
---open_col       column name for open price (default: open)
---high_col       column name for high price (default: high)
---low_col        column name for low price (default: low)
---close_col      column name for close price (default: close)
---volume_col     column name for volume (default: tick_volume)
+--input-csv      input CSV file path
+--output-filename ONNX output filename/path
+--window         feature window size in bars (default: 20)
+--forward        forward bars used for buy label (default: 10)
+--rsi-period     RSI period (default: 14)
+--n-iter         RandomizedSearchCV iterations (default: 5)
+--n-splits       TimeSeriesSplit folds (default: 2)
+--n-jobs         parallel jobs for search (default: -1)
+--symbol         trading symbol for metadata (default: auto)
+--timeframe      timeframe for metadata (default: auto)
+--date-col       column name for date (default: date)
+--time-col       column name for time (default: time)
+--open-col       column name for open price (default: open)
+--high-col       column name for high price (default: high)
+--low-col        column name for low price (default: low)
+--close-col      column name for close price (default: close)
+--volume-col     column name for volume (default: tick_volume)
 ```
-Indicator period args: `--atr_period`, `--adx_period`, `--adx_min`, `--stoch_k`, `--stoch_d`, `--vol_window`
-RF-only args: `--n_iter` (RandomizedSearchCV iterations), `--jobs` (parallel jobs)
 
 ## Execution Script Contract
 Every `execute_onnx_<tag>_on_mt5.py` script must accept:
