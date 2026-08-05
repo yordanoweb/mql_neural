@@ -508,7 +508,7 @@ void TryExecuteSellEntry()
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
       else
-         Print("SELL ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
+         Alert("SELL ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
       return;
      }
 

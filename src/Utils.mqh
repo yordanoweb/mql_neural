@@ -4,14 +4,14 @@ double CalculateVolumeByPercent(double            percent,
 //--- 1. Validate input
    if(percent <= 0.0 || percent > 100.0)
      {
-      PrintFormat("%s: 'percent' must be in the range (0, 100]. Received: %.4f",
+      PrintFormat("%s: 'percent' must be in (0, 100]. Received: %.4f",
                   __FUNCTION__, percent);
       return 0.0;
      }
  
    string symbol = Symbol();
  
-//--- 2. Get available free margin
+//--- 2. Free margin guard
    double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
    if(freeMargin <= 0.0)
      {
@@ -19,10 +19,10 @@ double CalculateVolumeByPercent(double            percent,
       return 0.0;
      }
  
-//--- 3. Choose price according to order direction
-   bool isBuy = (orderType == ORDER_TYPE_BUY       ||
-                 orderType == ORDER_TYPE_BUY_LIMIT  ||
-                 orderType == ORDER_TYPE_BUY_STOP   ||
+//--- 3. Price for the requested direction
+   bool isBuy = (orderType == ORDER_TYPE_BUY            ||
+                 orderType == ORDER_TYPE_BUY_LIMIT       ||
+                 orderType == ORDER_TYPE_BUY_STOP        ||
                  orderType == ORDER_TYPE_BUY_STOP_LIMIT);
  
    double price = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK)
@@ -30,11 +30,11 @@ double CalculateVolumeByPercent(double            percent,
  
    if(price <= 0.0)
      {
-      PrintFormat("%s: Could not get a valid price for %s.", __FUNCTION__, symbol);
+      PrintFormat("%s: Invalid price (%.5f) for %s.", __FUNCTION__, price, symbol);
       return 0.0;
      }
  
-//--- 4. Margin required to open exactly 1.0 lot
+//--- 4. Margin cost of exactly 1 lot (broker / leverage / hedging-aware)
    double marginPer1Lot = 0.0;
    if(!OrderCalcMargin(orderType, symbol, 1.0, price, marginPer1Lot) ||
       marginPer1Lot <= 0.0)
@@ -44,11 +44,7 @@ double CalculateVolumeByPercent(double            percent,
       return 0.0;
      }
  
-//--- 5. Calculate raw lot from the margin budget
-   double marginBudget = freeMargin * (percent / 100.0);
-   double rawLot       = marginBudget / marginPer1Lot;
- 
-//--- 6. Fetch symbol volume constraints
+//--- 5. Symbol volume constraints
    double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
    double lotMin  = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
    double lotMax  = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
@@ -59,30 +55,47 @@ double CalculateVolumeByPercent(double            percent,
       return 0.0;
      }
  
-//--- 7. Floor to the nearest lot step (never overshoot the budget)
-   double lot = MathFloor(rawLot / lotStep) * lotStep;
+//--- 6. Raw lot from the requested margin budget
+   double marginBudget = freeMargin * (percent / 100.0);
+   double rawLot       = marginBudget / marginPer1Lot;
  
-//--- 8. Normalise decimal places to match the step
-   int digits = (int)MathRound(MathLog10(1.0 / lotStep));   // e.g. step=0.01 → 2 dp
-   lot        = NormalizeDouble(lot, digits);
+//--- 7. Floor to the nearest lot step (never exceed the intended budget)
+   int    digits = (int)MathRound(MathLog10(1.0 / lotStep));  // e.g. step 0.01 → 2 dp
+   double lot    = NormalizeDouble(MathFloor(rawLot / lotStep) * lotStep, digits);
  
-//--- 9. Enforce symbol min / max limits
+//--- 8. Below-minimum handling  ← key fix
    if(lot < lotMin)
      {
-      PrintFormat("%s: Calculated lot %.5f is below VOLUME_MIN %.5f for %.1f%% of margin "
-                  "(free: %.2f, budget: %.2f, margin/lot: %.2f). Returning 0.",
-                  __FUNCTION__, lot, lotMin, percent, freeMargin, marginBudget, marginPer1Lot);
-      return 0.0;
+      double marginForMin = marginPer1Lot * lotMin;
+ 
+      if(freeMargin >= marginForMin)
+        {
+         // Enough margin exists for the minimum lot – clamp up and warn.
+         PrintFormat("%s: Budget %.2f (%.1f%% of %.2f) covers only %.5f lots "
+                     "(min=%.5f, margin/lot=%.2f). Clamping to VOLUME_MIN.",
+                     __FUNCTION__, marginBudget, percent, freeMargin,
+                     lot, lotMin, marginPer1Lot);
+         lot = lotMin;
+        }
+      else
+        {
+         // Cannot afford even the minimum lot – skip the trade.
+         PrintFormat("%s: Insufficient margin. Need %.2f for VOLUME_MIN %.5f "
+                     "but free margin is %.2f. Returning 0.",
+                     __FUNCTION__, marginForMin, lotMin, freeMargin);
+         return 0.0;
+        }
      }
  
+//--- 9. Cap at maximum allowed volume
    if(lot > lotMax)
      {
-      PrintFormat("%s: Clamping lot from %.5f to VOLUME_MAX %.5f.", __FUNCTION__, lot, lotMax);
-      lot = lotMax;
+      PrintFormat("%s: Clamping lot %.5f to VOLUME_MAX %.5f.", __FUNCTION__, lot, lotMax);
+      lot = NormalizeDouble(lotMax, digits);
      }
  
-   PrintFormat("%s: percent=%.2f%% | freeMargin=%.2f | budget=%.2f | "
-               "marginPerLot=%.2f | lots=%.5f",
+   PrintFormat("%s: percent=%.2f%% | free=%.2f | budget=%.2f | "
+               "margin/lot=%.2f | lots=%.5f",
                __FUNCTION__, percent, freeMargin, marginBudget, marginPer1Lot, lot);
  
    return lot;

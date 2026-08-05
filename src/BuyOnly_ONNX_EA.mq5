@@ -508,7 +508,7 @@ void TryExecuteBuyEntry()
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
       else
-         Print("BUY ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
+         Alert("BUY ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
       return;
      }
 
