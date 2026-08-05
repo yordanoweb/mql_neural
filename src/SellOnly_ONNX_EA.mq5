@@ -278,34 +278,34 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
    if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
       ReportExitInfo(trans.deal);
 
-// 1. Validar que la transacción sea un Deal añadido al historial
+// 1. Validate that the transaction is a deal addition
    if(trans.type == TRADE_TRANSACTION_DEAL_ADD)
      {
-      // 2. Filtrar solo para el símbolo actual del gráfico
+      // 2. Filter for the current symbol
       if(trans.symbol == _Symbol)
         {
-         // Cargar la información completa del deal recién ejecutado desde el historial
+         // Load the deal details
          if(HistoryDealSelect(trans.deal))
            {
             ENUM_DEAL_ENTRY dealEntry   = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(trans.deal, DEAL_ENTRY);
             ENUM_DEAL_REASON dealReason = (ENUM_DEAL_REASON)HistoryDealGetInteger(trans.deal, DEAL_REASON);
 
-            // --- CASO 1: APERTURA DE OPERACIÓN ---
+            // --- CASE 1: OPENING A POSITION ---
             if(dealEntry == DEAL_ENTRY_IN)
-               PlaySound("ok.wav"); // Sonido para Apertura
+               PlaySound("ok.wav"); // Sound for Opening Position
 
-            // --- CASO 2 y 3: CIERRE POR TP O SL ---
+            // --- CASE 2 and 3: CLOSE BY TP OR SL ---
             else
                if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
                  {
-                  // Verificar si el cierre fue provocado por el Take Profit
+                  // Verify if the close was due to Take Profit
                   if(dealReason == DEAL_REASON_TP)
-                     PlaySound("news.wav"); // Sonido para Take Profit
-                  // Verificar si el cierre fue provocado por el Stop Loss
+                     PlaySound("news.wav"); // Sound for Take Profit
+                  // Verify if the close was due to Stop Loss
                   else
                      if(dealReason == DEAL_REASON_SL)
-                        PlaySound("timeout.wav"); // Sonido para Stop Loss
-                     // Cierre manual o por bot (opcional)
+                        PlaySound("timeout.wav"); // Sound for Stop Loss
+                     // Manual or Expert close
                      else
                         if(dealReason == DEAL_REASON_CLIENT || dealReason == DEAL_REASON_EXPERT)
                            PlaySound("alert.wav");
