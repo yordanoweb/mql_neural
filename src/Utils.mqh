@@ -1,82 +1,89 @@
-//+------------------------------------------------------------------+
-//| Calcula el volumen (lotes) correspondiente a un porcentaje       |
-//| específico del margen libre para una orden de mercado.           |
-//+------------------------------------------------------------------+
-double CalculateVolumeByPercent(double percent)
+double CalculateVolumeByPercent(double            percent,
+                                ENUM_ORDER_TYPE   orderType = ORDER_TYPE_BUY)
   {
-   if(percent <= 0.0)
+//--- 1. Validate input
+   if(percent <= 0.0 || percent > 100.0)
      {
-      Print("Error: El porcentaje debe ser mayor a 0.");
+      PrintFormat("%s: 'percent' must be in the range (0, 100]. Received: %.4f",
+                  __FUNCTION__, percent);
       return 0.0;
      }
-
-   // 1. Obtener el margen libre
-   double free_margin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-   double target_margin = free_margin * (percent / 100.0);
-
-   // 2. Obtener el precio Ask actual como referencia
-   double current_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-
-   // 3. Calcular el margen exacto requerido para 1 lote estándar
-   double margin_per_lot = 0.0;
-   if(!OrderCalcMargin(ORDER_TYPE_BUY, _Symbol, 1.0, current_price, margin_per_lot) || margin_per_lot <= 0.0)
+ 
+   string symbol = Symbol();
+ 
+//--- 2. Get available free margin
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   if(freeMargin <= 0.0)
      {
-      Print("Error: No se pudo calcular el margen requerido por lote. Código: ", GetLastError());
+      PrintFormat("%s: No free margin available (%.2f).", __FUNCTION__, freeMargin);
       return 0.0;
      }
-
-   // 4. Calcular el volumen bruto
-   double raw_volume = target_margin / margin_per_lot;
-
-   // 5. Obtener restricciones del broker para el símbolo
-   double min_volume   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
-   double max_volume   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   double volume_step  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
-   double limit_volume = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_LIMIT);
-
-   if(min_volume <= 0.0 || volume_step <= 0.0)
+ 
+//--- 3. Choose price according to order direction
+   bool isBuy = (orderType == ORDER_TYPE_BUY       ||
+                 orderType == ORDER_TYPE_BUY_LIMIT  ||
+                 orderType == ORDER_TYPE_BUY_STOP   ||
+                 orderType == ORDER_TYPE_BUY_STOP_LIMIT);
+ 
+   double price = isBuy ? SymbolInfoDouble(symbol, SYMBOL_ASK)
+                        : SymbolInfoDouble(symbol, SYMBOL_BID);
+ 
+   if(price <= 0.0)
      {
-      Print("Error: Parámetros de volumen del símbolo inválidos.");
+      PrintFormat("%s: Could not get a valid price for %s.", __FUNCTION__, symbol);
       return 0.0;
      }
-
-   // 6. Si el volumen calculado no alcanza el mínimo, abortar
-   if(raw_volume < min_volume)
+ 
+//--- 4. Margin required to open exactly 1.0 lot
+   double marginPer1Lot = 0.0;
+   if(!OrderCalcMargin(orderType, symbol, 1.0, price, marginPer1Lot) ||
+      marginPer1Lot <= 0.0)
      {
-      PrintFormat("Volumen insuficiente: Calculado (%.4f) < Mínimo permitido (%.4f)", raw_volume, min_volume);
+      PrintFormat("%s: OrderCalcMargin() failed for %s. Error: %d",
+                  __FUNCTION__, symbol, GetLastError());
       return 0.0;
      }
-
-   // 7. Normalizar el volumen según el paso (step) relativo a min_volume
-   double steps = MathFloor((raw_volume - min_volume) / volume_step);
-   double final_volume = min_volume + (steps * volume_step);
-
-   // 8. Redondear con precisión matemática exacta para evitar imprecisión flotante
-   int digits = 0;
-   if(volume_step < 1.0)
+ 
+//--- 5. Calculate raw lot from the margin budget
+   double marginBudget = freeMargin * (percent / 100.0);
+   double rawLot       = marginBudget / marginPer1Lot;
+ 
+//--- 6. Fetch symbol volume constraints
+   double lotStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   double lotMin  = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double lotMax  = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+ 
+   if(lotStep <= 0.0)
      {
-      digits = (int)MathCeil(-MathLog10(volume_step));
-     }
-   final_volume = NormalizeDouble(final_volume, digits);
-
-   // 9. Validar límite máximo por orden
-   if(final_volume > max_volume)
-     {
-      final_volume = max_volume;
-     }
-
-   // 10. Validar límite máximo acumulado por símbolo (si el broker lo impone)
-   if(limit_volume > 0.0 && final_volume > limit_volume)
-     {
-      final_volume = limit_volume;
-     }
-
-   // 11. Verificación final de seguridad
-   if(final_volume < min_volume)
-     {
-      PrintFormat("Volumen final (%.4f) menor al mínimo permitido (%.4f).", final_volume, min_volume);
+      PrintFormat("%s: Invalid VOLUME_STEP (%.8f) for %s.", __FUNCTION__, lotStep, symbol);
       return 0.0;
      }
-
-   return final_volume;
+ 
+//--- 7. Floor to the nearest lot step (never overshoot the budget)
+   double lot = MathFloor(rawLot / lotStep) * lotStep;
+ 
+//--- 8. Normalise decimal places to match the step
+   int digits = (int)MathRound(MathLog10(1.0 / lotStep));   // e.g. step=0.01 → 2 dp
+   lot        = NormalizeDouble(lot, digits);
+ 
+//--- 9. Enforce symbol min / max limits
+   if(lot < lotMin)
+     {
+      PrintFormat("%s: Calculated lot %.5f is below VOLUME_MIN %.5f for %.1f%% of margin "
+                  "(free: %.2f, budget: %.2f, margin/lot: %.2f). Returning 0.",
+                  __FUNCTION__, lot, lotMin, percent, freeMargin, marginBudget, marginPer1Lot);
+      return 0.0;
+     }
+ 
+   if(lot > lotMax)
+     {
+      PrintFormat("%s: Clamping lot from %.5f to VOLUME_MAX %.5f.", __FUNCTION__, lot, lotMax);
+      lot = lotMax;
+     }
+ 
+   PrintFormat("%s: percent=%.2f%% | freeMargin=%.2f | budget=%.2f | "
+               "marginPerLot=%.2f | lots=%.5f",
+               __FUNCTION__, percent, freeMargin, marginBudget, marginPer1Lot, lot);
+ 
+   return lot;
   }

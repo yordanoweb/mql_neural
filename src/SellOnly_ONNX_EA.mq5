@@ -498,7 +498,7 @@ void TryExecuteSellEntry()
       double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double sl = InpUseSL ? (price + sl_dist) : 0;
       double tp = price - tp_dist;
-      double lot = CalculateVolumeByPercent(InpLot);
+      double lot = CalculateVolumeByPercent(InpLot, ORDER_TYPE_SELL);
       Print("=== Attempting Buy Entry === | Price: ", DoubleToString(price, _Digits),
             " | SL: ", DoubleToString(sl, _Digits),
             " | TP: ", DoubleToString(tp, _Digits),

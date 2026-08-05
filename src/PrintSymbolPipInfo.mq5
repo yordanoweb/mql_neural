@@ -22,6 +22,17 @@ void OnStart()
    Print("Tick Value: ", DoubleToString(tick_value, 6));
    Print("Rule: pip = point * 10 when digits are 3 or 5; otherwise pip = point");
 
+   double margin;
+   OrderCalcMargin(
+       ORDER_TYPE_BUY,
+       _Symbol,
+       1.0,
+       SymbolInfoDouble(_Symbol, SYMBOL_ASK),
+       margin
+   );
+
+   Alert("Margin for 1 lot = ", margin);
+
    Alert("PIP INFORMATION\nSymbol: ", symbol,
          "\nDigits: ", digits,
          "\nPoint: ", DoubleToString(point, digits),
