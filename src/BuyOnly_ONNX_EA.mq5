@@ -236,6 +236,9 @@ int OnInit()
    if(RefreshMarketSnapshot() && PerformInference())
       UpdateComment();
 
+   double lot_size = CalculateVolumeByPercent(InpLot, ORDER_TYPE_BUY);
+   Print("Initial Lot Size Calculated: ", DoubleToString(lot_size, 2), " lots for InpLot=", InpLot, "%");
+
    return(INIT_SUCCEEDED);
   }
 
@@ -513,13 +516,13 @@ void TryExecuteBuyEntry()
      }
 
    Print("BUY ENTRY BYPASSED | PredOK: ", prediction_ok,
-         " ConfOK: ", confidence_ok,
-         " TimeOK: ", g_valid_time,
-         " CooldownOK: ", cooldown_ok,
-         " NoPos: ", no_open_pos,
-         " PrevBull: ", prev_candle_bullish,
-         " CurrBull: ", curr_candle_bullish,
-         " PrevOK: ", prev_candle_ok,
-         " CurrOK: ", curr_candle_ok);
+         " | ConfOK: ", confidence_ok,
+         " | TimeOK: ", g_valid_time,
+         " | CooldownOK: ", cooldown_ok,
+         " | NoPos: ", no_open_pos,
+         " | PrevBull: ", prev_candle_bullish,
+         " | CurrBull: ", curr_candle_bullish,
+         " | PrevOK: ", prev_candle_ok,
+         " | CurrOK: ", curr_candle_ok);
   }
 //+------------------------------------------------------------------+
