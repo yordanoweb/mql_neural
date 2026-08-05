@@ -86,22 +86,7 @@ Every `train_*.py` script must accept:
 ```
 
 ## Execution Script Contract
-Every `execute_onnx_<tag>_on_mt5.py` script must accept:
-```
---model       path to ONNX file
---symbol      MT5 symbol (e.g. NAS100)
---timeframe   M1 M5 M15 M30 H1 H4 D1
---window      window size — must match training (default: 20)
---confidence  minimum probability to open a trade (default: 0.60)
---lot         order lot size (default: 1.0)
---lot_usd     trade amount in account currency (overrides --lot when > 0)
---interval    seconds between inference cycles (default: 60)
---atr_period  ATR period for SL/TP (default: 14)
---sl_mult     SL = ATR × sl_mult (default: 1.5)
---tp_mult     imaginary TP = ATR × tp_mult (default: 2.0)
-```
-Indicator period args must match those used at training time.
-Exit logic: hard SL on broker + imaginary TP tracked in Python → trailing exit on first opposite M1 candle.
+`train_buy_only.py` does not define any execution-side CLI contract.
 
 ## Code Rules
 - Minimal code — no abstractions that don't directly serve the pipeline
