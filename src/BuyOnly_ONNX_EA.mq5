@@ -28,7 +28,7 @@ input bool    InpRequireCurrCandleDir = true; // Require current candle bullish
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
 input group "======== Debug / Test ========="
-input bool    InpTestMode     = false; // Bypass confidence/spread/move filters to verify entries
+input bool    InpDebug     = false; // Log Debug Info
 
 //--- GLOBAL VARIABLES
 long     onnx_handle = INVALID_HANDLE;
@@ -470,8 +470,6 @@ void TryExecuteBuyEntry()
    bool confidence_ok = (g_confidence >= InpMinConf);
 
    bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok;
-   if(!InpTestMode)
-      entry_allowed = entry_allowed && confidence_ok;
 
    if(entry_allowed)
      {
@@ -480,7 +478,7 @@ void TryExecuteBuyEntry()
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
-      if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, InpTestMode ? "AI BUY (TEST MODE)" : "AI BUY"))
+      if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY"))
          Print("=== Buy Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
