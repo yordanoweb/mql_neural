@@ -59,12 +59,9 @@ tmp/
 ### RSI (1): `feat_rsi` — `RSI(close, rsi_period) / 100.0`
 
 ## Classification Target
-- **3 classes**: `0 = hold`, `1 = buy`, `2 = sell`
-- Label: ATR-based — over the next `forward` bars:
-  - `1 (buy)`  — upside   >= `min_profit_atr × ATR` AND upside > downside
-  - `2 (sell)` — downside >= `min_profit_atr × ATR` AND downside > upside
-  - `0 (hold)` — otherwise
-- Output: `float32[1, 3]` — `[P(hold), P(buy), P(sell)]`
+- **2 classes**: `0 = no_buy`, `1 = buy`
+- Label: `close[t + forward] > close[t]` → `1 (buy)`, otherwise `0 (no_buy)`
+- Output: `float32[1, 2]` — `[P(no_buy), P(buy)]`
 
 ## CLI Contract
 Every `train_*.py` script must accept:
