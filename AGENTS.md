@@ -1,8 +1,9 @@
 # AGENTS.md — AI Agent Instructions
 
 ## Project
-Python scripts that train ONNX models for market direction prediction.
-Models are consumed externally by an inference runtime (not built here).
+- Python scripts that train ONNX models for market direction prediction.
+- Meta Trader 5 Expert Advisor scripts that execute trades based on ONNX model predictions.
+- Models are consumed externally by an inference runtime (not built here).
 
 ## Stack
 - Python 3.11, venv at `.venv/`
@@ -10,26 +11,40 @@ Models are consumed externally by an inference runtime (not built here).
 
 ## Layout
 ```
-src/python/
-  utils/
-    features.py                          # feature engineering helpers
-    onnx_export.py                       # ONNX export + metadata helpers
-  train_<tag>.py                         # one script per model variant
-  execute_onnx_<tag>_on_mt5.py          # live inference + MT5 order execution
-  extract_rates_to_csv.py               # pull OHLCV from MT5
-  extract_yfinance_rates_to_csv.py      # pull OHLCV from yfinance
-  query_onnx_model.py                   # inspect ONNX metadata
-csv/                  # raw OHLCV CSVs
-data/<SYMBOL>/        # parquet files per symbol/timeframe
-onnx/                 # exported ONNX models
-docs/                 # specs and design docs
+AGENTS.md
+README.md
+requirements.txt
+csv/
+data/
+log/
+onnx/
+src/
+  BuyOnly_ONNX_EA.mq5
+  extract_rates_to_csv.py
+  indicators.py
+  PrintSymbolPipInfo.mq5
+  query_onnx_metadata.py
+  recompile_mql.py
+  SellOnly_ONNX_EA.mq5
+  SimpleONNX_EA_M15.mq5
+  smoke_test_onnx_training_balance.py
+  test_mt5_connection.py
+  train_buy_only.py
+  train_onnx_from_csv.py
+  train_sell_only.py
+  verify_mt5_data_flow.py
+tmp/
 ```
 
 ## ONNX Contract (never break this)
-- Input : `float32[1, WINDOW_SIZE * N_FEATURES]` — flattened window, row-major
-- Output: `float32[1, 3]` — softmax probabilities `[P(hold), P(buy), P(sell)]`
-- Required metadata: `feature_names`, `window_size`, `n_features`
-- Training metadata: All CLI arguments used during training (symbol, timeframe, model_type, window, forward, min_profit_atr, indicator periods, etc.) plus `training_date`
+- Input: `float32[1, window * 3]` — flattened OHLC window, row-major
+- Features:
+  - `feat_body = close - open`
+  - `feat_range = high - low`
+  - `feat_rsi = RSI(close, rsi_period) / 100.0`
+- Output: `float32[1, 2]` — softmax probabilities `[P(no_buy), P(buy)]`
+- Target: `1` when `close[t + forward] > close[t]`, otherwise `0`
+- Required metadata: `training.created_utc`, `training.input_csv_path`, `training.input_csv_name`, `training.output_filename`, `training.symbol`, `training.timeframe`, `training.window`, `training.forward`, `training.rsi_period`, `training.features`, `training.feature_count`, `training.input_size`, `training.n_iter`, `training.n_splits`, `training.n_jobs`, `training.records_loaded`, `training.records_after_dropna`, `training.samples_used`, `training.target`, `training.target_class_distribution`, `training.model_type`, `training.random_state`, `training.param_dist`, `training.best_params`, `training.best_cv_score`, `training.scoring`, `training.train_prediction_distribution`, `training.cli_args`
 
 ## Naming Conventions
 - ONNX files: `<symbol>_<timeframe>_<n>_feat[_<tag>].onnx`
