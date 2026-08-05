@@ -497,7 +497,7 @@ void TryExecuteSellEntry()
       double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double sl = InpUseSL ? (price + sl_dist) : 0;
       double tp = price - tp_dist;
-      if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, "AI SELL@" + g_confidence))
+      if(m_trade.Sell(InpLot, _Symbol, price, sl, tp, "AI SELL@" + DoubleToString(g_confidence, 2)))
          Print("=== Sell Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
