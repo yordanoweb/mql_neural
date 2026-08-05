@@ -422,6 +422,7 @@ void UpdateComment()
       curr_candle_txt = (g_open[0] < g_close[0] ? "BULLISH" : "BEARISH");
      }
    Comment("\n\n\nAI BUY-ONLY ", GetTimeframeString(_Period), " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
+           "\nModel: ", InpModelFile,
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
            "\nPrediction: ", pred_text,
