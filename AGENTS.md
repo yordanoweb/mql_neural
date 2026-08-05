@@ -53,12 +53,10 @@ tmp/
 ## Implemented Feature Sets
 | Script | Features (n) | Groups |
 |---|---|---|
-| `train_adx_stoch_vol.py` | 16 | Price (2) + ADX (5) + Stochastic (4) + Volume (5) |
+| `train_buy_only.py` | 3 | Price (2) + RSI (1) |
 
-### Price (2): `feat_body`, `feat_range` — normalised by ATR
-### ADX (5): `adx_strength`, `adx_di_signal`, `adx_di_sep`, `adx_momentum`, `adx_regime`
-### Stochastic (4): `stoch_momentum`, `stoch_position`, `stoch_velocity`, `stoch_divergence`
-### Volume (5): `vol_ratio`, `vol_momentum`, `vol_price_div`, `vol_percentile`, `vol_zscore`
+### Price (2): `feat_body`, `feat_range`
+### RSI (1): `feat_rsi` — `RSI(close, rsi_period) / 100.0`
 
 ## Classification Target
 - **3 classes**: `0 = hold`, `1 = buy`, `2 = sell`
