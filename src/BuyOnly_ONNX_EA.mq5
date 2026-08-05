@@ -499,6 +499,10 @@ void TryExecuteBuyEntry()
       double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
       double lot = CalculateVolumeByPercent(InpLot);
+      Print("=== Attempting Buy Entry === | Price: ", DoubleToString(price, _Digits),
+            " | SL: ", DoubleToString(sl, _Digits),
+            " | TP: ", DoubleToString(tp, _Digits),
+            " | Lot: ", DoubleToString(lot, 2));
       if(m_trade.Buy(lot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2)))
          Print("=== Buy Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
