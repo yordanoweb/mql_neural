@@ -4,6 +4,7 @@
 #property strict
 
 #include <Trade\Trade.mqh>
+#include "Utils.mqh"
 
 #resource "\\Files\\XAU_M15_buy_only.onnx" as uchar ExtModel[];
 
@@ -15,7 +16,7 @@ input int     InpStartHour  = 9;
 input int     InpEndHour    = 18;
 input int     InpWindow     = 20;           // Must match training --window
 input group "======== Risk Management ========"
-input double  InpLot        = 1;
+input double  InpLot        = 1.0;          // Margin Percent (1.0=1.0%)
 input int     InpMagic      = 123456;
 input int     InpSLPoints   = 600;          // Stop Loss distance in points
 input int     InpTPPoints   = 600;          // Take Profit distance in points
@@ -497,7 +498,8 @@ void TryExecuteBuyEntry()
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
-      if(m_trade.Buy(InpLot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2)))
+      double lot = CalculateVolumeByPercent(InpLot);
+      if(m_trade.Buy(lot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2)))
          Print("=== Buy Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
