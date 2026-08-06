@@ -529,6 +529,6 @@ void TryExecuteSellEntry()
          " | CurrBear: ", curr_candle_bearish,
          " | PrevOK: ", prev_candle_ok);
    Print(" | CurrOK: ", curr_candle_ok,
-         " | VolatilityOK: ", volatility_ok);
+         " | Volatility: ", EnumToString(volatility));
   }
 //+------------------------------------------------------------------+

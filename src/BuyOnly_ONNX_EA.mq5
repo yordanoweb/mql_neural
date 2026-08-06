@@ -529,6 +529,6 @@ void TryExecuteBuyEntry()
          " | CurrBull: ", curr_candle_bullish,
          " | PrevOK: ", prev_candle_ok);
    Print(" | CurrOK: ", curr_candle_ok,
-         " | VolatilityOK: ", volatility_ok);
+         " | Volatility: ", EnumToString(volatility));
   }
 //+------------------------------------------------------------------+
