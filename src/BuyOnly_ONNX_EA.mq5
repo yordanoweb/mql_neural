@@ -523,12 +523,12 @@ void TryExecuteBuyEntry()
    Print("BUY ENTRY BYPASSED | PredOK: ", prediction_ok,
          " | ConfOK: ", confidence_ok,
          " | TimeOK: ", g_valid_time,
-         " | CooldownOK: ", cooldown_ok,
-         " | NoPos: ", no_open_pos,
+         " | CooldownOK: ", cooldown_ok);
+   Print(" | NoPos: ", no_open_pos,
          " | PrevBull: ", prev_candle_bullish,
          " | CurrBull: ", curr_candle_bullish,
-         " | PrevOK: ", prev_candle_ok,
-         " | CurrOK: ", curr_candle_ok,
+         " | PrevOK: ", prev_candle_ok);
+   Print(" | CurrOK: ", curr_candle_ok,
          " | VolatilityOK: ", volatility_ok);
   }
 //+------------------------------------------------------------------+
