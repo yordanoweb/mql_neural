@@ -1,3 +1,48 @@
+enum EVOLATILITY
+{
+   VOLATILITY_LOW,
+   VOLATILITY_NORMAL,
+   VOLATILITY_HIGH,
+   VOLATILITY_VERY_HIGH
+};
+
+EVOLATILITY GetCurrentVolatility()
+{
+   static int atrHandle = INVALID_HANDLE;
+
+   if(atrHandle == INVALID_HANDLE)
+      atrHandle = iATR(_Symbol, PERIOD_CURRENT, 14);
+
+   double atr[100];
+
+   if(CopyBuffer(atrHandle, 0, 0, 100, atr) != 100)
+      return VOLATILITY_NORMAL;
+
+   double avgATR = 0.0;
+
+   // Promedio sin incluir el ATR actual
+   for(int i = 1; i < 100; i++)
+      avgATR += atr[i];
+
+   avgATR /= 99.0;
+
+   if(avgATR <= 0.0)
+      return VOLATILITY_NORMAL;
+
+   double score = atr[0] / avgATR;
+
+   if(score < 0.80)
+      return VOLATILITY_LOW;
+
+   if(score < 1.20)
+      return VOLATILITY_NORMAL;
+
+   if(score < 1.50)
+      return VOLATILITY_HIGH;
+
+   return VOLATILITY_VERY_HIGH;
+}
+
 double CalculateVolumeByPercent(double            percent,
                                 ENUM_ORDER_TYPE   orderType = ORDER_TYPE_BUY)
   {

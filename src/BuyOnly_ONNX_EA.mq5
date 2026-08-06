@@ -26,6 +26,7 @@ input group "======== Entry Protection ========"
 input int     InpCooldownBars      = 2;     // Bars to wait after position close
 input bool    InpRequirePrevCandleDir = true; // Require previous candle bullish
 input bool    InpRequireCurrCandleDir = true; // Require current candle bullish
+input bool    InpRequireVolatility = true; // Require volatility check (ATR)
 input group "======== Timer Settings ========"
 input int     InpTimerSeconds = 60;  // Timer interval in seconds
 input group "======== Debug / Test ========="
@@ -492,7 +493,10 @@ void TryExecuteBuyEntry()
    bool prediction_ok = (g_prediction == 1);
    bool confidence_ok = (g_confidence >= InpMinConf);
 
-   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok;
+   EVOLATILITY volatility = GetCurrentVolatility();
+   bool volatility_ok = !InpRequireVolatility || (volatility == VOLATILITY_HIGH || volatility == VOLATILITY_VERY_HIGH);
+
+   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok && volatility_ok;
 
    if(entry_allowed)
      {
@@ -505,7 +509,8 @@ void TryExecuteBuyEntry()
       Print("=== Attempting Buy Entry === | Price: ", DoubleToString(price, _Digits),
             " | SL: ", DoubleToString(sl, _Digits),
             " | TP: ", DoubleToString(tp, _Digits),
-            " | Lot: ", DoubleToString(lot, 2));
+            " | Lot: ", DoubleToString(lot, 2),
+            " | Volatility: ", EnumToString(volatility));
       if(m_trade.Buy(lot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2)))
          Print("=== Buy Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
@@ -523,6 +528,7 @@ void TryExecuteBuyEntry()
          " | PrevBull: ", prev_candle_bullish,
          " | CurrBull: ", curr_candle_bullish,
          " | PrevOK: ", prev_candle_ok,
-         " | CurrOK: ", curr_candle_ok);
+         " | CurrOK: ", curr_candle_ok,
+         " | VolatilityOK: ", volatility_ok);
   }
 //+------------------------------------------------------------------+
