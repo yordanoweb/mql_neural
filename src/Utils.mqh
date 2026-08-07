@@ -14,22 +14,23 @@ enum EVOLATILITY
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-EVOLATILITY GetCurrentVolatility()
+EVOLATILITY GetCurrentVolatility(int atrPeriod = 14)
   {
    static int atrHandle = INVALID_HANDLE;
 
    if(atrHandle == INVALID_HANDLE)
       atrHandle = iATR(_Symbol, PERIOD_CURRENT, 14);
 
-   double atr[100];
+   double atr[];
+   ArrayResize(atr, atrPeriod);
 
-   if(CopyBuffer(atrHandle, 0, 0, 100, atr) != 100)
+   if(CopyBuffer(atrHandle, 0, 0, atrPeriod, atr) != atrPeriod)
       return VOLATILITY_NORMAL;
 
    double avgATR = 0.0;
 
 // Promedio sin incluir el ATR actual
-   for(int i = 1; i < 100; i++)
+   for(int i = 1; i < atrPeriod; i++)
       avgATR += atr[i];
 
    avgATR /= 99.0;
