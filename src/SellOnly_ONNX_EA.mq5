@@ -4,7 +4,6 @@
 #property strict
 
 #include <Trade\Trade.mqh>
-#include "Utils.mqh"
 
 #resource "\\Files\\US100.cash_M15_sell_only.onnx" as uchar ExtModel[];
 
@@ -50,6 +49,8 @@ string   pred_text = "";        // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
 int      g_rsi_handle = INVALID_HANDLE;
+
+#include "Utils.mqh"
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -321,35 +322,12 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
      }
 
   }
-
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
 bool RefreshMarketSnapshot()
   {
    return (GetData() && GetIndicators() && BuildInputBuffer());
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool GetData()
-  {
-   ArraySetAsSeries(g_close, true);
-   ArraySetAsSeries(g_open, true);
-   ArraySetAsSeries(g_high, true);
-   ArraySetAsSeries(g_low, true);
-
-   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15)
-      return false;
-   if(CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow)
-      return false;
-   if(CopyHigh(_Symbol, _Period, 0, InpWindow, g_high) < InpWindow)
-      return false;
-   if(CopyLow(_Symbol, _Period, 0, InpWindow, g_low) < InpWindow)
-      return false;
-
-   return true;
   }
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -366,7 +344,6 @@ void OnTimer()
    TryExecuteSellEntry();
    UpdateComment();
   }
-
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -388,7 +365,6 @@ void UpdateComment()
            "\nPrev: ", prev_candle_txt, " (req=", InpRequirePrevCandleDir, ")",
            "\nCurr: ", curr_candle_txt, " (req=", InpRequireCurrCandleDir, ")");
   }
-
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -405,7 +381,7 @@ bool PerformInference()
    g_confidence = output_probs[1];  // sell probability
 
    Print("Inference Result: Prediction = ", g_prediction, ", Sell Confidence = ", DoubleToString(g_confidence*100, 2), "%");
-   Print("Prediction: ", (g_prediction == 1 ? "SELL" : "NO_SELL") + 
+   Print("Prediction: ", (g_prediction == 1 ? "SELL" : "NO_SELL") +
          " | Probabilities: [no_sell=", DoubleToString(output_probs[0]*100, 2), "%, sell=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
   }

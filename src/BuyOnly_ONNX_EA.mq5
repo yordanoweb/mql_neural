@@ -4,7 +4,6 @@
 #property strict
 
 #include <Trade\Trade.mqh>
-#include "Utils.mqh"
 
 #resource "\\Files\\XAU_M15_buy_only.onnx" as uchar ExtModel[];
 
@@ -50,6 +49,8 @@ string   pred_text = "";        // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
 int      g_rsi_handle = INVALID_HANDLE;
+
+#include "Utils.mqh"
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -299,7 +300,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans,
             // --- CASE 1: OPENING A POSITION ---
             if(dealEntry == DEAL_ENTRY_IN)
                PlaySound("ok.wav"); // Sound for Opening Position
-              
+
             // --- CASE 2 and 3: CLOSE BY TP OR SL ---
             else
                if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_INOUT)
@@ -330,27 +331,7 @@ bool RefreshMarketSnapshot()
    return (GetData() && GetIndicators() && BuildInputBuffer());
   }
 
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool GetData()
-  {
-   ArraySetAsSeries(g_close, true);
-   ArraySetAsSeries(g_open, true);
-   ArraySetAsSeries(g_high, true);
-   ArraySetAsSeries(g_low, true);
 
-   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15)
-      return false;
-   if(CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow)
-      return false;
-   if(CopyHigh(_Symbol, _Period, 0, InpWindow, g_high) < InpWindow)
-      return false;
-   if(CopyLow(_Symbol, _Period, 0, InpWindow, g_low) < InpWindow)
-      return false;
-
-   return true;
-  }
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+

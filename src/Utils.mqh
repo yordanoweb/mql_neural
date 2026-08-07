@@ -209,3 +209,24 @@ bool BuildInputBuffer()
    return true;
   }
 //+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool GetData()
+  {
+   ArraySetAsSeries(g_close, true);
+   ArraySetAsSeries(g_open, true);
+   ArraySetAsSeries(g_high, true);
+   ArraySetAsSeries(g_low, true);
+
+   if(CopyClose(_Symbol, _Period, 0, InpWindow + 15, g_close) < InpWindow + 15)
+      return false;
+   if(CopyOpen(_Symbol, _Period, 0, InpWindow, g_open) < InpWindow)
+      return false;
+   if(CopyHigh(_Symbol, _Period, 0, InpWindow, g_high) < InpWindow)
+      return false;
+   if(CopyLow(_Symbol, _Period, 0, InpWindow, g_low) < InpWindow)
+      return false;
+
+   return true;
+  }
+//+------------------------------------------------------------------+
