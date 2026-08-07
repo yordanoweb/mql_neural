@@ -351,45 +351,6 @@ bool GetData()
 
    return true;
   }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool GetIndicators()
-  {
-   if(g_rsi_handle == INVALID_HANDLE)
-      return false;
-
-   ArraySetAsSeries(g_rsi_buffer, true);
-   if(CopyBuffer(g_rsi_handle, 0, 0, InpWindow, g_rsi_buffer) < InpWindow)
-      return false;
-
-   return true;
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool BuildInputBuffer()
-  {
-// Build input buffer matching train_sell_only.py: raw price body/range + RSI/100
-   if(ArraySize(g_close) < InpWindow || ArraySize(g_open) < InpWindow ||
-      ArraySize(g_high) < InpWindow || ArraySize(g_low) < InpWindow ||
-      ArraySize(g_rsi_buffer) < InpWindow)
-      return false;
-
-   ArrayResize(g_input_buffer, InpWindow * FEATURES);
-
-   for(int i=0; i < InpWindow; i++)
-     {
-      int mql_idx = InpWindow - 1 - i;
-      g_input_buffer[i * 3 + 0] = (float)(g_close[mql_idx] - g_open[mql_idx]);
-      g_input_buffer[i * 3 + 1] = (float)(g_high[mql_idx] - g_low[mql_idx]);
-      g_input_buffer[i * 3 + 2] = (float)(g_rsi_buffer[mql_idx] / 100.0);
-     }
-
-   return true;
-  }
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
