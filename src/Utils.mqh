@@ -17,38 +17,28 @@ enum EVOLATILITY
 EVOLATILITY GetCurrentVolatility(int atrPeriod = 14)
   {
    static int atrHandle = INVALID_HANDLE;
-
    if(atrHandle == INVALID_HANDLE)
-      atrHandle = iATR(_Symbol, PERIOD_CURRENT, 14);
+      atrHandle = iATR(_Symbol, PERIOD_CURRENT, atrPeriod); // Bug 2 fix: use atrPeriod
 
    double atr[];
    ArrayResize(atr, atrPeriod);
-
    if(CopyBuffer(atrHandle, 0, 0, atrPeriod, atr) != atrPeriod)
       return VOLATILITY_NORMAL;
 
    double avgATR = 0.0;
-
-// Promedio sin incluir el ATR actual
+   // Average excluding the current ATR bar (index 0)
    for(int i = 1; i < atrPeriod; i++)
       avgATR += atr[i];
-
-   avgATR /= 99.0;
+   avgATR /= (atrPeriod - 1); // Bug 1 fix: was 99.0, should be 13 (for default period)
 
    if(avgATR <= 0.0)
       return VOLATILITY_NORMAL;
 
    double score = atr[0] / avgATR;
 
-   if(score < 0.80)
-      return VOLATILITY_LOW;
-
-   if(score < 1.20)
-      return VOLATILITY_NORMAL;
-
-   if(score < 1.50)
-      return VOLATILITY_HIGH;
-
+   if(score < 0.80)  return VOLATILITY_LOW;
+   if(score < 1.20)  return VOLATILITY_NORMAL;
+   if(score < 1.50)  return VOLATILITY_HIGH;
    return VOLATILITY_VERY_HIGH;
   }
 
