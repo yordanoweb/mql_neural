@@ -18,23 +18,23 @@ EVOLATILITY GetCurrentVolatility(int atrPeriod = 14)
   {
    static int atrHandle = INVALID_HANDLE;
    if(atrHandle == INVALID_HANDLE)
-      atrHandle = iATR(_Symbol, PERIOD_CURRENT, atrPeriod); // Bug 2 fix: use atrPeriod
+      atrHandle = iATR(_Symbol, PERIOD_CURRENT, atrPeriod);
 
    double atr[];
+   ArraySetAsSeries(atr, true); // FIX: atr[0]=current, atr[1]=prev, ...
    ArrayResize(atr, atrPeriod);
    if(CopyBuffer(atrHandle, 0, 0, atrPeriod, atr) != atrPeriod)
       return VOLATILITY_NORMAL;
 
    double avgATR = 0.0;
-   // Average excluding the current ATR bar (index 0)
    for(int i = 1; i < atrPeriod; i++)
       avgATR += atr[i];
-   avgATR /= (atrPeriod - 1); // Bug 1 fix: was 99.0, should be 13 (for default period)
+   avgATR /= (atrPeriod - 1);
 
    if(avgATR <= 0.0)
       return VOLATILITY_NORMAL;
 
-   double score = atr[0] / avgATR;
+   double score = atr[0] / avgATR; // now truly the current bar
 
    if(score < 0.80)  return VOLATILITY_LOW;
    if(score < 1.20)  return VOLATILITY_NORMAL;
