@@ -471,8 +471,8 @@ bool PerformInference()
    g_confidence = output_probs[1];  // buy probability
 
    Print("Inference Result: Prediction = ", g_prediction, ", Buy Confidence = ", DoubleToString(g_confidence*100, 2), "%");
-   Print("Prediction: ", (g_prediction == 1 ? "BUY" : "NO_BUY"));
-   Print("Probabilities: [no_buy=", DoubleToString(output_probs[0]*100, 2), "%, buy=", DoubleToString(output_probs[1]*100, 2), "%]");
+   Print("Prediction: ", (g_prediction == 1 ? "BUY" : "NO_BUY") +
+         " | Probabilities: [no_buy=", DoubleToString(output_probs[0]*100, 2), "%, buy=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
   }
 
