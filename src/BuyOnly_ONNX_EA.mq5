@@ -121,32 +121,6 @@ bool IsEntryPriceProfitable()
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-string GetDealReasonText(const long reason)
-  {
-   switch((ENUM_DEAL_REASON)reason)
-     {
-      case DEAL_REASON_SL:
-         return "STOP_LOSS";
-      case DEAL_REASON_TP:
-         return "TAKE_PROFIT";
-      case DEAL_REASON_SO:
-         return "STOP_OUT";
-      case DEAL_REASON_CLIENT:
-         return "MANUAL_CLIENT";
-      case DEAL_REASON_MOBILE:
-         return "MANUAL_MOBILE";
-      case DEAL_REASON_WEB:
-         return "MANUAL_WEB";
-      case DEAL_REASON_EXPERT:
-         return "EXPERT";
-      default:
-         return "OTHER";
-     }
-  }
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
 void ReportExitInfo(const ulong deal_ticket)
   {
    if(deal_ticket == 0 || !HistoryDealSelect(deal_ticket))

@@ -36,9 +36,12 @@ EVOLATILITY GetCurrentVolatility(int atrPeriod = 14)
 
    double score = atr[0] / avgATR; // now truly the current bar
 
-   if(score < 0.80)  return VOLATILITY_LOW;
-   if(score < 1.20)  return VOLATILITY_NORMAL;
-   if(score < 1.50)  return VOLATILITY_HIGH;
+   if(score < 0.80)
+      return VOLATILITY_LOW;
+   if(score < 1.20)
+      return VOLATILITY_NORMAL;
+   if(score < 1.50)
+      return VOLATILITY_HIGH;
    return VOLATILITY_VERY_HIGH;
   }
 
@@ -228,5 +231,30 @@ bool GetData()
       return false;
 
    return true;
+  }
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+string GetDealReasonText(const long reason)
+  {
+   switch((ENUM_DEAL_REASON)reason)
+     {
+      case DEAL_REASON_SL:
+         return "STOP_LOSS";
+      case DEAL_REASON_TP:
+         return "TAKE_PROFIT";
+      case DEAL_REASON_SO:
+         return "STOP_OUT";
+      case DEAL_REASON_CLIENT:
+         return "MANUAL_CLIENT";
+      case DEAL_REASON_MOBILE:
+         return "MANUAL_MOBILE";
+      case DEAL_REASON_WEB:
+         return "MANUAL_WEB";
+      case DEAL_REASON_EXPERT:
+         return "EXPERT";
+      default:
+         return "OTHER";
+     }
   }
 //+------------------------------------------------------------------+
