@@ -11,6 +11,8 @@ enum EVOLATILITY
    VOLATILITY_VERY_HIGH
   };
 
+double g_score = 0.0;
+
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -42,6 +44,9 @@ EVOLATILITY GetCurrentVolatility(int atrPeriod = 14)
       return VOLATILITY_NORMAL;
    if(score < 1.50)
       return VOLATILITY_HIGH;
+
+   g_score = score;
+
    return VOLATILITY_VERY_HIGH;
   }
 
