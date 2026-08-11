@@ -385,11 +385,11 @@ void TryExecuteSellEntry()
 
    if(entry_allowed)
      {
-      double sl_dist = GetStopLoss(InpSLATR, ORDER_TYPE_SELL);
-      double tp_dist = GetTakeProfit(InpTPATR, ORDER_TYPE_SELL);
+      double sl_price = GetStopLoss(InpSLATR, ORDER_TYPE_SELL);
+      double tp_price = GetTakeProfit(InpTPATR, ORDER_TYPE_SELL);
       double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double sl = InpUseSL ? (price + sl_dist) : 0;
-      double tp = price - tp_dist;
+      double sl = InpUseSL ? sl_price : 0;
+      double tp = tp_price;
       double lot = CalculateVolumeByPercent(InpLot, ORDER_TYPE_SELL);
       Print("=== Attempting Sell Entry === | Price: ", DoubleToString(price, _Digits),
             " | SL: ", DoubleToString(sl, _Digits),
