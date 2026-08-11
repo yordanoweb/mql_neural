@@ -263,3 +263,108 @@ string GetDealReasonText(const long reason)
      }
   }
 //+------------------------------------------------------------------+
+//| Calcula el Stop Loss basado en el ATR                            |
+//+------------------------------------------------------------------+
+double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
+  {
+   // Usamos static para mantener el handle del indicador en memoria
+   static int atr_handle = INVALID_HANDLE;
+   static int current_atr_period = 0;
+
+   // Solo creamos el handle si no existe o si el periodo cambia
+   if(atr_handle == INVALID_HANDLE || current_atr_period != atrPeriod)
+     {
+      if(atr_handle != INVALID_HANDLE)
+         IndicatorRelease(atr_handle);
+         
+      atr_handle = iATR(_Symbol, _Period, atrPeriod);
+      current_atr_period = atrPeriod;
+      
+      if(atr_handle == INVALID_HANDLE)
+        {
+         Print("Error al inicializar ATR para Stop Loss: ", GetLastError());
+         return 0.0;
+        }
+     }
+
+   double atr_array[];
+   ArraySetAsSeries(atr_array, true);
+
+   // Copiamos el valor de la vela anterior (índice 1) para evitar repintado
+   if(CopyBuffer(atr_handle, 0, 1, 1, atr_array) <= 0)
+     {
+      Print("Error al copiar datos de ATR para Stop Loss: ", GetLastError());
+      return 0.0;
+     }
+
+   double atr_value = atr_array[0];
+   double sl_price = 0.0;
+
+   // Cálculo del nivel de precio exacto
+   if(orderType == ORDER_TYPE_BUY)
+     {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      sl_price = ask - atr_value; // En compras, el SL va por debajo del Ask
+     }
+   else if(orderType == ORDER_TYPE_SELL)
+     {
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      sl_price = bid + atr_value; // En ventas, el SL va por encima del Bid
+     }
+
+   return NormalizeDouble(sl_price, _Digits);
+  }
+
+//+------------------------------------------------------------------+
+//| Calcula el Take Profit basado en el ATR                          |
+//+------------------------------------------------------------------+
+double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
+  {
+   // Usamos static para mantener el handle del indicador en memoria
+   static int atr_handle_tp = INVALID_HANDLE;
+   static int current_atr_period_tp = 0;
+
+   // Solo creamos el handle si no existe o si el periodo cambia
+   if(atr_handle_tp == INVALID_HANDLE || current_atr_period_tp != atrPeriod)
+     {
+      if(atr_handle_tp != INVALID_HANDLE)
+         IndicatorRelease(atr_handle_tp);
+         
+      atr_handle_tp = iATR(_Symbol, _Period, atrPeriod);
+      current_atr_period_tp = atrPeriod;
+      
+      if(atr_handle_tp == INVALID_HANDLE)
+        {
+         Print("Error al inicializar ATR para Take Profit: ", GetLastError());
+         return 0.0;
+        }
+     }
+
+   double atr_array[];
+   ArraySetAsSeries(atr_array, true);
+
+   // Copiamos el valor de la vela anterior (índice 1) para mayor estabilidad
+   if(CopyBuffer(atr_handle_tp, 0, 1, 1, atr_array) <= 0)
+     {
+      Print("Error al copiar datos de ATR para Take Profit: ", GetLastError());
+      return 0.0;
+     }
+
+   double atr_value = atr_array[0];
+   double tp_price = 0.0;
+
+   // Cálculo del nivel de precio exacto
+   if(orderType == ORDER_TYPE_BUY)
+     {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      tp_price = ask + atr_value; // En compras, el TP va por encima del Ask
+     }
+   else if(orderType == ORDER_TYPE_SELL)
+     {
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      tp_price = bid - atr_value; // En ventas, el TP va por debajo del Bid
+     }
+
+   return NormalizeDouble(tp_price, _Digits);
+  }
+//+------------------------------------------------------------------+

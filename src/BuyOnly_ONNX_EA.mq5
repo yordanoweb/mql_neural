@@ -17,8 +17,8 @@ input int     InpWindow     = 20;           // Must match training --window
 input group "======== Risk Management ========"
 input double  InpLot        = 1.0;          // Margin Percent (1.0=1.0%)
 input int     InpMagic      = 123456;
-input int     InpSLPoints   = 600;          // Stop Loss distance in points
-input int     InpTPPoints   = 600;          // Take Profit distance in points
+input int     InpSLATR      = 14;          // Stop Loss ATR
+input int     InpTPATR      = 14;          // Take Profit ATR
 input int     InpMinDollars = 5;            // Minimum money to close trade (0=disabled)
 input bool    InpUseSL      = true;        // Use Stop Loss
 input group "======== Entry Protection ========"
@@ -390,8 +390,8 @@ void TryExecuteBuyEntry()
 
    if(entry_allowed)
      {
-      double sl_dist = InpSLPoints * _Point;
-      double tp_dist = InpTPPoints * _Point;
+      double sl_dist = GetStopLoss(InpSLATR, ORDER_TYPE_BUY);
+      double tp_dist = GetTakeProfit(InpTPATR, ORDER_TYPE_BUY);
       double price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double sl = InpUseSL ? (price - sl_dist) : 0;
       double tp = price + tp_dist;
