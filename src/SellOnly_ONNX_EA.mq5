@@ -355,7 +355,9 @@ bool PerformInference()
    g_prediction = output_label[0];
    g_confidence = output_probs[1];  // sell probability
 
-   Print("Inference Result: Prediction = ", g_prediction, ", Sell Confidence = ", DoubleToString(g_confidence*100, 2), "%");
+   Print("Inference Result: Prediction = ", g_prediction, 
+         ", Sell Confidence = ", DoubleToString(g_confidence*100, 2), "% / ",
+         DoubleToString(InpMinConf*100, 2), "%");
    Print("Prediction: ", (g_prediction == 1 ? "SELL" : "NO_SELL") +
          " | Probabilities: [no_sell=", DoubleToString(output_probs[0]*100, 2), "%, sell=", DoubleToString(output_probs[1]*100, 2), "%]");
    return true;
