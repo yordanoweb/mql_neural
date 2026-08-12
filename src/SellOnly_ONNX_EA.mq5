@@ -331,7 +331,8 @@ void UpdateComment()
       prev_candle_txt = (g_open[1] > g_close[1] ? "BEARISH" : "BULLISH");
       curr_candle_txt = (g_open[0] > g_close[0] ? "BEARISH" : "BULLISH");
      }
-   Comment("\n\n\nAI SELL-ONLY ", GetTimeframeString(_Period), " | Confidence: ", DoubleToString(g_confidence*100, 2), "%",
+   Comment("\n\n\nAI SELL-ONLY ", GetTimeframeString(_Period),
+           "\nConfidence: ", DoubleToString(g_confidence*100, 2), "% | Expected: ", DoubleToString(InpMinConf*100, 2), "%",
            "\nModel: ", InpModelFile,
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
