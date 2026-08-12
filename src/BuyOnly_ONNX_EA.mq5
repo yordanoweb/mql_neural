@@ -387,7 +387,7 @@ void TryExecuteBuyEntry()
    EVOLATILITY volatility = GetCurrentVolatility(InpVolatilityPeriod);
    bool volatility_ok = !InpRequireVolatility || (volatility == VOLATILITY_HIGH || volatility == VOLATILITY_VERY_HIGH);
 
-   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok && volatility_ok;
+   bool entry_allowed = no_open_pos && g_valid_time && cooldown_ok && prev_candle_ok && curr_candle_ok && prediction_ok && confidence_ok && volatility_ok;
 
    if(entry_allowed)
      {
