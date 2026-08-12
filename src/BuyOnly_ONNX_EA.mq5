@@ -216,6 +216,8 @@ int OnInit()
    double lot_size = CalculateVolumeByPercent(InpLot, ORDER_TYPE_BUY);
    Print("Initial Lot Size Calculated: ", DoubleToString(lot_size, 2), " lots for InpLot=", InpLot, "%");
 
+   SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + ".set");
+
    return(INIT_SUCCEEDED);
   }
 
@@ -229,6 +231,11 @@ void OnDeinit(const int reason)
       OnnxRelease(onnx_handle);
    if(g_rsi_handle != INVALID_HANDLE)
       IndicatorRelease(g_rsi_handle);
+
+// Triggers specifically when inputs are changed via the GUI
+   if(reason == REASON_PARAMETERS)
+      SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + ".set");
+
    Comment("");
   }
 
@@ -311,7 +318,7 @@ bool RefreshMarketSnapshot()
 //+------------------------------------------------------------------+
 void OnTimer()
   {
-   Print("\n--- Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
+   Print("\n--- " + _Symbol + " Timer Triggered at ", TimeToString(TimeCurrent(), TIME_SECONDS), " ---");
    UpdateTimeFilter();
    UpdatePositionState();
    if(!RefreshMarketSnapshot())
@@ -360,7 +367,7 @@ bool PerformInference()
    g_prediction = output_label[0];
    g_confidence = output_probs[1];  // buy probability
 
-   Print("Inference Result: Prediction = ", g_prediction, 
+   Print("Inference Result: Prediction = ", g_prediction,
          ", Buy Confidence = ", DoubleToString(g_confidence*100, 2), "% / ",
          DoubleToString(InpMinConf*100, 2), "%");
    Print("Prediction: ", (g_prediction == 1 ? "BUY" : "NO_BUY") +

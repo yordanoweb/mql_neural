@@ -267,19 +267,19 @@ string GetDealReasonText(const long reason)
 //+------------------------------------------------------------------+
 double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
-   // Usamos static para mantener el handle del indicador en memoria
+// Usamos static para mantener el handle del indicador en memoria
    static int atr_handle = INVALID_HANDLE;
    static int current_atr_period = 0;
 
-   // Solo creamos el handle si no existe o si el periodo cambia
+// Solo creamos el handle si no existe o si el periodo cambia
    if(atr_handle == INVALID_HANDLE || current_atr_period != atrPeriod)
      {
       if(atr_handle != INVALID_HANDLE)
          IndicatorRelease(atr_handle);
-         
+
       atr_handle = iATR(_Symbol, _Period, atrPeriod);
       current_atr_period = atrPeriod;
-      
+
       if(atr_handle == INVALID_HANDLE)
         {
          Print("Error al inicializar ATR para Stop Loss: ", GetLastError());
@@ -290,7 +290,7 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    double atr_array[];
    ArraySetAsSeries(atr_array, true);
 
-   // Copiamos el valor de la vela anterior (índice 1) para evitar repintado
+// Copiamos el valor de la vela anterior (índice 1) para evitar repintado
    if(CopyBuffer(atr_handle, 0, 1, 1, atr_array) <= 0)
      {
       Print("Error al copiar datos de ATR para Stop Loss: ", GetLastError());
@@ -300,17 +300,18 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    double atr_value = atr_array[0];
    double sl_price = 0.0;
 
-   // Cálculo del nivel de precio exacto
+// Cálculo del nivel de precio exacto
    if(orderType == ORDER_TYPE_BUY)
      {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       sl_price = ask - atr_value; // En compras, el SL va por debajo del Ask
      }
-   else if(orderType == ORDER_TYPE_SELL)
-     {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      sl_price = bid + atr_value; // En ventas, el SL va por encima del Bid
-     }
+   else
+      if(orderType == ORDER_TYPE_SELL)
+        {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         sl_price = bid + atr_value; // En ventas, el SL va por encima del Bid
+        }
 
    return NormalizeDouble(sl_price, _Digits);
   }
@@ -320,19 +321,19 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 //+------------------------------------------------------------------+
 double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
-   // Usamos static para mantener el handle del indicador en memoria
+// Usamos static para mantener el handle del indicador en memoria
    static int atr_handle_tp = INVALID_HANDLE;
    static int current_atr_period_tp = 0;
 
-   // Solo creamos el handle si no existe o si el periodo cambia
+// Solo creamos el handle si no existe o si el periodo cambia
    if(atr_handle_tp == INVALID_HANDLE || current_atr_period_tp != atrPeriod)
      {
       if(atr_handle_tp != INVALID_HANDLE)
          IndicatorRelease(atr_handle_tp);
-         
+
       atr_handle_tp = iATR(_Symbol, _Period, atrPeriod);
       current_atr_period_tp = atrPeriod;
-      
+
       if(atr_handle_tp == INVALID_HANDLE)
         {
          Print("Error al inicializar ATR para Take Profit: ", GetLastError());
@@ -343,7 +344,7 @@ double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    double atr_array[];
    ArraySetAsSeries(atr_array, true);
 
-   // Copiamos el valor de la vela anterior (índice 1) para mayor estabilidad
+// Copiamos el valor de la vela anterior (índice 1) para mayor estabilidad
    if(CopyBuffer(atr_handle_tp, 0, 1, 1, atr_array) <= 0)
      {
       Print("Error al copiar datos de ATR para Take Profit: ", GetLastError());
@@ -353,18 +354,85 @@ double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    double atr_value = atr_array[0];
    double tp_price = 0.0;
 
-   // Cálculo del nivel de precio exacto
+// Cálculo del nivel de precio exacto
    if(orderType == ORDER_TYPE_BUY)
      {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       tp_price = ask + atr_value; // En compras, el TP va por encima del Ask
      }
-   else if(orderType == ORDER_TYPE_SELL)
-     {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      tp_price = bid - atr_value; // En ventas, el TP va por debajo del Bid
-     }
+   else
+      if(orderType == ORDER_TYPE_SELL)
+        {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         tp_price = bid - atr_value; // En ventas, el TP va por debajo del Bid
+        }
 
    return NormalizeDouble(tp_price, _Digits);
+  }
+//+------------------------------------------------------------------+
+//| Saves current Expert Advisor input parameters to a .set file     |
+//| Parameters:                                                      |
+//|   file_name    - Base name of the destination file (e.g., "EA.set") |
+//|   common_folder- True to save to Common/Files, False for local Files|
+//+------------------------------------------------------------------+
+bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool common_folder = false)
+  {
+// 1. Generate YYYYDDMMHHmmss timestamp prefix
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+
+// Formats: YYYY (year), DD (day), MM (month), HH (hour), mm (minute), ss (second)
+   string timestamp = StringFormat("%04d%02d%02d%02d%02d%02d_",
+                                   dt.year,
+                                   dt.day,
+                                   dt.mon,
+                                   dt.hour,
+                                   dt.min,
+                                   dt.sec);
+
+   string final_file_name = timestamp + file_name;
+
+// 2. Set file flags (Text mode, ANSI encoding, Write access)
+   int flags = FILE_WRITE | FILE_TXT | FILE_ANSI;
+   if(common_folder)
+      flags |= FILE_COMMON;
+
+// 3. Open the file
+   int file_handle = FileOpen(final_file_name, flags);
+   if(file_handle == INVALID_HANDLE)
+     {
+      PrintFormat("Error: Failed to open file '%s' for writing. Code: %d", final_file_name, GetLastError());
+      return false;
+     }
+
+// 4. Write Header
+   FileWriteString(file_handle, "; Expert Advisor Saved Inputs\r\n");
+   FileWriteString(file_handle, StringFormat("; Saved on: %s\r\n\r\n", TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES)));
+
+// 5. Write Input Variables
+   FileWriteString(file_handle, StringFormat("InpModelFile=%s\r\n", InpModelFile));
+   FileWriteString(file_handle, StringFormat("InpMinConf=%f\r\n", InpMinConf));
+   FileWriteString(file_handle, StringFormat("InpStartHour=%d\r\n", InpStartHour));
+   FileWriteString(file_handle, StringFormat("InpEndHour=%d\r\n", InpEndHour));
+   FileWriteString(file_handle, StringFormat("InpWindow=%d\r\n", InpWindow));
+   FileWriteString(file_handle, StringFormat("InpLot=%.2f\r\n", InpLot));
+   FileWriteString(file_handle, StringFormat("InpMagic=%d\r\n", InpMagic));
+   FileWriteString(file_handle, StringFormat("InpSLATR=%d\r\n", InpSLATR));
+   FileWriteString(file_handle, StringFormat("InpTPATR=%d\r\n", InpTPATR));
+   FileWriteString(file_handle, StringFormat("InpMinDollars=%d\r\n", InpMinDollars));
+   FileWriteString(file_handle, StringFormat("InpUseSL=%s\r\n", InpUseSL ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpCooldownBars=%d\r\n", InpCooldownBars));
+   FileWriteString(file_handle, StringFormat("InpRequirePrevCandleDir=%s\r\n", InpRequirePrevCandleDir ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpRequireCurrCandleDir=%s\r\n", InpRequireCurrCandleDir ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpRequireVolatility=%s\r\n", InpRequireVolatility ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpVolatilityPeriod=%d\r\n", InpVolatilityPeriod));
+   FileWriteString(file_handle, StringFormat("InpTimerSeconds=%d\r\n", InpTimerSeconds));
+   FileWriteString(file_handle, StringFormat("InpDebug=%s\r\n", InpDebug ? "true" : "false"));
+
+// 6. Flush and close handle
+   FileClose(file_handle);
+
+   PrintFormat("Success: Current EA inputs saved to '%s'", final_file_name);
+   return true;
   }
 //+------------------------------------------------------------------+
