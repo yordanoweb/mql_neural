@@ -14,6 +14,7 @@ input float   InpMinConf    = 0.62;                            // Min sell proba
 input int     InpStartHour  = 9;
 input int     InpEndHour    = 18;
 input int     InpWindow     = 20;           // Must match training --window
+input bool    InpMirrorEntryOperation = false; // Execute the opposite side when a sell signal is detected
 input group "======== Risk Management ========"
 input double  InpLot        = 1.0;          // Margin Percent (1.0=1.0%)
 input int     InpMagic      = 123457;
@@ -62,6 +63,8 @@ bool BuildInputBuffer();
 bool PerformInference();
 void TryExecuteSellEntry();
 string GetTimeframeString(ENUM_TIMEFRAMES tf);
+ENUM_ORDER_TYPE GetEntryOrderType();
+string GetEntryActionText();
 
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -213,7 +216,7 @@ int OnInit()
    if(RefreshMarketSnapshot() && PerformInference())
       UpdateComment();
 
-   double lot_size = CalculateVolumeByPercent(InpLot, ORDER_TYPE_SELL);
+   double lot_size = CalculateVolumeByPercent(InpLot, GetEntryOrderType());
    Print("Initial Lot Size Calculated: ", DoubleToString(lot_size, 2), " lots for InpLot=", InpLot, "%");
 
    SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + ".set");
@@ -331,6 +334,7 @@ void OnTimer()
 void UpdateComment()
   {
    pred_text = (g_prediction == 1 ? "SELL" : "NO_SELL");
+   string execute_text = (g_prediction == 1 ? GetEntryActionText() : "NONE");
    string prev_candle_txt = "N/A";
    string curr_candle_txt = "N/A";
    if(ArraySize(g_open) > 1 && ArraySize(g_close) > 1)
@@ -339,13 +343,31 @@ void UpdateComment()
       curr_candle_txt = (g_open[0] > g_close[0] ? "BEARISH" : "BULLISH");
      }
    Comment("\n\n\nAI SELL-ONLY ", GetTimeframeString(_Period),
+           "\nMirror: ", (InpMirrorEntryOperation ? "ENABLED" : "DISABLED"),
            "\nConfidence: ", DoubleToString(g_confidence*100, 2), "% | Expected: ", DoubleToString(InpMinConf*100, 2), "%",
            "\nModel: ", InpModelFile,
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
            "\nWindow: ", InpWindow,
            "\nPrediction: ", pred_text,
+           "\nExecute: ", execute_text,
            "\nPrev: ", prev_candle_txt, " (req=", InpRequirePrevCandleDir, ")",
            "\nCurr: ", curr_candle_txt, " (req=", InpRequireCurrCandleDir, ")");
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+ENUM_ORDER_TYPE GetEntryOrderType()
+  {
+   return (InpMirrorEntryOperation ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+string GetEntryActionText()
+  {
+   return (GetEntryOrderType() == ORDER_TYPE_BUY ? "BUY" : "SELL");
   }
 //+------------------------------------------------------------------+
 //|                                                                  |
@@ -395,23 +417,29 @@ void TryExecuteSellEntry()
 
    if(entry_allowed)
      {
-      double sl_price = GetStopLoss(InpSLATR, ORDER_TYPE_SELL);
-      double tp_price = GetTakeProfit(InpTPATR, ORDER_TYPE_SELL);
-      double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      ENUM_ORDER_TYPE entry_order_type = GetEntryOrderType();
+      bool is_buy_order = (entry_order_type == ORDER_TYPE_BUY);
+      double sl_price = GetStopLoss(InpSLATR, entry_order_type);
+      double tp_price = GetTakeProfit(InpTPATR, entry_order_type);
+      double price = SymbolInfoDouble(_Symbol, is_buy_order ? SYMBOL_ASK : SYMBOL_BID);
       double sl = InpUseSL ? sl_price : 0;
       double tp = tp_price;
-      double lot = CalculateVolumeByPercent(InpLot, ORDER_TYPE_SELL);
-      Print("=== Attempting Sell Entry === | Price: ", DoubleToString(price, _Digits),
+      double lot = CalculateVolumeByPercent(InpLot, entry_order_type);
+      string entry_text = GetEntryActionText();
+      Print("=== Attempting ", entry_text, " Entry === | Price: ", DoubleToString(price, _Digits),
             " | SL: ", DoubleToString(sl, _Digits),
             " | TP: ", DoubleToString(tp, _Digits),
             " | Lot: ", DoubleToString(lot, 2),
             " | Volatility: ", EnumToString(volatility));
-      if(m_trade.Sell(lot, _Symbol, price, sl, tp, "AI SELL@" + DoubleToString(g_confidence, 2)))
-         Print("=== Sell Executed @ ", DoubleToString(price, _Digits),
+      bool trade_ok = (is_buy_order
+                       ? m_trade.Buy(lot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2))
+                       : m_trade.Sell(lot, _Symbol, price, sl, tp, "AI SELL@" + DoubleToString(g_confidence, 2)));
+      if(trade_ok)
+         Print("=== ", entry_text, " Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
       else
-         Alert("SELL ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
+         Alert(entry_text, " ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
       return;
      }
 
