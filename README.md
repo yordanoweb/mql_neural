@@ -43,9 +43,14 @@ MetaTrader 5 Expert Advisor that trades only long positions using the ONNX model
 - `InpTestMode` — when `true`, bypasses confidence/spread/movement filters so you can verify order execution (still respects time window and one open position)
 
 **Behavior:**
-- Removes pip-unit normalization so feature scaling matches `train_buy_only.py`.
-- Removes all SELL logic and the mirror/normal logic switch.
-- Removes the previous-candle bullish filter.
-- Keeps `OnTick` + `OnTimer` inference and optional early close when profit reaches `InpMinDollars`.
+- Uses ONNX inference on `OnTimer` and keeps time/cooldown/candle-direction/volatility entry protections.
+- Supports mirrored execution side through mirror mode (normal BUY vs mirrored SELL for buy-signal entries).
+- Keeps optional early close on `OnTick` when open-position net profit reaches `InpMinDollars`.
+
+### Mirror failover behavior (`BuyOnly_ONNX_EA.mq5` and `SellOnly_ONNX_EA.mq5`)
+- `InpMirrorEntryOperation` is used as the startup mirror mode.
+- Each EA keeps a runtime mirror state and uses it to decide BUY/SELL execution side.
+- On every failed entry order (`m_trade.Buy/Sell` returns `false`), the runtime mirror state is flipped and remains active for subsequent entries until another failed entry flips it again.
+- The chart comment displays both configured input mirror mode and current runtime mirror mode.
 
 For backtesting, embed the ONNX model as a resource and rename the `#resource` directive at the top of the file.

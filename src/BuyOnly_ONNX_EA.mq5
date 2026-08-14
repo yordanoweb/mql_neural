@@ -50,6 +50,7 @@ string   pred_text = "";        // Prediction text for display
 datetime g_last_position_close_time = 0;
 bool     g_prev_position_open = false;
 int      g_rsi_handle = INVALID_HANDLE;
+bool     g_runtime_mirror_entry_operation = false;
 
 #include "Utils.mqh"
 
@@ -210,6 +211,7 @@ int OnInit()
 
    m_trade.SetExpertMagicNumber(InpMagic);
    EventSetTimer(InpTimerSeconds);
+   g_runtime_mirror_entry_operation = InpMirrorEntryOperation;
 
    UpdateTimeFilter();
    UpdatePositionState();
@@ -347,7 +349,8 @@ void UpdateComment()
       curr_candle_txt = (g_open[0] < g_close[0] ? "BULLISH" : "BEARISH");
      }
    Comment("\n\n\nAI BUY-ONLY ", GetTimeframeString(_Period),
-           "\nMirror: ", (InpMirrorEntryOperation ? "ENABLED" : "DISABLED"),
+           "\nMirror Input: ", (InpMirrorEntryOperation ? "ENABLED" : "DISABLED"),
+           "\nMirror Runtime: ", (g_runtime_mirror_entry_operation ? "ENABLED" : "DISABLED"),
            "\nConfidence: ", DoubleToString(g_confidence*100, 2), "% | Expected: ", DoubleToString(InpMinConf*100, 2), "%",
            "\nModel: ", InpModelFile,
            "\nTime: ", (g_valid_time ? "ACTIVE" : "RESTRICTED"),
@@ -363,7 +366,7 @@ void UpdateComment()
 //+------------------------------------------------------------------+
 ENUM_ORDER_TYPE GetEntryOrderType()
   {
-   return (InpMirrorEntryOperation ? ORDER_TYPE_SELL : ORDER_TYPE_BUY);
+   return (g_runtime_mirror_entry_operation ? ORDER_TYPE_SELL : ORDER_TYPE_BUY);
   }
 
 //+------------------------------------------------------------------+
@@ -444,7 +447,16 @@ void TryExecuteBuyEntry()
                " | sl: ", DoubleToString(sl, _Digits),
                " | tp: ", DoubleToString(tp, _Digits));
       else
-         Alert(entry_text, " ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription());
+        {
+         bool previous_runtime_mirror = g_runtime_mirror_entry_operation;
+         g_runtime_mirror_entry_operation = !g_runtime_mirror_entry_operation;
+         Alert(entry_text, " ORDER FAILED | Retcode: ", m_trade.ResultRetcode(), " ", m_trade.ResultRetcodeDescription(),
+               " | Mirror Runtime Flipped: ", (previous_runtime_mirror ? "ENABLED" : "DISABLED"),
+               " -> ", (g_runtime_mirror_entry_operation ? "ENABLED" : "DISABLED"));
+         Print("ORDER FAILURE MIRROR FLIP | Previous Runtime Mirror: ",
+               (previous_runtime_mirror ? "ENABLED" : "DISABLED"),
+               " | Current Runtime Mirror: ", (g_runtime_mirror_entry_operation ? "ENABLED" : "DISABLED"));
+        }
       return;
      }
 
