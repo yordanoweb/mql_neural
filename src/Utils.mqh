@@ -415,6 +415,7 @@ bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool co
    FileWriteString(file_handle, StringFormat("InpStartHour=%d\r\n", InpStartHour));
    FileWriteString(file_handle, StringFormat("InpEndHour=%d\r\n", InpEndHour));
    FileWriteString(file_handle, StringFormat("InpWindow=%d\r\n", InpWindow));
+   FileWriteString(file_handle, StringFormat("InpMirrorEntryOperation=%s\r\n", InpMirrorEntryOperation ? "true" : "false"));
    FileWriteString(file_handle, StringFormat("InpLot=%.2f\r\n", InpLot));
    FileWriteString(file_handle, StringFormat("InpMagic=%d\r\n", InpMagic));
    FileWriteString(file_handle, StringFormat("InpSLATR=%d\r\n", InpSLATR));

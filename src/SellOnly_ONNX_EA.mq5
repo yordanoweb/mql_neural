@@ -221,7 +221,7 @@ int OnInit()
    double lot_size = CalculateVolumeByPercent(InpLot, GetEntryOrderType());
    Print("Initial Lot Size Calculated: ", DoubleToString(lot_size, 2), " lots for InpLot=", InpLot, "%");
 
-   SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + ".set");
+   SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + "_" + GetTimeframeString(PERIOD_CURRENT) + ".set");
    
    return(INIT_SUCCEEDED);
   }
@@ -239,7 +239,7 @@ void OnDeinit(const int reason)
 
 // Triggers specifically when inputs are changed via the GUI
    if(reason == REASON_PARAMETERS)
-      SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + ".set");
+      SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + "_" + GetTimeframeString(PERIOD_CURRENT) + ".set");
 
    Comment("");
   }
