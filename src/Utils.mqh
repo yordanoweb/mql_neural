@@ -256,6 +256,9 @@ string GetDealReasonText(const long reason)
 //+------------------------------------------------------------------+
 double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
+// Spread
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+
 // Usamos static para mantener el handle del indicador en memoria
    static int atr_handle = INVALID_HANDLE;
    static int current_atr_period = 0;
@@ -293,13 +296,13 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    if(orderType == ORDER_TYPE_BUY)
      {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      sl_price = ask - atr_value; // En compras, el SL va por debajo del Ask
+      sl_price = ask - atr_value - (spread * _Point); // En compras, el SL va por debajo del Ask
      }
    else
       if(orderType == ORDER_TYPE_SELL)
         {
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         sl_price = bid + atr_value; // En ventas, el SL va por encima del Bid
+         sl_price = bid + atr_value + (spread * _Point); // En ventas, el SL va por encima del Bid
         }
 
    return NormalizeDouble(sl_price, _Digits);
@@ -310,6 +313,9 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 //+------------------------------------------------------------------+
 double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
+// Spread
+   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+
 // Usamos static para mantener el handle del indicador en memoria
    static int atr_handle_tp = INVALID_HANDLE;
    static int current_atr_period_tp = 0;
@@ -347,13 +353,13 @@ double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
    if(orderType == ORDER_TYPE_BUY)
      {
       double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      tp_price = ask + atr_value; // En compras, el TP va por encima del Ask
+      tp_price = ask + atr_value + (spread * _Point); // En compras, el TP va por encima del Ask
      }
    else
       if(orderType == ORDER_TYPE_SELL)
         {
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         tp_price = bid - atr_value; // En ventas, el TP va por debajo del Bid
+         tp_price = bid - atr_value - (spread * _Point); // En ventas, el TP va por debajo del Bid
         }
 
    return NormalizeDouble(tp_price, _Digits);
