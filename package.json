@@ -1,0 +1,21 @@
+{
+  "name": "mql_neural",
+  "version": "1.0.0",
+  "description": "Train a buy-only RandomForest classifier and export it as an ONNX model.",
+  "homepage": "https://github.com/yordanoweb/mql_neural#readme",
+  "bugs": {
+    "url": "https://github.com/yordanoweb/mql_neural/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yordanoweb/mql_neural.git"
+  },
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@nanonets/graft": "^0.10.1"
+  }
+}

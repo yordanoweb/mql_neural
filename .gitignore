@@ -1,3 +1,4 @@
+node_modules/
 *.ex5
 csv/
 data/
@@ -7,3 +8,6 @@ src/__pycache__/
 tmp/
 trades.csv
 trading_log.csv
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
