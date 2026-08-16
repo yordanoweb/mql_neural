@@ -33,7 +33,9 @@ parser.add_argument("--rsi_period", type=int, default=14, help="Period for RSI c
 parser.add_argument("--window", type=int, default=20, help="Window size (number of bars) for features")
 parser.add_argument("--future", type=int, default=5, help="Number of bars to look into the future for target labeling")
 parser.add_argument("--n_iter", type=int, default=5, help="Number of iterations for RandomizedSearchCV")
+parser.add_argument("--n_splits", type=int, default=7, help="Number of splits for TimeSeriesSplit cross-validation")
 parser.add_argument("--min_profit_points", type=float, default=10.0, help="Minimum profit points for a positive target")
+parser.add_argument("--pip_unit", type=float, default=0.01, help="Pip unit for price normalization (default: 0.01)")
 
 args = parser.parse_args()
 
@@ -66,7 +68,7 @@ print(f"Rows loaded: {colorize(str(len(df)), Colors.GREEN)}")
 
 # Infer pip unit from data (optional, or set based on symbol detection if available)
 # If symbol info is not available, we'll use a reasonable default
-pip_unit = 0.0001  # Default for most pairs; could be refined if symbol is known
+pip_unit = args.pip_unit
 
 df['feat_body'] = (df['close'] - df['open']) / pip_unit
 df['feat_range'] = (df['high'] - df['low']) / pip_unit
@@ -106,15 +108,16 @@ param_dist = {
     'min_samples_leaf': [1, 5]
 }
 
-# TimeSeriesSplit con 2 pliegues para velocidad
-tscv = TimeSeriesSplit(n_splits=2)
+# TimeSeriesSplit pliegues para velocidad o lentitud :)
+n_splits = args.n_splits
+tscv = TimeSeriesSplit(n_splits=n_splits)
 
 search = RandomizedSearchCV(
     RandomForestClassifier(random_state=42, class_weight='balanced'),
     param_distributions=param_dist,
     n_iter=n_iter,
     cv=tscv,
-    scoring='balanced_accuracy',
+    scoring='accuracy',
     n_jobs=-1,
     verbose=2
 )
