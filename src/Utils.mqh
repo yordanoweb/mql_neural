@@ -679,9 +679,25 @@ bool SendEntryWithManagedStops(CTrade &trade,
    if(!must_send_without_stops)
       return true;
 
-   if(!PositionSelect(_Symbol))
+   bool position_selected = false;
+   for(int select_attempt = 0; select_attempt < 20; select_attempt++)
      {
-      PrintFormat("Order opened for %s but position was not immediately selectable for stop modification.", _Symbol);
+      if(PositionSelect(_Symbol))
+        {
+         position_selected = true;
+         break;
+        }
+      Sleep(100);
+     }
+
+   if(!position_selected)
+     {
+      PrintFormat("Order opened for %s but position could not be selected for stop modification.", _Symbol);
+      if(use_sl)
+        {
+         trade.PositionClose(_Symbol);
+         return false;
+        }
       return true;
      }
 
@@ -692,7 +708,7 @@ bool SendEntryWithManagedStops(CTrade &trade,
    if(position_volume <= 0.0)
       position_volume = volume;
 
-   for(int attempt = 0; attempt < 10; attempt++)
+   for(int attempt = 0; attempt < 20; attempt++)
      {
       if(!NormalizeStopsWithOrderCheck(orderType, position_volume, current_price, current_sl, current_tp, use_sl))
          NormalizeStopsForBroker(orderType, current_price, current_sl, current_tp, use_sl);
@@ -708,12 +724,23 @@ bool SendEntryWithManagedStops(CTrade &trade,
          break;
 
       WidenStopsByStep(orderType, GetExecutionPriceBySide(orderType), current_sl, current_tp, use_sl, (attempt + 1) * 3);
+      Sleep(100);
      }
 
    PrintFormat("Order opened for %s but failed to apply SL/TP after retries. Retcode=%d %s",
                _Symbol,
                trade.ResultRetcode(),
                trade.ResultRetcodeDescription());
+   if(use_sl)
+     {
+      bool close_ok = trade.PositionClose(_Symbol);
+      PrintFormat("Unprotected position fallback close for %s | Closed=%s | Retcode=%d %s",
+                  _Symbol,
+                  (close_ok ? "true" : "false"),
+                  trade.ResultRetcode(),
+                  trade.ResultRetcodeDescription());
+      return false;
+     }
    return true;
   }
 //+------------------------------------------------------------------+
