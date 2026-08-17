@@ -256,9 +256,6 @@ string GetDealReasonText(const long reason)
 //+------------------------------------------------------------------+
 double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
-// Spread
-   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-
 // Usamos static para mantener el handle del indicador en memoria
    static int atr_handle = INVALID_HANDLE;
    static int current_atr_period = 0;
@@ -295,14 +292,14 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 // Cálculo del nivel de precio exacto
    if(orderType == ORDER_TYPE_BUY)
      {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      sl_price = ask - atr_value - (spread * _Point); // En compras, el SL va por debajo del Ask
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      sl_price = bid - atr_value; // En compras se cierra al Bid, anclar SL al lado de cierre
      }
    else
       if(orderType == ORDER_TYPE_SELL)
         {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         sl_price = bid + atr_value + (spread * _Point); // En ventas, el SL va por encima del Bid
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         sl_price = ask + atr_value; // En ventas se cierra al Ask, anclar SL al lado de cierre
         }
 
    return NormalizeDouble(sl_price, _Digits);
@@ -313,9 +310,6 @@ double GetStopLoss(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 //+------------------------------------------------------------------+
 double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
   {
-// Spread
-   int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
-
 // Usamos static para mantener el handle del indicador en memoria
    static int atr_handle_tp = INVALID_HANDLE;
    static int current_atr_period_tp = 0;
@@ -352,14 +346,14 @@ double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 // Cálculo del nivel de precio exacto
    if(orderType == ORDER_TYPE_BUY)
      {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      tp_price = ask + atr_value + (spread * _Point); // En compras, el TP va por encima del Ask
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      tp_price = bid + atr_value; // En compras se cierra al Bid, anclar TP al lado de cierre
      }
    else
       if(orderType == ORDER_TYPE_SELL)
         {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         tp_price = bid - atr_value - (spread * _Point); // En ventas, el TP va por debajo del Bid
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         tp_price = ask - atr_value; // En ventas se cierra al Ask, anclar TP al lado de cierre
         }
 
    return NormalizeDouble(tp_price, _Digits);
@@ -382,9 +376,11 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
    if(price <= 0.0)
       price = SymbolInfoDouble(_Symbol, is_buy ? SYMBOL_ASK : SYMBOL_BID);
 
-   if(price <= 0.0)
+   double stop_reference_price = SymbolInfoDouble(_Symbol, is_buy ? SYMBOL_BID : SYMBOL_ASK);
+
+   if(price <= 0.0 || stop_reference_price <= 0.0)
      {
-      PrintFormat("%s: invalid execution price for %s. Keeping original SL/TP.", __FUNCTION__, _Symbol);
+      PrintFormat("%s: invalid execution/close price for %s. Keeping original SL/TP.", __FUNCTION__, _Symbol);
       return;
      }
 
@@ -408,7 +404,7 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
      {
       if(is_buy)
         {
-         double max_sl = price - min_distance;
+         double max_sl = stop_reference_price - min_distance;
          if(sl <= 0.0 || sl > max_sl)
             sl = max_sl;
          else
@@ -416,7 +412,7 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
         }
       else
         {
-         double min_sl = price + min_distance;
+         double min_sl = stop_reference_price + min_distance;
          if(sl <= 0.0 || sl < min_sl)
             sl = min_sl;
          else
@@ -427,17 +423,17 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
 
       if(is_buy)
         {
-         if((price - sl) < min_distance || sl >= price)
-            sl = NormalizeDouble(price - min_distance, digits);
-         if(sl >= price)
-            sl = NormalizeDouble(price - point, digits);
+         if((stop_reference_price - sl) < min_distance || sl >= stop_reference_price)
+            sl = NormalizeDouble(stop_reference_price - min_distance, digits);
+         if(sl >= stop_reference_price)
+            sl = NormalizeDouble(stop_reference_price - point, digits);
         }
       else
         {
-         if((sl - price) < min_distance || sl <= price)
-            sl = NormalizeDouble(price + min_distance, digits);
-         if(sl <= price)
-            sl = NormalizeDouble(price + point, digits);
+         if((sl - stop_reference_price) < min_distance || sl <= stop_reference_price)
+            sl = NormalizeDouble(stop_reference_price + min_distance, digits);
+         if(sl <= stop_reference_price)
+            sl = NormalizeDouble(stop_reference_price + point, digits);
         }
      }
    else
@@ -445,7 +441,7 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
 
    if(is_buy)
      {
-      double min_tp = price + min_distance;
+      double min_tp = stop_reference_price + min_distance;
       if(tp <= 0.0 || tp < min_tp)
          tp = min_tp;
       else
@@ -453,7 +449,7 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
      }
    else
      {
-      double max_tp = price - min_distance;
+      double max_tp = stop_reference_price - min_distance;
       if(tp <= 0.0 || tp > max_tp)
          tp = max_tp;
       else
@@ -464,25 +460,26 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
 
    if(is_buy)
      {
-      if((tp - price) < min_distance || tp <= price)
-         tp = NormalizeDouble(price + min_distance, digits);
-      if(tp <= price)
-         tp = NormalizeDouble(price + point, digits);
+      if((tp - stop_reference_price) < min_distance || tp <= stop_reference_price)
+         tp = NormalizeDouble(stop_reference_price + min_distance, digits);
+      if(tp <= stop_reference_price)
+         tp = NormalizeDouble(stop_reference_price + point, digits);
      }
    else
      {
-      if((price - tp) < min_distance || tp >= price)
-         tp = NormalizeDouble(price - min_distance, digits);
-      if(tp >= price)
-         tp = NormalizeDouble(price - point, digits);
+      if((stop_reference_price - tp) < min_distance || tp >= stop_reference_price)
+         tp = NormalizeDouble(stop_reference_price - min_distance, digits);
+      if(tp >= stop_reference_price)
+         tp = NormalizeDouble(stop_reference_price - point, digits);
      }
 
    if(MathAbs(sl_before - sl) > (point * 0.1) || MathAbs(tp_before - tp) > (point * 0.1))
      {
-      PrintFormat("Stops normalized | Symbol=%s | Side=%s | Price=%.*f | MinDist=%.*f (%d pts; stops=%d freeze=%d) | SL %.*f -> %.*f | TP %.*f -> %.*f",
+      PrintFormat("Stops normalized | Symbol=%s | Side=%s | ExecPrice=%.*f | ClosePrice=%.*f | MinDist=%.*f (%d pts; stops=%d freeze=%d) | SL %.*f -> %.*f | TP %.*f -> %.*f",
                   _Symbol,
                   (is_buy ? "BUY" : "SELL"),
                   digits, price,
+                  digits, stop_reference_price,
                   digits, min_distance,
                   required_points, stops_level_points, freeze_level_points,
                   digits, sl_before, digits, sl,
@@ -525,6 +522,14 @@ double GetExecutionPriceBySide(ENUM_ORDER_TYPE orderType)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
+double GetClosePriceBySide(ENUM_ORDER_TYPE orderType)
+  {
+   return SymbolInfoDouble(_Symbol, IsBuyOrderType(orderType) ? SYMBOL_BID : SYMBOL_ASK);
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
 void WidenStopsByStep(ENUM_ORDER_TYPE orderType,
                       double price,
                       double &sl,
@@ -545,19 +550,23 @@ void WidenStopsByStep(ENUM_ORDER_TYPE orderType,
    int required_points = MathMax(MathMax(stops_level_points, freeze_level_points), 1);
    double distance = (required_points + step_multiplier) * point;
    bool is_buy = IsBuyOrderType(orderType);
+   double close_price = GetClosePriceBySide(orderType);
+
+   if(close_price <= 0.0)
+      close_price = price;
 
    if(use_sl)
      {
       if(is_buy)
-         sl = MathMin(sl, price - distance);
+         sl = MathMin(sl, close_price - distance);
       else
-         sl = MathMax(sl, price + distance);
+         sl = MathMax(sl, close_price + distance);
      }
 
    if(is_buy)
-      tp = MathMax(tp, price + distance);
+      tp = MathMax(tp, close_price + distance);
    else
-      tp = MathMin(tp, price - distance);
+      tp = MathMin(tp, close_price - distance);
 
    if(use_sl)
       sl = NormalizeDouble(sl, digits);
