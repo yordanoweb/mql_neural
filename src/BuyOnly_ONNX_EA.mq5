@@ -432,6 +432,7 @@ void TryExecuteBuyEntry()
       double price = SymbolInfoDouble(_Symbol, is_buy_order ? SYMBOL_ASK : SYMBOL_BID);
       double sl = InpUseSL ? sl_price : 0;
       double tp = tp_price;
+      NormalizeStopsForBroker(entry_order_type, price, sl, tp, InpUseSL);
       double lot = CalculateVolumeByPercent(InpLot, entry_order_type);
       string entry_text = GetEntryActionText();
       Print("=== Attempting ", entry_text, " Entry === | Price: ", DoubleToString(price, _Digits),

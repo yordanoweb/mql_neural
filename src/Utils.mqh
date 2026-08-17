@@ -364,6 +364,131 @@ double GetTakeProfit(int atrPeriod, ENUM_ORDER_TYPE orderType = ORDER_TYPE_BUY)
 
    return NormalizeDouble(tp_price, _Digits);
   }
+
+//+------------------------------------------------------------------+
+//| Normalize SL/TP to broker minimum stop/freeze distances          |
+//+------------------------------------------------------------------+
+void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
+                             double price,
+                             double &sl,
+                             double &tp,
+                             bool use_sl = true)
+  {
+   bool is_buy = (orderType == ORDER_TYPE_BUY            ||
+                  orderType == ORDER_TYPE_BUY_LIMIT       ||
+                  orderType == ORDER_TYPE_BUY_STOP        ||
+                  orderType == ORDER_TYPE_BUY_STOP_LIMIT);
+
+   if(price <= 0.0)
+      price = SymbolInfoDouble(_Symbol, is_buy ? SYMBOL_ASK : SYMBOL_BID);
+
+   if(price <= 0.0)
+     {
+      PrintFormat("%s: invalid execution price for %s. Keeping original SL/TP.", __FUNCTION__, _Symbol);
+      return;
+     }
+
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   if(digits <= 0)
+      digits = _Digits;
+
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   if(point <= 0.0)
+      point = _Point;
+
+   int stops_level_points = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   int freeze_level_points = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   int required_points = MathMax(stops_level_points, freeze_level_points);
+   double min_distance = MathMax((double)required_points * point, point);
+
+   double sl_before = sl;
+   double tp_before = tp;
+
+   if(use_sl)
+     {
+      if(is_buy)
+        {
+         double max_sl = price - min_distance;
+         if(sl <= 0.0 || sl > max_sl)
+            sl = max_sl;
+         else
+            sl = MathMin(sl, max_sl);
+        }
+      else
+        {
+         double min_sl = price + min_distance;
+         if(sl <= 0.0 || sl < min_sl)
+            sl = min_sl;
+         else
+            sl = MathMax(sl, min_sl);
+        }
+
+      sl = NormalizeDouble(sl, digits);
+
+      if(is_buy)
+        {
+         if((price - sl) < min_distance || sl >= price)
+            sl = NormalizeDouble(price - min_distance, digits);
+         if(sl >= price)
+            sl = NormalizeDouble(price - point, digits);
+        }
+      else
+        {
+         if((sl - price) < min_distance || sl <= price)
+            sl = NormalizeDouble(price + min_distance, digits);
+         if(sl <= price)
+            sl = NormalizeDouble(price + point, digits);
+        }
+     }
+   else
+      sl = 0.0;
+
+   if(is_buy)
+     {
+      double min_tp = price + min_distance;
+      if(tp <= 0.0 || tp < min_tp)
+         tp = min_tp;
+      else
+         tp = MathMax(tp, min_tp);
+     }
+   else
+     {
+      double max_tp = price - min_distance;
+      if(tp <= 0.0 || tp > max_tp)
+         tp = max_tp;
+      else
+         tp = MathMin(tp, max_tp);
+     }
+
+   tp = NormalizeDouble(tp, digits);
+
+   if(is_buy)
+     {
+      if((tp - price) < min_distance || tp <= price)
+         tp = NormalizeDouble(price + min_distance, digits);
+      if(tp <= price)
+         tp = NormalizeDouble(price + point, digits);
+     }
+   else
+     {
+      if((price - tp) < min_distance || tp >= price)
+         tp = NormalizeDouble(price - min_distance, digits);
+      if(tp >= price)
+         tp = NormalizeDouble(price - point, digits);
+     }
+
+   if(MathAbs(sl_before - sl) > (point * 0.1) || MathAbs(tp_before - tp) > (point * 0.1))
+     {
+      PrintFormat("Stops normalized | Symbol=%s | Side=%s | Price=%.*f | MinDist=%.*f (%d pts; stops=%d freeze=%d) | SL %.*f -> %.*f | TP %.*f -> %.*f",
+                  _Symbol,
+                  (is_buy ? "BUY" : "SELL"),
+                  digits, price,
+                  digits, min_distance,
+                  required_points, stops_level_points, freeze_level_points,
+                  digits, sl_before, digits, sl,
+                  digits, tp_before, digits, tp);
+     }
+  }
 //+------------------------------------------------------------------+
 //| Saves current Expert Advisor input parameters to a .set file     |
 //| Parameters:                                                      |

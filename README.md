@@ -46,6 +46,7 @@ MetaTrader 5 Expert Advisor that trades only long positions using the ONNX model
 - Uses ONNX inference on `OnTimer` and keeps time/cooldown/candle-direction/volatility entry protections.
 - Supports mirrored execution side through mirror mode (normal BUY vs mirrored SELL for buy-signal entries).
 - Keeps optional early close on `OnTick` when open-position net profit reaches `InpMinDollars`.
+- Before sending each order, SL/TP are always normalized to broker constraints using the stricter of `SYMBOL_TRADE_STOPS_LEVEL` and `SYMBOL_TRADE_FREEZE_LEVEL`, preserving side rules (BUY: `SL<price<TP`, SELL: `TP<price<SL`).
 
 ### Mirror failover behavior (`BuyOnly_ONNX_EA.mq5` and `SellOnly_ONNX_EA.mq5`)
 - `InpMirrorEntryOperation` is used as the startup mirror mode.
