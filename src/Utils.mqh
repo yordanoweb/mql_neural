@@ -646,7 +646,7 @@ bool SendEntryWithManagedStops(CTrade &trade,
       return false;
 
    bool is_buy = IsBuyOrderType(orderType);
-   long execution_mode = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_EXECUTION);
+   long execution_mode = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_EXEMODE);
    bool must_send_without_stops = (execution_mode == SYMBOL_TRADE_EXECUTION_EXCHANGE);
 
    if(!NormalizeStopsWithOrderCheck(orderType, volume, price, sl, tp, use_sl))
