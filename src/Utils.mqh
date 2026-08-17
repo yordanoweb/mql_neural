@@ -489,6 +489,224 @@ void NormalizeStopsForBroker(ENUM_ORDER_TYPE orderType,
                   digits, tp_before, digits, tp);
      }
   }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool IsBuyOrderType(ENUM_ORDER_TYPE orderType)
+  {
+   return (orderType == ORDER_TYPE_BUY            ||
+           orderType == ORDER_TYPE_BUY_LIMIT       ||
+           orderType == ORDER_TYPE_BUY_STOP        ||
+           orderType == ORDER_TYPE_BUY_STOP_LIMIT);
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+ENUM_ORDER_TYPE_FILLING GetPreferredFillingMode()
+  {
+   long filling_modes = SymbolInfoInteger(_Symbol, SYMBOL_FILLING_MODE);
+   if((filling_modes & SYMBOL_FILLING_FOK) == SYMBOL_FILLING_FOK)
+      return ORDER_FILLING_FOK;
+   if((filling_modes & SYMBOL_FILLING_IOC) == SYMBOL_FILLING_IOC)
+      return ORDER_FILLING_IOC;
+   return ORDER_FILLING_RETURN;
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+double GetExecutionPriceBySide(ENUM_ORDER_TYPE orderType)
+  {
+   return SymbolInfoDouble(_Symbol, IsBuyOrderType(orderType) ? SYMBOL_ASK : SYMBOL_BID);
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void WidenStopsByStep(ENUM_ORDER_TYPE orderType,
+                      double price,
+                      double &sl,
+                      double &tp,
+                      bool use_sl,
+                      int step_multiplier)
+  {
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   if(digits <= 0)
+      digits = _Digits;
+
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   if(point <= 0.0)
+      point = _Point;
+
+   int stops_level_points = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   int freeze_level_points = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_FREEZE_LEVEL);
+   int required_points = MathMax(MathMax(stops_level_points, freeze_level_points), 1);
+   double distance = (required_points + step_multiplier) * point;
+   bool is_buy = IsBuyOrderType(orderType);
+
+   if(use_sl)
+     {
+      if(is_buy)
+         sl = MathMin(sl, price - distance);
+      else
+         sl = MathMax(sl, price + distance);
+     }
+
+   if(is_buy)
+      tp = MathMax(tp, price + distance);
+   else
+      tp = MathMin(tp, price - distance);
+
+   if(use_sl)
+      sl = NormalizeDouble(sl, digits);
+   tp = NormalizeDouble(tp, digits);
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool NormalizeStopsWithOrderCheck(ENUM_ORDER_TYPE orderType,
+                                  double volume,
+                                  double &price,
+                                  double &sl,
+                                  double &tp,
+                                  bool use_sl,
+                                  int max_attempts = 10)
+  {
+   MqlTradeRequest check_request;
+   MqlTradeCheckResult check_result;
+   ZeroMemory(check_request);
+   ZeroMemory(check_result);
+
+   check_request.action = TRADE_ACTION_DEAL;
+   check_request.symbol = _Symbol;
+   check_request.volume = volume;
+   check_request.type = orderType;
+   check_request.type_time = ORDER_TIME_GTC;
+   check_request.type_filling = GetPreferredFillingMode();
+
+   for(int attempt = 0; attempt < max_attempts; attempt++)
+     {
+      price = GetExecutionPriceBySide(orderType);
+      if(price <= 0.0)
+         continue;
+
+      NormalizeStopsForBroker(orderType, price, sl, tp, use_sl);
+
+      check_request.price = price;
+      check_request.sl = (use_sl ? sl : 0.0);
+      check_request.tp = tp;
+
+      if(!OrderCheck(check_request, check_result))
+        {
+         PrintFormat("OrderCheck failed for %s. attempt=%d error=%d",
+                     _Symbol, attempt + 1, GetLastError());
+         continue;
+        }
+
+      if(check_result.retcode != TRADE_RETCODE_INVALID_STOPS)
+         return true;
+
+      WidenStopsByStep(orderType, price, sl, tp, use_sl, (attempt + 1) * 2);
+      PrintFormat("OrderCheck invalid stops. attempt=%d side=%s price=%.*f sl=%.*f tp=%.*f",
+                  attempt + 1,
+                  (IsBuyOrderType(orderType) ? "BUY" : "SELL"),
+                  _Digits, price,
+                  _Digits, sl,
+                  _Digits, tp);
+     }
+
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool SendEntryWithManagedStops(CTrade &trade,
+                               double volume,
+                               ENUM_ORDER_TYPE orderType,
+                               double &price,
+                               double &sl,
+                               double &tp,
+                               string comment,
+                               bool use_sl = true)
+  {
+   if(volume <= 0.0)
+      return false;
+
+   bool is_buy = IsBuyOrderType(orderType);
+   long execution_mode = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_EXECUTION);
+   bool must_send_without_stops = (execution_mode == SYMBOL_TRADE_EXECUTION_EXCHANGE);
+
+   if(!NormalizeStopsWithOrderCheck(orderType, volume, price, sl, tp, use_sl))
+      NormalizeStopsForBroker(orderType, price, sl, tp, use_sl);
+
+   double send_sl = (must_send_without_stops ? 0.0 : (use_sl ? sl : 0.0));
+   double send_tp = (must_send_without_stops ? 0.0 : tp);
+   PrintFormat("Managed order send | Symbol=%s | Side=%s | Mode=%s | Price=%.*f | SL=%.*f | TP=%.*f",
+               _Symbol,
+               (is_buy ? "BUY" : "SELL"),
+               (must_send_without_stops ? "OPEN_THEN_MODIFY" : "DIRECT_WITH_STOPS"),
+               _Digits, price,
+               _Digits, send_sl,
+               _Digits, send_tp);
+   bool trade_ok = (is_buy
+                    ? trade.Buy(volume, _Symbol, price, send_sl, send_tp, comment)
+                    : trade.Sell(volume, _Symbol, price, send_sl, send_tp, comment));
+
+   if(!trade_ok && trade.ResultRetcode() == TRADE_RETCODE_INVALID_STOPS && !must_send_without_stops)
+     {
+      trade_ok = (is_buy
+                  ? trade.Buy(volume, _Symbol, price, 0.0, 0.0, comment)
+                  : trade.Sell(volume, _Symbol, price, 0.0, 0.0, comment));
+      must_send_without_stops = trade_ok;
+     }
+
+   if(!trade_ok)
+      return false;
+
+   if(!must_send_without_stops)
+      return true;
+
+   if(!PositionSelect(_Symbol))
+     {
+      PrintFormat("Order opened for %s but position was not immediately selectable for stop modification.", _Symbol);
+      return true;
+     }
+
+   double current_price = 0.0;
+   double current_sl = sl;
+   double current_tp = tp;
+   double position_volume = PositionGetDouble(POSITION_VOLUME);
+   if(position_volume <= 0.0)
+      position_volume = volume;
+
+   for(int attempt = 0; attempt < 10; attempt++)
+     {
+      if(!NormalizeStopsWithOrderCheck(orderType, position_volume, current_price, current_sl, current_tp, use_sl))
+         NormalizeStopsForBroker(orderType, current_price, current_sl, current_tp, use_sl);
+
+      if(trade.PositionModify(_Symbol, (use_sl ? current_sl : 0.0), current_tp))
+        {
+         sl = current_sl;
+         tp = current_tp;
+         return true;
+        }
+
+      if(trade.ResultRetcode() != TRADE_RETCODE_INVALID_STOPS)
+         break;
+
+      WidenStopsByStep(orderType, GetExecutionPriceBySide(orderType), current_sl, current_tp, use_sl, (attempt + 1) * 3);
+     }
+
+   PrintFormat("Order opened for %s but failed to apply SL/TP after retries. Retcode=%d %s",
+               _Symbol,
+               trade.ResultRetcode(),
+               trade.ResultRetcodeDescription());
+   return true;
+  }
 //+------------------------------------------------------------------+
 //| Saves current Expert Advisor input parameters to a .set file     |
 //| Parameters:                                                      |

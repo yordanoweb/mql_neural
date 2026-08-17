@@ -432,7 +432,6 @@ void TryExecuteBuyEntry()
       double price = SymbolInfoDouble(_Symbol, is_buy_order ? SYMBOL_ASK : SYMBOL_BID);
       double sl = InpUseSL ? sl_price : 0;
       double tp = tp_price;
-      NormalizeStopsForBroker(entry_order_type, price, sl, tp, InpUseSL);
       double lot = CalculateVolumeByPercent(InpLot, entry_order_type);
       string entry_text = GetEntryActionText();
       Print("=== Attempting ", entry_text, " Entry === | Price: ", DoubleToString(price, _Digits),
@@ -440,9 +439,14 @@ void TryExecuteBuyEntry()
             " | TP: ", DoubleToString(tp, _Digits),
             " | Lot: ", DoubleToString(lot, 2),
             " | Volatility: ", EnumToString(volatility));
-      bool trade_ok = (is_buy_order
-                       ? m_trade.Buy(lot, _Symbol, price, sl, tp, "AI BUY@" + DoubleToString(g_confidence, 2))
-                       : m_trade.Sell(lot, _Symbol, price, sl, tp, "AI SELL@" + DoubleToString(g_confidence, 2)));
+      bool trade_ok = SendEntryWithManagedStops(m_trade,
+                                                lot,
+                                                entry_order_type,
+                                                price,
+                                                sl,
+                                                tp,
+                                                (is_buy_order ? "AI BUY@" : "AI SELL@") + DoubleToString(g_confidence, 2),
+                                                InpUseSL);
       if(trade_ok)
          Print("=== ", entry_text, " Executed @ ", DoubleToString(price, _Digits),
                " | sl: ", DoubleToString(sl, _Digits),
