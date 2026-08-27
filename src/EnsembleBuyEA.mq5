@@ -1,10 +1,10 @@
 //+------------------------------------------------------------------+
 //|                                            EnsembleBuyEA.mq5     |
 //|  EA de Ensemble Buy-Only con 5 modelos ONNX                      |
-//|  Carga modelos A-E, calcula features por modelo, agrega probs    |
+//|  CORREGIDO: shapes ONNX, vectorf, 2 outputs, referencias         |
 //+------------------------------------------------------------------+
 #property copyright "Ensemble EA"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -20,16 +20,13 @@ input string InpModelD_Path = "model_D_structure.onnx";   // Modelo D (Structure
 input string InpModelE_Path = "model_E_volatility.onnx";  // Modelo E (Volatility)
 
 input group "=== AGREGACION ==="
-//+------------------------------------------------------------------+
-//| ENUMS                                                            |
-//+------------------------------------------------------------------+
 enum ENUM_ENSEMBLE_MODE
 {
    ENSEMBLE_MEAN,      // Media simple
    ENSEMBLE_WEIGHTED,  // Media ponderada
    ENSEMBLE_MEDIAN,    // Mediana
    ENSEMBLE_MAJORITY,  // Voto mayoritario
-   ENSEMBLE_TRIMMEAN   // Media truncada (quita max y min)
+   ENSEMBLE_TRIMMEAN   // Media truncada
 };
 input ENUM_ENSEMBLE_MODE InpEnsembleMode = ENSEMBLE_WEIGHTED; // Modo de agregacion
 input double InpWeightA = 0.10;  // Peso Modelo A
@@ -51,7 +48,6 @@ input double InpTrailDistance = 30.0;  // Distancia trailing (puntos)
 input group "=== PARAMETROS DE FEATURES ==="
 input int    InpRSI_Period = 14;       // Periodo RSI
 input int    InpATR_Period = 20;       // Periodo ATR (para modelo D)
-input int    InpMaxBarsWait = 100;     // Max barras esperando datos
 
 input group "=== LOGGING ==="
 input bool   InpVerbose = true;        // Log detallado
@@ -68,10 +64,11 @@ struct ModelConfig
    int      window;         // Ventana de barras
    int      featureCount;   // Features por barra
    int      inputSize;      // window * featureCount
-   long     onnxHandle;     // Handle ONNX (-1 si no cargado)
+   long     onnxHandle;     // Handle ONNX
    double   weight;         // Peso en agregacion
    bool     loaded;         // Cargado correctamente?
-   string   perspective;    // Perspectiva (metadata)
+   string   perspective;    // Perspectiva
+   int      outputCount;    // Numero de outputs del modelo ONNX
 };
 
 //+------------------------------------------------------------------+
@@ -92,7 +89,7 @@ int g_handleATR = INVALID_HANDLE;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("=== EnsembleBuyEA Iniciando ===");
+   Print("=== EnsembleBuyEA v1.10 Iniciando ===");
 
    // Inicializar trade
    g_trade.SetDeviationInPoints(10);
@@ -132,11 +129,10 @@ int OnInit()
 
    Print("Modelos cargados: ", loadedCount, "/5");
 
-   // Esperar a que haya suficientes barras
    if(Bars(_Symbol, PERIOD_CURRENT) < 50)
    {
       Print("Esperando mas barras de historico...");
-      return INIT_SUCCEEDED; // Seguira intentando en OnTick
+      return INIT_SUCCEEDED;
    }
 
    g_lastBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
@@ -150,7 +146,6 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   // Liberar modelos ONNX
    for(int i = 0; i < 5; i++)
    {
       if(g_models[i].onnxHandle != INVALID_HANDLE)
@@ -160,7 +155,6 @@ void OnDeinit(const int reason)
       }
    }
 
-   // Liberar indicadores
    if(g_handleRSI != INVALID_HANDLE) IndicatorRelease(g_handleRSI);
    if(g_handleATR != INVALID_HANDLE) IndicatorRelease(g_handleATR);
 
@@ -174,7 +168,7 @@ void OnTick()
 {
    datetime currentBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
 
-   // Solo procesar al cerrar una nueva barra (modo barra cerrada)
+   // Solo procesar al cerrar una nueva barra
    if(currentBarTime == g_lastBarTime)
       return;
 
@@ -182,19 +176,11 @@ void OnTick()
    g_barsProcessed++;
    g_logCounter++;
 
-   // Verificar que tenemos suficientes barras
    int totalBars = Bars(_Symbol, PERIOD_CURRENT);
    if(totalBars < 50)
    {
       if(g_barsProcessed % 10 == 0)
          Print("Esperando barras... Actual: ", totalBars, "/50");
-      return;
-   }
-
-   // Actualizar datos de indicadores
-   if(!CopyIndicatorBuffers())
-   {
-      Print("ERROR: No se pudieron copiar buffers de indicadores");
       return;
    }
 
@@ -210,7 +196,7 @@ void OnTick()
          continue;
       }
 
-      double modelInput[];
+      vectorf modelInput;
       if(!PrepareFeatures(i, modelInput))
       {
          if(InpVerbose)
@@ -246,7 +232,7 @@ void OnTick()
       Print(logMsg);
    }
 
-   // Gestion de posiciones existentes (trailing stop)
+   // Gestion de posiciones existentes
    if(InpUseTrailingStop)
       ManageTrailingStops();
 
@@ -254,8 +240,6 @@ void OnTick()
    int openPositions = CountOpenPositions(POSITION_TYPE_BUY);
 
    bool shouldBuy = false;
-
-   // Condiciones de entrada
    if(ensembleProb >= InpConfidenceThreshold &&
       (ensembleProb - sellProb) >= InpMinConfidenceDiff &&
       openPositions < InpMaxPositions &&
@@ -273,7 +257,7 @@ void OnTick()
 //+------------------------------------------------------------------+
 //| INICIALIZAR CONFIGURACION DE MODELO                              |
 //+------------------------------------------------------------------+
-void InitModel(int idx, string path, string id, string alias, int window, 
+void InitModel(int idx, string path, string id, string alias, int window,
                int featCount, double weight, string perspective)
 {
    g_models[idx].path = path;
@@ -286,16 +270,17 @@ void InitModel(int idx, string path, string id, string alias, int window,
    g_models[idx].weight = weight;
    g_models[idx].loaded = false;
    g_models[idx].perspective = perspective;
+   g_models[idx].outputCount = 0;
 }
 
 //+------------------------------------------------------------------+
-//| CARGAR MODELO ONNX                                               |
+//| CARGAR MODELO ONNX + DEFINIR SHAPES                              |
 //+------------------------------------------------------------------+
 bool LoadONNXModel(int idx)
 {
    string fullPath = g_models[idx].path;
 
-   // Verificar si existe en MQL5/Files
+   // Extraer nombre de archivo
    string filename = fullPath;
    int sepPos = StringFind(fullPath, "\\", 0);
    if(sepPos == -1) sepPos = StringFind(fullPath, "/", 0);
@@ -309,7 +294,6 @@ bool LoadONNXModel(int idx)
       int err = GetLastError();
       Print("ERROR cargando modelo ", g_models[idx].id, " (", filename, "): ", err);
 
-      // Intentar con ruta completa
       handle = OnnxCreate(fullPath, ONNX_DEFAULT);
       if(handle == INVALID_HANDLE)
       {
@@ -319,37 +303,76 @@ bool LoadONNXModel(int idx)
    }
 
    g_models[idx].onnxHandle = handle;
+
+   // Verificar inputs/outputs del modelo
+   long inputCount = OnnxGetInputCount(handle);
+   long outputCount = OnnxGetOutputCount(handle);
+   g_models[idx].outputCount = (int)outputCount;
+
+   Print("Modelo ", g_models[idx].id, " ONNX info: inputs=", inputCount, ", outputs=", outputCount);
+
+   // Mostrar nombres de inputs/outputs para debug
+   for(int i = 0; i < (int)inputCount; i++)
+   {
+      string inName = OnnxGetInputName(handle, i);
+      Print("  Input[", i, "]: ", inName);
+   }
+   for(int i = 0; i < (int)outputCount; i++)
+   {
+      string outName = OnnxGetOutputName(handle, i);
+      Print("  Output[", i, "]: ", outName);
+   }
+
+   // Definir shape del input [1, inputSize]
+   long inputShape[] = {1, g_models[idx].inputSize};
+   if(!OnnxSetInputShape(handle, 0, inputShape))
+   {
+      Print("ERROR OnnxSetInputShape modelo ", g_models[idx].id, ": ", GetLastError());
+      OnnxRelease(handle);
+      return false;
+   }
+
+   // Definir shapes de outputs
+   // Output 0: label (int64) -> shape [1]
+   long outputShape0[] = {1};
+   if(!OnnxSetOutputShape(handle, 0, outputShape0))
+   {
+      Print("ERROR OnnxSetOutputShape[0] modelo ", g_models[idx].id, ": ", GetLastError());
+      OnnxRelease(handle);
+      return false;
+   }
+
+   // Output 1: probabilities (float32) -> shape [1, 2]
+   if(outputCount >= 2)
+   {
+      long outputShape1[] = {1, 2};
+      if(!OnnxSetOutputShape(handle, 1, outputShape1))
+      {
+         Print("ERROR OnnxSetOutputShape[1] modelo ", g_models[idx].id, ": ", GetLastError());
+         OnnxRelease(handle);
+         return false;
+      }
+   }
+
    g_models[idx].loaded = true;
-
-   Print("Modelo ", g_models[idx].id, " cargado OK. Input size: ", g_models[idx].inputSize);
+   Print("Modelo ", g_models[idx].id, " cargado OK. Input size: ", g_models[idx].inputSize,
+         ", Outputs: ", outputCount);
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| COPIAR BUFFERS DE INDICADORES                                    |
+//| PREPARAR FEATURES PARA UN MODELO (devuelve vectorf)              |
 //+------------------------------------------------------------------+
-bool CopyIndicatorBuffers()
+bool PrepareFeatures(int modelIdx, vectorf &outVec)
 {
-   // Los indicadores se actualizan automaticamente por el handle
-   // No necesitamos copiar manualmente, usaremos CopyBuffer en PrepareFeatures
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| PREPARAR FEATURES PARA UN MODELO                                 |
-//+------------------------------------------------------------------+
-bool PrepareFeatures(int modelIdx, double &outFeatures[])
-{
-   ModelConfig m = g_models[modelIdx];
+   ModelConfig m = g_models[modelIdx];  // <-- REFERENCIA, no copia
    int w = m.window;
 
-   // Necesitamos w barras de historico + buffer para calculos
    int requiredBars = w + InpATR_Period + 5;
    if(Bars(_Symbol, PERIOD_CURRENT) < requiredBars)
       return false;
 
-   ArrayResize(outFeatures, m.inputSize);
-   ArrayInitialize(outFeatures, 0.0);
+   outVec.Resize(m.inputSize);
 
    // Obtener datos de precios
    double opens[], highs[], lows[], closes[];
@@ -368,7 +391,7 @@ bool PrepareFeatures(int modelIdx, double &outFeatures[])
    ArraySetAsSeries(rsiValues, true);
    if(CopyBuffer(g_handleRSI, 0, 0, requiredBars, rsiValues) < requiredBars) return false;
 
-   // Obtener ATR (para modelo D)
+   // Obtener ATR
    double atrValues[];
    ArraySetAsSeries(atrValues, true);
    if(CopyBuffer(g_handleATR, 0, 0, requiredBars, atrValues) < requiredBars) return false;
@@ -377,7 +400,7 @@ bool PrepareFeatures(int modelIdx, double &outFeatures[])
 
    for(int i = 0; i < w; i++)
    {
-      int barIdx = i; // 0 = vela actual, 1 = anterior, etc.
+      int barIdx = i;
 
       double o = opens[barIdx];
       double h = highs[barIdx];
@@ -385,35 +408,32 @@ bool PrepareFeatures(int modelIdx, double &outFeatures[])
       double c = closes[barIdx];
       double body = c - o;
       double range = h - l;
-      double rsi = rsiValues[barIdx] / 100.0; // Normalizar 0-1
+      double rsi = rsiValues[barIdx] / 100.0;
 
       if(m.id == "A" || m.id == "B" || m.id == "C")
       {
-         // STANDARD: body, range, rsi
-         outFeatures[featIdx++] = body;
-         outFeatures[featIdx++] = range;
-         outFeatures[featIdx++] = rsi;
+         outVec[featIdx++] = (float)body;
+         outVec[featIdx++] = (float)range;
+         outVec[featIdx++] = (float)rsi;
       }
       else if(m.id == "D")
       {
-         // STRUCTURE: body_ratio, range_norm, rsi
          double bodyRatio = (range > 0.0000001) ? (body / range) : 0.0;
          double atr = atrValues[barIdx];
          double rangeNorm = (atr > 0.0000001) ? (range / atr) : 1.0;
 
-         outFeatures[featIdx++] = bodyRatio;
-         outFeatures[featIdx++] = rangeNorm;
-         outFeatures[featIdx++] = rsi;
+         outVec[featIdx++] = (float)bodyRatio;
+         outVec[featIdx++] = (float)rangeNorm;
+         outVec[featIdx++] = (float)rsi;
       }
       else if(m.id == "E")
       {
-         // VOLATILITY: range, range_expansion, rsi
          double prevRange = (barIdx + 1 < requiredBars) ? (highs[barIdx + 1] - lows[barIdx + 1]) : range;
          double rangeExpansion = (prevRange > 0.0000001) ? (range / prevRange) : 1.0;
 
-         outFeatures[featIdx++] = range;
-         outFeatures[featIdx++] = rangeExpansion;
-         outFeatures[featIdx++] = rsi;
+         outVec[featIdx++] = (float)range;
+         outVec[featIdx++] = (float)rangeExpansion;
+         outVec[featIdx++] = (float)rsi;
       }
    }
 
@@ -422,38 +442,36 @@ bool PrepareFeatures(int modelIdx, double &outFeatures[])
 
 //+------------------------------------------------------------------+
 //| EJECUTAR INFERENCIA ONNX                                         |
+//| El modelo skl2onnx tiene 2 outputs: label + probabilities        |
 //+------------------------------------------------------------------+
-bool RunInference(int modelIdx, const double &inputData[], double &buyProbability)
+bool RunInference(int modelIdx, const vectorf &inputVec, double &buyProbability)
 {
-   ModelConfig m = g_models[modelIdx];
+   ModelConfig m = g_models[modelIdx];  // <-- REFERENCIA, no copia
 
    if(!m.loaded || m.onnxHandle == INVALID_HANDLE)
       return false;
 
-   // Crear tensor de entrada [1, inputSize]
-   // ONNX en MQL5 espera un array plano para batch=1
-   long inputShape[] = {1, m.inputSize};
+   // FIX: Usar un array dinámico estándar para tipos enteros (long)
+   // Output 0: label predicha (int64) - no la usamos pero hay que pasarla
+   long outputLabel[];
+   ArrayResize(outputLabel, 1);
 
-   // El input ya es float32 en Python, aqui usamos double y ONNX lo maneja
-   // MQL5 OnnxRun acepta arrays double para inputs float
+   // Output 1: probabilidades [P(class0), P(class1)]
+   vectorf outputProbs;
+   outputProbs.Resize(2);
 
-   // Output: probabilities [1, 2] -> [prob_class_0, prob_class_1]
-   double outputData[2];
-   long outputShape[] = {1, 2};
+   bool success = false;
 
-   // Ejecutar inferencia
-   // Nota: En MQL5, OnnxRun necesita los shapes como parametros
-   // La API puede variar ligeramente segun la version de MT5
-
-   // Metodo 1: Usar OnnxRun con shapes
-   bool success = OnnxRun(
-      m.onnxHandle,
-      ONNX_NO_CONVERSION,
-      inputData,      // input
-      inputShape,     // input shape [1, N]
-      outputData,     // output
-      outputShape     // output shape [1, 2]
-   );
+   if(m.outputCount >= 2)
+   {
+      // Modelo con 2 outputs: pasar ambos (array 'long' y vector 'float')
+      success = OnnxRun(m.onnxHandle, ONNX_NO_CONVERSION, inputVec, outputLabel, outputProbs);
+   }
+   else
+   {
+      // Fallback: solo 1 output
+      success = OnnxRun(m.onnxHandle, ONNX_NO_CONVERSION, inputVec, outputProbs);
+   }
 
    if(!success)
    {
@@ -462,8 +480,8 @@ bool RunInference(int modelIdx, const double &inputData[], double &buyProbabilit
       return false;
    }
 
-   // outputData[0] = P(Sell/NoBuy), outputData[1] = P(Buy)
-   buyProbability = outputData[1];
+   // outputProbs[0] = P(Sell/NoBuy), outputProbs[1] = P(Buy)
+   buyProbability = (double)outputProbs[1];
 
    return true;
 }
@@ -558,7 +576,6 @@ double AggregateProbabilities(const double &probs[])
          int n = ArraySize(validProbs);
          if(n <= 2) return (n > 0) ? validProbs[0] : 0.0;
          ArraySort(validProbs);
-         // Quitar min y max
          double sum = 0;
          for(int i = 1; i < n - 1; i++)
             sum += validProbs[i];
@@ -574,7 +591,6 @@ double AggregateProbabilities(const double &probs[])
 //+------------------------------------------------------------------+
 void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
 {
-   // Verificar condiciones de trading
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
    {
       Print("Trading no permitido en este terminal");
@@ -587,7 +603,6 @@ void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
       return;
    }
 
-   // Obtener precios actuales
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
@@ -599,22 +614,18 @@ void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
       return;
    }
 
-   // Calcular SL y TP
    double sl = (InpSL_Pips > 0) ? NormalizeDouble(ask - InpSL_Pips * point, digits) : 0.0;
    double tp = (InpTP_Pips > 0) ? NormalizeDouble(ask + InpTP_Pips * point, digits) : 0.0;
 
-   // Verificar stops
    double minStopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
    if(sl > 0 && (ask - sl) < minStopLevel)
       sl = NormalizeDouble(ask - minStopLevel - point, digits);
    if(tp > 0 && (tp - ask) < minStopLevel)
       tp = NormalizeDouble(ask + minStopLevel + point, digits);
 
-   // Preparar comentario con info del ensemble
    string comment = StringFormat("Ens:%.2f|A:%.2f B:%.2f C:%.2f D:%.2f E:%.2f",
       ensembleProb, modelProbs[0], modelProbs[1], modelProbs[2], modelProbs[3], modelProbs[4]);
 
-   // Abrir posicion
    if(!g_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, comment))
    {
       Print("ERROR abriendo BUY: ", GetLastError());
@@ -669,13 +680,10 @@ void ManageTrailingStops()
       double currentTP = PositionGetDouble(POSITION_TP);
       double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-      // Nuevo SL: bid - trailDistance, pero solo si mejora el actual
       double newSL = NormalizeDouble(bid - trailDistance, digits);
 
-      // Solo mover SL hacia arriba (para BUY)
       if(newSL > openPrice && (currentSL == 0 || newSL > currentSL))
       {
-         // Verificar distancia minima
          double minStopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
          if((bid - newSL) >= minStopLevel)
          {
@@ -684,20 +692,4 @@ void ManageTrailingStops()
       }
    }
 }
-
-//+------------------------------------------------------------------+
-//| OBTENER PESOS DESDE METADATA ONNX (opcional)                     |
-//+------------------------------------------------------------------+
-/*
-   Esta funcion puede usarse para leer los pesos optimos desde
-   los metadatos del ONNX si se guardaron alli. Requiere parsear
-   el JSON de metadata_props del modelo.
-
-   Por simplicidad, los pesos se configuran via inputs del EA.
-   Para implementacion automatica, se necesitaria:
-   1. Leer metadata con OnnxGetInputName/OnnxGetOutputName
-   2. Parsear JSON de metadata_props
-   3. Extraer validation.test_precision_buy de cada modelo
-   4. Normalizar como pesos
-*/
 //+------------------------------------------------------------------+
