@@ -919,3 +919,92 @@ void SendInitialNotification()
 
    SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, msg);
   }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction& trans,
+                        const MqlTradeRequest& request,
+                        const MqlTradeResult& result)
+  {
+// Only trigger when a new deal is added to the account history
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
+      return;
+
+// Get transaction symbol and check if it matches the EA's symbol
+   string symbol = trans.symbol;
+   if(symbol != _Symbol)
+      return;
+
+   ulong deal_ticket = trans.deal;
+
+// Select the deal to read its properties
+   if(!HistoryDealSelect(deal_ticket))
+      return;
+
+   long entry_type = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+   long deal_reason = HistoryDealGetInteger(deal_ticket, DEAL_REASON);
+
+   if(entry_type == DEAL_ENTRY_IN)
+      HandleDealOpen();
+   else
+      if(entry_type == DEAL_ENTRY_OUT || entry_type == DEAL_ENTRY_INOUT)
+        {
+         if(deal_reason == DEAL_REASON_TP)
+            HandleDealClosedByTP();
+         else
+            if(deal_reason == DEAL_REASON_SL)
+               HandleDealClosedBySL(deal_ticket);
+            else
+               if(deal_reason == DEAL_REASON_CLIENT)
+                  HandleDealClosedManually();
+        }
+  }
+
+//+------------------------------------------------------------------+
+//| Handles a trade open (DEAL_ENTRY_IN)                             |
+//+------------------------------------------------------------------+
+void HandleDealOpen()
+  {
+// Plays a default MT5 sound. Replace with your custom .wav file name if needed.
+   PlaySound("ok.wav");
+// Send Telegram notification for trade open
+   string message = "Trade Opened: " + _Symbol;
+   SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
+  }
+
+//+------------------------------------------------------------------+
+//| Handles a trade closed by take profit (DEAL_REASON_TP)           |
+//+------------------------------------------------------------------+
+void HandleDealClosedByTP()
+  {
+   PlaySound("alert.wav");
+// Send Telegram notification for trade close by TP
+   string trade_info = GetLastClosedTradeInfo();
+   string message = "Trade Closed by TP: " + trade_info;
+   SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
+  }
+
+//+------------------------------------------------------------------+
+//| Handles a trade closed by stop loss (DEAL_REASON_SL)             |
+//+------------------------------------------------------------------+
+void HandleDealClosedBySL(ulong deal_ticket)
+  {
+   PlaySound("timeout.wav");
+// Send Telegram notification for trade close by SL
+   string trade_info = GetLastClosedTradeInfo();
+   string message = "Trade Closed by SL: " + trade_info;
+   SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
+  }
+
+//+------------------------------------------------------------------+
+//| Handles a trade closed manually (DEAL_REASON_CLIENT)             |
+//+------------------------------------------------------------------+
+void HandleDealClosedManually()
+  {
+   PlaySound("close.wav");
+// Send Telegram notification for trade close by manual close
+   string trade_info = GetLastClosedTradeInfo();
+   string message = "Trade Closed Manually: " + trade_info;
+   SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
+  }
