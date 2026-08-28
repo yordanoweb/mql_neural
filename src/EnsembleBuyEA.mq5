@@ -53,6 +53,11 @@ input group "=== LOGGING ==="
 input bool   InpVerbose = true;        // Log detallado
 input int    InpLogEveryNBars = 100;   // Log cada N barras
 
+input group "=== Telegram ===";
+input bool   InpEnableNotifications  = true; // Enable Telegram notifications
+input string InpTelegramBotToken     = "";    // Your Telegram bot bot_token
+input string InpTelegramChatID       = "";    // Your Telegram chat_id
+
 //+------------------------------------------------------------------+
 //| ESTRUCTURA DE MODELO                                             |
 //+------------------------------------------------------------------+
@@ -136,6 +141,9 @@ int OnInit()
    }
 
    g_lastBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+   
+   SendInitialNotification();
+   SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + "_" + _Symbol + ".set");
 
    Log("=== EnsembleBuyEA Iniciado correctamente ===");
    return INIT_SUCCEEDED;
@@ -157,6 +165,10 @@ void OnDeinit(const int reason)
 
    if(g_handleRSI != INVALID_HANDLE) IndicatorRelease(g_handleRSI);
    if(g_handleATR != INVALID_HANDLE) IndicatorRelease(g_handleATR);
+
+   // Triggers specifically when inputs are changed via the GUI
+   if(reason == REASON_PARAMETERS)
+      SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + "_" + _Symbol + ".set");
 
    Log("=== EnsembleBuyEA Finalizado. Razon: " + IntegerToString(reason) + " ===");
 }
@@ -698,3 +710,196 @@ void ManageTrailingStops()
    }
 }
 //+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//|
+//+------------------------------------------------------------------+
+int GetYYYYMMDDHHMMSS(datetime dt)
+  {
+   MqlDateTime s_dt;
+   TimeToStruct(TimeCurrent(), s_dt);
+   int y=s_dt.year,m=s_dt.mon,d=s_dt.day;
+   int h=s_dt.hour,mi=s_dt.min,s=s_dt.sec;
+   return y*100000000 + m*1000000 + d*10000 + h*100 + mi;
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+string GetLastClosedTradeInfo()
+  {
+// Select the entire account history
+   if(!HistorySelect(0, TimeCurrent()))
+     {
+      return "Error: Could not retrieve account history.";
+     }
+
+   int total_deals = HistoryDealsTotal();
+
+// Loop backwards to find the most recent closed deal
+   for(int i = total_deals - 1; i >= 0; i--)
+     {
+      ulong ticket = HistoryDealGetTicket(i);
+      if(ticket > 0)
+        {
+         long entry_type = HistoryDealGetInteger(ticket, DEAL_ENTRY);
+
+         // Check if this deal was an exit (closing a trade)
+         if(entry_type == DEAL_ENTRY_OUT || entry_type == DEAL_ENTRY_INOUT)
+           {
+            // Extract trade information
+            string symbol = HistoryDealGetString(ticket, DEAL_SYMBOL);
+            double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT);
+            double volume = HistoryDealGetDouble(ticket, DEAL_VOLUME);
+            long   deal_type = HistoryDealGetInteger(ticket, DEAL_TYPE);
+
+            // The type of the closing deal is the opposite of the position.
+            // A Sell deal closes a Buy position, and vice versa.
+            string position_type = (deal_type == DEAL_TYPE_SELL) ? "BUY" : "SELL";
+
+            // Format the final string (e.g., "BUY EURUSD | Vol: 1.00 | Profit: 50.25")
+            string info = StringFormat("%s %s | Vol: %.2f | Profit: %.2f",
+                                       position_type, symbol, volume, profit);
+            return info;
+           }
+        }
+     }
+
+   return "No closed trades found.";
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+void SendTelegramNotification(string bot_token, string chat_id, string msg)
+  {
+   if(!InpEnableNotifications)
+      return;
+
+// Construct the Telegram API URL
+   string url = "https://api.telegram.org/bot" + bot_token + "/sendMessage";
+
+// Setup headers and parameters
+   string headers = "Content-Type: application/x-www-form-urlencoded\r\n";
+   string params = "chat_id=" + chat_id + "&text=" + msg;
+
+   char post_data[];
+   char result_data[];
+   string result_headers;
+
+// Convert the string parameters to a char array for the WebRequest
+   StringToCharArray(params, post_data, 0, WHOLE_ARRAY, CP_UTF8);
+
+// StringToCharArray adds a null terminator (\0) at the end.
+// We must remove it for the HTTP POST request to be valid.
+   ArrayResize(post_data, ArraySize(post_data) - 1);
+
+   int timeout = 5000; // 5 second timeout
+
+// Reset the error code before making the request
+   ResetLastError();
+
+// Send the request
+   int res = WebRequest("POST", url, headers, timeout, post_data, result_data, result_headers);
+
+// Error Handling
+   if(res == -1)
+     {
+      Log("Telegram WebRequest failed. Error code: " + GetLastError());
+      Log("IMPORTANT: Have you added 'https://api.telegram.org' to the allowed URLs in Tools -> Options -> Expert Advisors?");
+     }
+   else
+      if(res != 200)
+        {
+         Log("Telegram API returned an error. HTTP Code: " + res);
+         Log("Response: " + CharArrayToString(result_data));
+        }
+      else
+        {
+         Log("Telegram notification sent successfully!");
+        }
+  }
+
+//+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool common_folder = false)
+  {
+// 1. Generate YYYYDDMMHHmmss timestamp prefix
+   string timestamp = GetYYYYMMDDHHMMSS(TimeCurrent());
+
+   string final_file_name = timestamp + file_name;
+
+// 2. Set file flags (Text mode, ANSI encoding, Write access)
+   int flags = FILE_WRITE | FILE_TXT | FILE_ANSI;
+   if(common_folder)
+      flags |= FILE_COMMON;
+
+// 3. Open the file
+   int file_handle = FileOpen(final_file_name, flags);
+   if(file_handle == INVALID_HANDLE)
+     {
+      Log(StringFormat("Error: Failed to open file '%s' for writing. Code: %d", final_file_name, GetLastError()));
+      return false;
+     }
+
+// 4. Write Header
+   FileWriteString(file_handle, "; Expert Advisor Saved Inputs\r\n");
+   FileWriteString(file_handle, StringFormat("; Saved on: %s\r\n\r\n", TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES)));
+
+// 5. Write Input Variables
+   FileWriteString(file_handle, StringFormat("InpModelA_Path=%s\r\n", InpModelA_Path));
+   FileWriteString(file_handle, StringFormat("InpModelB_Path=%s\r\n", InpModelB_Path));
+   FileWriteString(file_handle, StringFormat("InpModelC_Path=%s\r\n", InpModelC_Path));
+   FileWriteString(file_handle, StringFormat("InpModelD_Path=%s\r\n", InpModelD_Path));
+   FileWriteString(file_handle, StringFormat("InpModelE_Path=%s\r\n", InpModelE_Path));
+   FileWriteString(file_handle, StringFormat("InpEnsembleMode=%s\r\n", InpEnsembleMode));
+   FileWriteString(file_handle, StringFormat("InpWeightA=%f\r\n", InpWeightA));
+   FileWriteString(file_handle, StringFormat("InpWeightB=%f\r\n", InpWeightB));
+   FileWriteString(file_handle, StringFormat("InpWeightC=%f\r\n", InpWeightC));
+   FileWriteString(file_handle, StringFormat("InpWeightD=%f\r\n", InpWeightD));
+   FileWriteString(file_handle, StringFormat("InpWeightE=%f\r\n", InpWeightE));
+   FileWriteString(file_handle, StringFormat("InpConfidenceThreshold=%f\r\n", InpConfidenceThreshold));
+   FileWriteString(file_handle, StringFormat("InpMinConfidenceDiff=%f\r\n", InpMinConfidenceDiff));
+   FileWriteString(file_handle, StringFormat("InpLotSize=%f\r\n", InpLotSize));
+   FileWriteString(file_handle, StringFormat("InpSL_Pips=%f\r\n", InpSL_Pips));
+   FileWriteString(file_handle, StringFormat("InpTP_Pips=%f\r\n", InpTP_Pips));
+   FileWriteString(file_handle, StringFormat("InpMaxPositions=%d\r\n", InpMaxPositions));
+   FileWriteString(file_handle, StringFormat("InpUseTrailingStop=%s\r\n", InpUseTrailingStop ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpTrailDistance=%f\r\n", InpTrailDistance));
+   FileWriteString(file_handle, StringFormat("InpRSI_Period=%d\r\n", InpRSI_Period));
+   FileWriteString(file_handle, StringFormat("InpATR_Period=%d\r\n", InpATR_Period));
+   FileWriteString(file_handle, StringFormat("InpVerbose=%s\r\n", InpVerbose ? "true" : "false"));
+   FileWriteString(file_handle, StringFormat("InpLogEveryNBars=%d\r\n", InpLogEveryNBars));
+
+// 6. Flush and close handle
+   FileClose(file_handle);
+
+   Log(StringFormat("Success: Current EA inputs saved to '%s'", final_file_name));
+   return true;
+  }
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Sends initial EA startup message with all input parameters       |
+//+------------------------------------------------------------------+
+void SendInitialNotification()
+  {
+   string msg = "ENSEMBLE VOTER TRADING\n\n";
+
+   msg += StringFormat("Symbol: %s\n", _Symbol);
+   msg += StringFormat("Magic: %d\n", GetYYYYMMDDHHMMSS(TimeCurrent()));
+   msg += StringFormat("Ensemble Mode: %s\n", EnumToString(InpEnsembleMode));
+   msg += StringFormat("Confidence Threshold: %.2f\n", InpConfidenceThreshold);
+   msg += StringFormat("Min Confidence Diff: %.2f\n", InpMinConfidenceDiff);
+   msg += StringFormat("Lot Size: %.2f\n", InpLotSize);
+   msg += StringFormat("Stop Loss (pips): %.2f\n", InpSL_Pips);
+   msg += StringFormat("Take Profit (pips): %.2f\n", InpTP_Pips);
+   msg += StringFormat("Max Positions: %d\n", InpMaxPositions);
+   msg += StringFormat("Use Trailing Stop: %s\n", InpUseTrailingStop ? "true" : "false");
+   msg += StringFormat("Trail Distance: %.2f\n", InpTrailDistance);
+   msg += StringFormat("RSI Period: %d\n", InpRSI_Period);
+   msg += StringFormat("ATR Period: %d\n", InpATR_Period);
+
+   SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, msg);
+  }
