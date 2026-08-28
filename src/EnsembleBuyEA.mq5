@@ -89,7 +89,7 @@ int g_handleATR = INVALID_HANDLE;
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   Print("=== EnsembleBuyEA v1.10 Iniciando ===");
+   Log("=== EnsembleBuyEA v1.10 Iniciando ===");
 
    // Inicializar trade
    g_trade.SetDeviationInPoints(10);
@@ -102,7 +102,7 @@ int OnInit()
 
    if(g_handleRSI == INVALID_HANDLE || g_handleATR == INVALID_HANDLE)
    {
-      Print("ERROR: No se pudieron crear handles de indicadores");
+      Log("ERROR: No se pudieron crear handles de indicadores");
       return INIT_FAILED;
    }
 
@@ -123,21 +123,21 @@ int OnInit()
 
    if(loadedCount == 0)
    {
-      Print("ERROR CRITICO: Ningun modelo ONNX pudo cargarse. Verifique rutas.");
+      Log("ERROR CRITICO: Ningun modelo ONNX pudo cargarse. Verifique rutas.");
       return INIT_FAILED;
    }
 
-   Print("Modelos cargados: ", loadedCount, "/5");
+   Log("Modelos cargados: " + IntegerToString(loadedCount) + "/5");
 
    if(Bars(_Symbol, PERIOD_CURRENT) < 50)
    {
-      Print("Esperando mas barras de historico...");
+      Log("Esperando mas barras de historico...");
       return INIT_SUCCEEDED;
    }
 
    g_lastBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
 
-   Print("=== EnsembleBuyEA Iniciado correctamente ===");
+   Log("=== EnsembleBuyEA Iniciado correctamente ===");
    return INIT_SUCCEEDED;
 }
 
@@ -158,7 +158,7 @@ void OnDeinit(const int reason)
    if(g_handleRSI != INVALID_HANDLE) IndicatorRelease(g_handleRSI);
    if(g_handleATR != INVALID_HANDLE) IndicatorRelease(g_handleATR);
 
-   Print("=== EnsembleBuyEA Finalizado. Razon: ", reason, " ===");
+   Log("=== EnsembleBuyEA Finalizado. Razon: " + IntegerToString(reason) + " ===");
 }
 
 //+------------------------------------------------------------------+
@@ -180,7 +180,7 @@ void OnTick()
    if(totalBars < 50)
    {
       if(g_barsProcessed % 10 == 0)
-         Print("Esperando barras... Actual: ", totalBars, "/50");
+         Log("Esperando barras... Actual: " + IntegerToString(totalBars) + "/50");
       return;
    }
 
@@ -200,7 +200,7 @@ void OnTick()
       if(!PrepareFeatures(i, modelInput))
       {
          if(InpVerbose)
-            Print("WARN: No se pudieron preparar features para modelo ", g_models[i].id);
+            Log("WARN: No se pudieron preparar features para modelo " + g_models[i].id);
          probs[i] = 0.0;
          allOk = false;
          continue;
@@ -209,7 +209,7 @@ void OnTick()
       if(!RunInference(i, modelInput, probs[i]))
       {
          if(InpVerbose)
-            Print("WARN: Inferencia fallida para modelo ", g_models[i].id);
+            Log("WARN: Inferencia fallida para modelo " + g_models[i].id);
          probs[i] = 0.0;
          allOk = false;
          continue;
@@ -229,7 +229,7 @@ void OnTick()
          g_barsProcessed, probs[0], probs[1], probs[2], probs[3], probs[4],
          ensembleProb, sellProb
       );
-      Print(logMsg);
+      Log(logMsg);
    }
 
    // Gestion de posiciones existentes
@@ -252,6 +252,11 @@ void OnTick()
    {
       OpenBuyPosition(ensembleProb, probs);
    }
+}
+
+void Log(string message)
+{
+   PrintFormat("%s | %s", _Symbol, message);
 }
 
 //+------------------------------------------------------------------+
@@ -292,12 +297,12 @@ bool LoadONNXModel(int idx)
    if(handle == INVALID_HANDLE)
    {
       int err = GetLastError();
-      Print("ERROR cargando modelo ", g_models[idx].id, " (", filename, "): ", err);
+      Log("ERROR cargando modelo " + g_models[idx].id + " (" + filename + "): " + IntegerToString(err));
 
       handle = OnnxCreate(fullPath, ONNX_DEFAULT);
       if(handle == INVALID_HANDLE)
       {
-         Print("ERROR: Tampoco funciona con ruta completa: ", fullPath);
+         Log("ERROR: Tampoco funciona con ruta completa: " + fullPath);
          return false;
       }
    }
@@ -309,25 +314,25 @@ bool LoadONNXModel(int idx)
    long outputCount = OnnxGetOutputCount(handle);
    g_models[idx].outputCount = (int)outputCount;
 
-   Print("Modelo ", g_models[idx].id, " ONNX info: inputs=", inputCount, ", outputs=", outputCount);
+   Log("Modelo " + g_models[idx].id + " ONNX info: inputs=" + IntegerToString(inputCount) + ", outputs=" + IntegerToString(outputCount));
 
    // Mostrar nombres de inputs/outputs para debug
    for(int i = 0; i < (int)inputCount; i++)
    {
       string inName = OnnxGetInputName(handle, i);
-      Print("  Input[", i, "]: ", inName);
+      Log("  Input[" + IntegerToString(i) + "]: " + inName);
    }
    for(int i = 0; i < (int)outputCount; i++)
    {
       string outName = OnnxGetOutputName(handle, i);
-      Print("  Output[", i, "]: ", outName);
+      Log("  Output[" + IntegerToString(i) + "]: " + outName);
    }
 
    // Definir shape del input [1, inputSize]
    long inputShape[] = {1, g_models[idx].inputSize};
    if(!OnnxSetInputShape(handle, 0, inputShape))
    {
-      Print("ERROR OnnxSetInputShape modelo ", g_models[idx].id, ": ", GetLastError());
+      Log("ERROR OnnxSetInputShape modelo " + g_models[idx].id + ": " + IntegerToString(GetLastError()));
       OnnxRelease(handle);
       return false;
    }
@@ -337,7 +342,7 @@ bool LoadONNXModel(int idx)
    long outputShape0[] = {1};
    if(!OnnxSetOutputShape(handle, 0, outputShape0))
    {
-      Print("ERROR OnnxSetOutputShape[0] modelo ", g_models[idx].id, ": ", GetLastError());
+      Log("ERROR OnnxSetOutputShape[0] modelo " + g_models[idx].id + ": " + IntegerToString(GetLastError()));
       OnnxRelease(handle);
       return false;
    }
@@ -348,15 +353,15 @@ bool LoadONNXModel(int idx)
       long outputShape1[] = {1, 2};
       if(!OnnxSetOutputShape(handle, 1, outputShape1))
       {
-         Print("ERROR OnnxSetOutputShape[1] modelo ", g_models[idx].id, ": ", GetLastError());
+         Log("ERROR OnnxSetOutputShape[1] modelo " + g_models[idx].id + ": " + IntegerToString(GetLastError()));
          OnnxRelease(handle);
          return false;
       }
    }
 
    g_models[idx].loaded = true;
-   Print("Modelo ", g_models[idx].id, " cargado OK. Input size: ", g_models[idx].inputSize,
-         ", Outputs: ", outputCount);
+   Log("Modelo " + g_models[idx].id + " cargado OK. Input size: " + IntegerToString(g_models[idx].inputSize) +
+       ", Outputs: " + IntegerToString(outputCount));
    return true;
 }
 
@@ -476,7 +481,7 @@ bool RunInference(int modelIdx, const vectorf &inputVec, double &buyProbability)
    if(!success)
    {
       int err = GetLastError();
-      Print("ERROR ONNX Run modelo ", m.id, ": ", err);
+      Log("ERROR ONNX Run modelo " + m.id + ": " + IntegerToString(err));
       return false;
    }
 
@@ -593,13 +598,13 @@ void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
 {
    if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
    {
-      Print("Trading no permitido en este terminal");
+      Log("Trading no permitido en este terminal");
       return;
    }
 
    if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
    {
-      Print("Trading no permitido para este EA");
+      Log("Trading no permitido para este EA");
       return;
    }
 
@@ -610,7 +615,7 @@ void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
 
    if(ask == 0 || bid == 0)
    {
-      Print("ERROR: Precios no disponibles");
+      Log("ERROR: Precios no disponibles");
       return;
    }
 
@@ -628,11 +633,11 @@ void OpenBuyPosition(double ensembleProb, const double &modelProbs[])
 
    if(!g_trade.Buy(InpLotSize, _Symbol, ask, sl, tp, comment))
    {
-      Print("ERROR abriendo BUY: ", GetLastError());
+      Log("ERROR abriendo BUY: " + IntegerToString(GetLastError()));
    }
    else
    {
-      Print("BUY ABIERTO | Ask: ", ask, " | SL: ", sl, " | TP: ", tp, " | ", comment);
+      Log("BUY ABIERTO | Ask: " + DoubleToString(ask, digits) + " | SL: " + DoubleToString(sl, digits) + " | TP: " + DoubleToString(tp, digits) + " | " + comment);
    }
 }
 
