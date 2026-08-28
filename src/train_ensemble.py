@@ -13,12 +13,12 @@ Uso para un solo modelo:
         --model-id B --window 15 --feature-set standard --forward 10
 
 El script produce:
-    - model_A_impulse.onnx
-    - model_B_swing.onnx
-    - model_C_trend.onnx
-    - model_D_structure.onnx
-    - model_E_volatility.onnx
-    - ensemble_report.json
+    - model_A_impulse_SYMBOL.onnx
+    - model_B_swing_SYMBOL.onnx
+    - model_C_trend_SYMBOL.onnx
+    - model_D_structure_SYMBOL.onnx
+    - model_E_volatility_SYMBOL.onnx
+    - ensemble_report_SYMBOL.json
 """
 
 import pandas as pd
@@ -574,7 +574,7 @@ def main():
             if args.feature_set is not None:
                 config['feature_set'] = args.feature_set
 
-        output_filename = f"{args.output_prefix}_{mid}_{config['alias']}.onnx"
+        output_filename = f"{args.output_prefix}_{mid}_{config['alias']}_{resolved_symbol}.onnx"
         output_path = os.path.join(args.output_dir, output_filename)
 
         try:
