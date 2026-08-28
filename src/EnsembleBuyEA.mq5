@@ -89,6 +89,8 @@ int         g_logCounter = 0;
 int g_handleRSI = INVALID_HANDLE;
 int g_handleATR = INVALID_HANDLE;
 
+ulong g_magic_number = 0;
+
 //+------------------------------------------------------------------+
 //| EXPERT INITIALIZATION                                            |
 //+------------------------------------------------------------------+
@@ -141,7 +143,12 @@ int OnInit()
    }
 
    g_lastBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
-   
+
+// Prepare the magic number
+   int _some_rnd_int = MathRand();
+   g_magic_number = (StringToInteger(GetYYYYMMDDHHMMSS(TimeCurrent())) + _some_rnd_int) * -1;
+   g_trade.SetExpertMagicNumber(g_magic_number);
+
    SendInitialNotification();
    SaveCurrentExperAdvisorInputs(MQLInfoString(MQL_PROGRAM_NAME) + "_" + _Symbol + ".set");
 
@@ -714,13 +721,21 @@ void ManageTrailingStops()
 //+------------------------------------------------------------------+
 //|
 //+------------------------------------------------------------------+
-int GetYYYYMMDDHHMMSS(datetime dt)
+string GetYYYYMMDDHHMMSS(datetime dt)
   {
+   // 1. Generate YYYYDDMMHHmmss timestamp prefix
    MqlDateTime s_dt;
-   TimeToStruct(TimeCurrent(), s_dt);
-   int y=s_dt.year,m=s_dt.mon,d=s_dt.day;
-   int h=s_dt.hour,mi=s_dt.min,s=s_dt.sec;
-   return y*100000000 + m*1000000 + d*10000 + h*100 + mi;
+   TimeToStruct(dt, s_dt);
+
+// Formats: YYYY (year), DD (day), MM (month), HH (hour), mm (minute), ss (second)
+   string timestamp = StringFormat("%04d%02d%02d%02d%02d%02d_",
+                                   s_dt.year,
+                                   s_dt.day,
+                                   s_dt.mon,
+                                   s_dt.hour,
+                                   s_dt.min,
+                                   s_dt.sec);
+   return timestamp;
   }
 
 //+------------------------------------------------------------------+
@@ -828,7 +843,8 @@ bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool co
 // 1. Generate YYYYDDMMHHmmss timestamp prefix
    string timestamp = GetYYYYMMDDHHMMSS(TimeCurrent());
 
-   string final_file_name = timestamp + file_name;
+// The filename
+   string final_file_name = StringFormat("%s%s", timestamp, file_name);
 
 // 2. Set file flags (Text mode, ANSI encoding, Write access)
    int flags = FILE_WRITE | FILE_TXT | FILE_ANSI;
@@ -888,7 +904,7 @@ void SendInitialNotification()
    string msg = "ENSEMBLE VOTER TRADING\n\n";
 
    msg += StringFormat("Symbol: %s\n", _Symbol);
-   msg += StringFormat("Magic: %d\n", GetYYYYMMDDHHMMSS(TimeCurrent()));
+   msg += StringFormat("Magic: %d\n", g_magic_number);
    msg += StringFormat("Ensemble Mode: %s\n", EnumToString(InpEnsembleMode));
    msg += StringFormat("Confidence Threshold: %.2f\n", InpConfidenceThreshold);
    msg += StringFormat("Min Confidence Diff: %.2f\n", InpMinConfidenceDiff);
