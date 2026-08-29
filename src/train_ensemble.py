@@ -19,6 +19,8 @@ El script produce:
     - model_D_structure_SYMBOL.onnx
     - model_E_volatility_SYMBOL.onnx
     - ensemble_report_SYMBOL.json
+    - ensemble_threshold_report.json (sweep OOS 0.50..0.80)
+    - ensemble_thresholds.csv (mismo sweep en formato tabular)
 """
 
 import pandas as pd
@@ -316,6 +318,105 @@ def evaluate_model(model, X, y):
     }
 
 
+
+def analyze_ensemble_thresholds(results, start=0.50, stop=0.80, step=0.01):
+    """
+    Analiza el ensemble sobre la intersección temporal OOS de todos los modelos.
+
+    La probabilidad BUY del ensemble es la media de las probabilidades BUY
+    producidas por los modelos que tienen predicción en cada timestamp común.
+    Evalúa thresholds desde start hasta stop (inclusive).
+    """
+    valid = [
+        r for r in results
+        if "error" not in r
+        and r.get("oos_indices")
+        and r.get("oos_y") is not None
+        and r.get("oos_proba_buy") is not None
+    ]
+
+    if len(valid) < 2:
+        return {
+            "status": "FAILED",
+            "error": "Need at least 2 successfully trained models with OOS predictions."
+        }
+
+    # Mapear cada modelo por timestamp OOS.
+    maps = []
+    for r in valid:
+        maps.append({
+            int(idx): (int(y), float(p))
+            for idx, y, p in zip(
+                r["oos_indices"], r["oos_y"], r["oos_proba_buy"]
+            )
+        })
+
+    common_indices = set(maps[0].keys())
+    for m in maps[1:]:
+        common_indices &= set(m.keys())
+
+    common_indices = sorted(common_indices)
+
+    if not common_indices:
+        return {
+            "status": "FAILED",
+            "error": "No common OOS timestamps found between ensemble models."
+        }
+
+    # El target es el mismo para todos; tomamos el del primer modelo.
+    y = np.array([maps[0][idx][0] for idx in common_indices], dtype=np.int64)
+
+    # Media simple de probabilidades BUY.
+    ensemble_proba = np.mean(
+        np.array([[m[idx][1] for m in maps] for idx in common_indices], dtype=np.float64),
+        axis=1
+    )
+
+    thresholds = []
+    t = float(start)
+    while t <= float(stop) + 1e-9:
+        pred = (ensemble_proba >= t).astype(int)
+        signal_count = int(pred.sum())
+        total = len(pred)
+
+        precision = precision_score(y, pred, pos_label=1, zero_division=0)
+        recall = recall_score(y, pred, pos_label=1, zero_division=0)
+        ba = balanced_accuracy_score(y, pred)
+
+        thresholds.append({
+            "threshold": round(t, 2),
+            "precision_buy": round(float(precision), 6),
+            "recall_buy": round(float(recall), 6),
+            "balanced_accuracy": round(float(ba), 6),
+            "signals_buy_count": signal_count,
+            "signals_buy_pct": round(100.0 * signal_count / total, 2),
+            "avg_confidence_buy": round(
+                float(ensemble_proba[pred == 1].mean()), 6
+            ) if signal_count > 0 else 0.0,
+        })
+        t += float(step)
+
+    # Referencia matemática: threshold con mejor balanced accuracy.
+    # No se usa para modificar automáticamente el EA; sólo se reporta.
+    best_ba = max(thresholds, key=lambda x: x["balanced_accuracy"])
+
+    return {
+        "status": "OK",
+        "aggregation": "simple_mean_probability_buy",
+        "models_used": [r["model_id"] for r in valid],
+        "common_oos_samples": len(common_indices),
+        "threshold_range": {
+            "start": start,
+            "stop": stop,
+            "step": step
+        },
+        "class_distribution": dict(Counter(y.tolist())),
+        "thresholds": thresholds,
+        "best_balanced_accuracy_threshold": best_ba["threshold"],
+        "best_balanced_accuracy": best_ba["balanced_accuracy"],
+    }
+
+
 def train_single_model(
     csv_file,
     output_path,
@@ -536,6 +637,12 @@ def train_single_model(
         "best_cv_score": float(search.best_score_),
         "train_metrics": train_metrics,
         "test_metrics": test_metrics,
+
+        # Datos OOS internos para el análisis posterior del ensemble.
+        # Se mantienen fuera del JSON principal para no inflarlo.
+        "oos_indices": [int(i) for i in indices[split_idx:]],
+        "oos_y": y_test.tolist(),
+        "oos_proba_buy": model.predict_proba(X_test)[:, 1].astype(float).tolist(),
     }
 
 
@@ -655,6 +762,67 @@ def main():
         print(f"\n{'='*70}")
         print(f"  ENSEMBLE REPORT saved: {report_path}")
         print(f"{'='*70}")
+
+        # -------------------------------------------------------------------
+        # ANALISIS ADICIONAL DE THRESHOLD DEL ENSEMBLE
+        # -------------------------------------------------------------------
+        # Se analiza únicamente la intersección temporal OOS de los modelos
+        # entrenados correctamente. La probabilidad ensemble es la media simple
+        # de las probabilidades BUY de los modelos.
+        ensemble_analysis = analyze_ensemble_thresholds(results)
+
+        threshold_report_path = os.path.join(
+            args.output_dir, "ensemble_threshold_report.json"
+        )
+        with open(threshold_report_path, "w") as f:
+            json.dump(ensemble_analysis, f, indent=2, default=str)
+
+        print(f"  ENSEMBLE THRESHOLD REPORT saved: {threshold_report_path}")
+
+        if ensemble_analysis.get("status") == "OK":
+            threshold_rows = ensemble_analysis["thresholds"]
+
+            # CSV adicional, cómodo para Excel/pandas.
+            threshold_csv_path = os.path.join(
+                args.output_dir, "ensemble_thresholds.csv"
+            )
+            pd.DataFrame(threshold_rows).to_csv(
+                threshold_csv_path, index=False
+            )
+
+            print(f"  ENSEMBLE THRESHOLD CSV saved: {threshold_csv_path}")
+            print(
+                f"  Common OOS samples: "
+                f"{ensemble_analysis['common_oos_samples']}"
+            )
+            print(
+                f"  Best BA threshold (reference only): "
+                f"{ensemble_analysis['best_balanced_accuracy_threshold']:.2f} "
+                f"(BA={ensemble_analysis['best_balanced_accuracy']:.4f})"
+            )
+
+            print("\n  ENSEMBLE THRESHOLD SWEEP (OOS)")
+            print(
+                f"  {'Thr':<6} {'Prec':<8} {'Recall':<8} "
+                f"{'BA':<8} {'Signals':<9} {'%':<7} {'AvgConf':<9}"
+            )
+            print("  " + "-" * 62)
+
+            for row in threshold_rows:
+                print(
+                    f"  {row['threshold']:<6.2f} "
+                    f"{row['precision_buy']:<8.3f} "
+                    f"{row['recall_buy']:<8.3f} "
+                    f"{row['balanced_accuracy']:<8.3f} "
+                    f"{row['signals_buy_count']:<9} "
+                    f"{row['signals_buy_pct']:<7.2f} "
+                    f"{row['avg_confidence_buy']:<9.3f}"
+                )
+        else:
+            print(
+                f"  ENSEMBLE THRESHOLD ANALYSIS FAILED: "
+                f"{ensemble_analysis.get('error', 'unknown error')}"
+            )
 
         # Tabla resumen en consola
         print("\n  SUMMARY TABLE (OOS Test Metrics)")
