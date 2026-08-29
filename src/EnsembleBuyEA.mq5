@@ -9,6 +9,12 @@
 
 #include <Trade\Trade.mqh>
 
+#resource "\\Files\\model_A_impulse.onnx" as uchar res_model_a[];
+#resource "\\Files\\model_B_swing.onnx" as uchar res_model_b[];
+#resource "\\Files\\model_C_trend.onnx" as uchar res_model_c[];
+#resource "\\Files\\model_D_structure.onnx" as uchar res_model_d[];
+#resource "\\Files\\model_E_volatility.onnx" as uchar res_model_e[];
+
 //+------------------------------------------------------------------+
 //| INPUTS DEL USUARIO                                               |
 //+------------------------------------------------------------------+
@@ -57,6 +63,9 @@ input group "=== Telegram ===";
 input bool   InpEnableNotifications  = true; // Enable Telegram notifications
 input string InpTelegramBotToken     = "";    // Your Telegram bot bot_token
 input string InpTelegramChatID       = "";    // Your Telegram chat_id
+
+input group "=== Debug ===";
+input bool   InpBacktest = false;
 
 //+------------------------------------------------------------------+
 //| ESTRUCTURA DE MODELO                                             |
@@ -311,7 +320,24 @@ bool LoadONNXModel(int idx)
    if(sepPos != -1)
       filename = StringSubstr(fullPath, sepPos + 1);
 
-   long handle = OnnxCreate(filename, ONNX_DEFAULT);
+   long handle = INVALID_HANDLE;
+   if(InpBacktest)
+   {
+      if(g_models[idx].id == "A")
+         handle = OnnxCreateFromBuffer(res_model_a, ONNX_DEFAULT);
+      else if(g_models[idx].id == "B")
+         handle = OnnxCreateFromBuffer(res_model_b, ONNX_DEFAULT);
+      else if(g_models[idx].id == "C")
+         handle = OnnxCreateFromBuffer(res_model_c, ONNX_DEFAULT);
+      else if(g_models[idx].id == "D")
+         handle = OnnxCreateFromBuffer(res_model_d, ONNX_DEFAULT);
+      else if(g_models[idx].id == "E")
+         handle = OnnxCreateFromBuffer(res_model_e, ONNX_DEFAULT);
+      else
+         Log("ERROR: Modelo ID desconocido: " + g_models[idx].id);
+   }
+   else
+      handle = OnnxCreate(filename, ONNX_DEFAULT);
 
    if(handle == INVALID_HANDLE)
    {
