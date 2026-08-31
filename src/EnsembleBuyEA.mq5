@@ -955,7 +955,7 @@ bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool co
 //+------------------------------------------------------------------+
 void SendInitialNotification()
   {
-   string msg = "ENSEMBLE VOTER TRADING\n\n";
+   string msg = "ENSEMBLE VOTER TRADING (BUY)\n\n";
 
    msg += StringFormat("Symbol: %s\n", _Symbol);
    msg += StringFormat("Magic: %d\n", g_magic_number);
