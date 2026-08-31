@@ -255,9 +255,10 @@ void OnTick()
      {
       g_logCounter = 0;
       string logMsg = StringFormat(
-                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE SELL:%.3f/%.3f | BUY:%.3f",
+                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE SELL:%.3f/%.3f | BUY:%.3f | DIFF:%.3f/%.3f",
                          g_barsProcessed, probs[0], probs[1], probs[2], probs[3], probs[4],
-                         ensembleSellProb, InpConfidenceThreshold, buyProb
+                         ensembleSellProb, InpConfidenceThreshold, buyProb,
+                         ensembleSellProb - buyProb, InpMinConfidenceDiff
                       );
       Log(logMsg);
      }
@@ -268,20 +269,28 @@ void OnTick()
 
 // Decision de trading
    int openPositions = CountOpenPositions(POSITION_TYPE_SELL);
+   double confDiff = ensembleSellProb - buyProb;
 
-   bool shouldSell = false;
-   if(ensembleSellProb >= InpConfidenceThreshold &&
-      (ensembleSellProb - buyProb) >= InpMinConfidenceDiff &&
-      openPositions < InpMaxPositions &&
-      allOk)
-     {
-      shouldSell = true;
-     }
+   string blockReason = "";
+   if(ensembleSellProb < InpConfidenceThreshold)
+      blockReason = StringFormat("SELL prob %.3f < umbral %.3f", ensembleSellProb, InpConfidenceThreshold);
+   else
+      if(confDiff < InpMinConfidenceDiff)
+         blockReason = StringFormat("diff SELL-BUY %.3f < InpMinConfidenceDiff %.3f", confDiff, InpMinConfidenceDiff);
+      else
+         if(openPositions >= InpMaxPositions)
+            blockReason = StringFormat("posiciones abiertas %d >= InpMaxPositions %d", openPositions, InpMaxPositions);
+         else
+            if(!allOk)
+               blockReason = "inferencia incompleta en al menos un modelo (allOk=false)";
 
-   if(shouldSell)
+   if(blockReason == "")
      {
       OpenSellPosition(ensembleSellProb, probs);
      }
+   else
+      if(InpVerbose)
+         Log("NO SELL | " + blockReason);
   }
 
 //+------------------------------------------------------------------+
