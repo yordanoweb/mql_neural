@@ -255,9 +255,10 @@ void OnTick()
      {
       g_logCounter = 0;
       string logMsg = StringFormat(
-                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE BUY:%.3f/%.3f | SELL:%.3f",
+                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE BUY:%.3f/%.3f | SELL:%.3f | DIFF:%.3f/%.3f",
                          g_barsProcessed, probs[0], probs[1], probs[2], probs[3], probs[4],
-                         ensembleProb, InpConfidenceThreshold, sellProb
+                         ensembleProb, InpConfidenceThreshold, sellProb,
+                         ensembleProb - sellProb, InpMinConfidenceDiff
                       );
       Log(logMsg);
      }
@@ -268,20 +269,28 @@ void OnTick()
 
 // Decision de trading
    int openPositions = CountOpenPositions(POSITION_TYPE_BUY);
+   double confDiff = ensembleProb - sellProb;
 
-   bool shouldBuy = false;
-   if(ensembleProb >= InpConfidenceThreshold &&
-      (ensembleProb - sellProb) >= InpMinConfidenceDiff &&
-      openPositions < InpMaxPositions &&
-      allOk)
-     {
-      shouldBuy = true;
-     }
+   string blockReason = "";
+   if(ensembleProb < InpConfidenceThreshold)
+      blockReason = StringFormat("BUY prob %.3f < umbral %.3f", ensembleProb, InpConfidenceThreshold);
+   else
+      if(confDiff < InpMinConfidenceDiff)
+         blockReason = StringFormat("diff BUY-SELL %.3f < InpMinConfidenceDiff %.3f", confDiff, InpMinConfidenceDiff);
+      else
+         if(openPositions >= InpMaxPositions)
+            blockReason = StringFormat("posiciones abiertas %d >= InpMaxPositions %d", openPositions, InpMaxPositions);
+         else
+            if(!allOk)
+               blockReason = "inferencia incompleta en al menos un modelo (allOk=false)";
 
-   if(shouldBuy)
+   if(blockReason == "")
      {
       OpenBuyPosition(ensembleProb, probs);
      }
+   else
+      if(InpVerbose)
+         Log("NO BUY | " + blockReason);
   }
 
 //+------------------------------------------------------------------+
