@@ -994,10 +994,8 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
       return;
 
-// Get transaction symbol and check if it matches the EA's symbol
+// Get transaction symbol from the trade transaction as all charts trigger this event
    string symbol = trans.symbol;
-   if(symbol != _Symbol)
-      return;
 
    ulong deal_ticket = trans.deal;
 
@@ -1009,7 +1007,7 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
    long deal_reason = HistoryDealGetInteger(deal_ticket, DEAL_REASON);
 
    if(entry_type == DEAL_ENTRY_IN)
-      HandleDealOpen();
+      HandleDealOpen(symbol);
    else
       if(entry_type == DEAL_ENTRY_OUT || entry_type == DEAL_ENTRY_INOUT)
         {
@@ -1027,12 +1025,12 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 //+------------------------------------------------------------------+
 //| Handles a trade open (DEAL_ENTRY_IN)                             |
 //+------------------------------------------------------------------+
-void HandleDealOpen()
+void HandleDealOpen(string symbol)
   {
 // Plays a default MT5 sound. Replace with your custom .wav file name if needed.
    PlaySound("ok.wav");
 // Send Telegram notification for trade open
-   string message = "Trade Opened: " + _Symbol;
+   string message = "Trade Opened: " + symbol;
    SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
   }
 
