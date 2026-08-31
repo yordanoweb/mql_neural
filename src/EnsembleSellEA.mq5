@@ -9,11 +9,11 @@
 
 #include <Trade\Trade.mqh>
 
-#resource "\\Files\\model_A_impulse_sell.onnx" as uchar res_model_a[];
-#resource "\\Files\\model_B_swing_sell.onnx" as uchar res_model_b[];
-#resource "\\Files\\model_C_trend_sell.onnx" as uchar res_model_c[];
-#resource "\\Files\\model_D_structure_sell.onnx" as uchar res_model_d[];
-#resource "\\Files\\model_E_volatility_sell.onnx" as uchar res_model_e[];
+#resource "\\Files\\model_A_impulse.onnx" as uchar res_model_a[];
+#resource "\\Files\\model_B_swing.onnx" as uchar res_model_b[];
+#resource "\\Files\\model_C_trend.onnx" as uchar res_model_c[];
+#resource "\\Files\\model_D_structure.onnx" as uchar res_model_d[];
+#resource "\\Files\\model_E_volatility.onnx" as uchar res_model_e[];
 
 //+------------------------------------------------------------------+
 //| INPUTS DEL USUARIO                                               |
