@@ -1009,9 +1009,10 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 
    long entry_type = HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
    long deal_reason = HistoryDealGetInteger(deal_ticket, DEAL_REASON);
+   string deal_type = HistoryDealGetInteger(deal_ticket, DEAL_TYPE) == DEAL_TYPE_BUY ? "BUY" : "SELL";
 
    if(entry_type == DEAL_ENTRY_IN)
-      HandleDealOpen(symbol);
+      HandleDealOpen(symbol, deal_type);
    else
       if(entry_type == DEAL_ENTRY_OUT || entry_type == DEAL_ENTRY_INOUT)
         {
@@ -1029,12 +1030,12 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
 //+------------------------------------------------------------------+
 //| Handles a trade open (DEAL_ENTRY_IN)                             |
 //+------------------------------------------------------------------+
-void HandleDealOpen(string symbol)
+void HandleDealOpen(string symbol, string deal_type)
   {
 // Plays a default MT5 sound. Replace with your custom .wav file name if needed.
    PlaySound("ok.wav");
 // Send Telegram notification for trade open
-   string message = "Trade Opened: " + symbol;
+   string message = "Trade Opened: " + symbol + " | Deal Type: " + deal_type;
    SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
   }
 
