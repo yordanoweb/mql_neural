@@ -707,8 +707,7 @@ void OpenSellPosition(double ensembleProb, const double &modelProbs[])
    if(tp > 0 && (bid - tp) < minStopLevel)
       tp = NormalizeDouble(bid - minStopLevel - point, digits);
 
-   string comment = StringFormat("Ens:%.2f|A:%.2f B:%.2f C:%.2f D:%.2f E:%.2f",
-                                 ensembleProb, modelProbs[0], modelProbs[1], modelProbs[2], modelProbs[3], modelProbs[4]);
+   string comment = StringFormat("Ens:%.2f", ensembleProb);
 
    if(!g_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, comment))
      {
