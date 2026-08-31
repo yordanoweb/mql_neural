@@ -41,6 +41,7 @@ input double InpWeightC = 0.25;  // Peso Modelo C
 input double InpWeightD = 0.20;  // Peso Modelo D
 input double InpWeightE = 0.20;  // Peso Modelo E
 input double InpConfidenceThreshold = 0.60;  // Umbral confianza BUY (0-1)
+input double InpConfidenceStep = 0.01;  // Paso de ajuste del umbral de confianza
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs SELL prob
 
 input group "=== GESTION DE RIESGO ==="
@@ -100,6 +101,8 @@ int g_handleATR = INVALID_HANDLE;
 
 ulong g_magic_number = 0;
 
+double g_confidence_threshold = 0.5; // Umbral de confianza para ejecutar operaciones
+
 //+------------------------------------------------------------------+
 //| EXPERT INITIALIZATION                                            |
 //+------------------------------------------------------------------+
@@ -152,6 +155,7 @@ int OnInit()
      }
 
    g_lastBarTime = iTime(_Symbol, PERIOD_CURRENT, 0);
+   g_confidence_threshold = InpConfidenceThreshold; // Inicializar umbral de confianza desde entrada del usuario
 
 // Prepare the magic number
    int _some_rnd_int = MathRand();
@@ -257,7 +261,7 @@ void OnTick()
       string logMsg = StringFormat(
                          "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE BUY:%.3f/%.3f | SELL:%.3f | DIFF:%.3f/%.3f",
                          g_barsProcessed, probs[0], probs[1], probs[2], probs[3], probs[4],
-                         ensembleProb, InpConfidenceThreshold, sellProb,
+                         ensembleProb, g_confidence_threshold, sellProb,
                          ensembleProb - sellProb, InpMinConfidenceDiff
                       );
       Log(logMsg);
@@ -272,8 +276,8 @@ void OnTick()
    double confDiff = ensembleProb - sellProb;
 
    string blockReason = "";
-   if(ensembleProb < InpConfidenceThreshold)
-      blockReason = StringFormat("BUY prob %.3f < umbral %.3f", ensembleProb, InpConfidenceThreshold);
+   if(ensembleProb < g_confidence_threshold)
+      blockReason = StringFormat("BUY prob %.3f < umbral %.3f", ensembleProb, g_confidence_threshold);
    else
       if(confDiff < InpMinConfidenceDiff)
          blockReason = StringFormat("diff BUY-SELL %.3f < InpMinConfidenceDiff %.3f", confDiff, InpMinConfidenceDiff);
@@ -1055,6 +1059,9 @@ void HandleDealClosedBySL(ulong deal_ticket)
 // Send Telegram notification for trade close by SL
    string trade_info = GetLastClosedTradeInfo();
    string message = "Trade Closed by SL: " + trade_info;
+// Increase the confidence threshold slightly after a stop loss to avoid similar trades
+   g_confidence_threshold += InpConfidenceStep;
+// Finally, send the Telegram notification
    SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
   }
 
