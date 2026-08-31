@@ -255,9 +255,9 @@ void OnTick()
      {
       g_logCounter = 0;
       string logMsg = StringFormat(
-                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE:%.3f | SELL:%.3f",
+                         "BAR[%d] | A:%.3f B:%.3f C:%.3f D:%.3f E:%.3f | ENSEMBLE:%.3f/%.3f | SELL:%.3f",
                          g_barsProcessed, probs[0], probs[1], probs[2], probs[3], probs[4],
-                         ensembleProb, sellProb
+                         ensembleProb, InpConfidenceThreshold, sellProb
                       );
       Log(logMsg);
      }
