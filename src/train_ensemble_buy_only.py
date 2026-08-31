@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-train_ensemble.py
+train_ensemble_buy_only.py
 =================
 Genera un ensemble de 5 modelos ONNX buy-only con validación OOS cronológica.
 Basado en train_buy_only.txt, extendido con múltiples perspectivas y métricas OOS.
@@ -681,7 +681,7 @@ def main():
             if args.feature_set is not None:
                 config['feature_set'] = args.feature_set
 
-        output_filename = f"{args.output_prefix}_{mid}_{config['alias']}_{resolved_symbol}.onnx"
+        output_filename = f"{args.output_prefix}_{mid}_{config['alias']}_buy_{resolved_symbol}.onnx"
         output_path = os.path.join(args.output_dir, output_filename)
 
         try:
