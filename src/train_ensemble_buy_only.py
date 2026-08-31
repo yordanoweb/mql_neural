@@ -756,7 +756,7 @@ def main():
                     "test_avg_confidence_buy": r["test_metrics"]["avg_confidence_buy"],
                 })
 
-        report_path = os.path.join(args.output_dir, "ensemble_report.json")
+        report_path = os.path.join(args.output_dir, "ensemble_report_buy_only.json")
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2, default=str)
         print(f"\n{'='*70}")
@@ -772,7 +772,7 @@ def main():
         ensemble_analysis = analyze_ensemble_thresholds(results)
 
         threshold_report_path = os.path.join(
-            args.output_dir, "ensemble_threshold_report.json"
+            args.output_dir, "ensemble_threshold_report_buy_only.json"
         )
         with open(threshold_report_path, "w") as f:
             json.dump(ensemble_analysis, f, indent=2, default=str)
@@ -784,7 +784,7 @@ def main():
 
             # CSV adicional, cómodo para Excel/pandas.
             threshold_csv_path = os.path.join(
-                args.output_dir, "ensemble_thresholds.csv"
+                args.output_dir, "ensemble_thresholds_buy_only.csv"
             )
             pd.DataFrame(threshold_rows).to_csv(
                 threshold_csv_path, index=False
