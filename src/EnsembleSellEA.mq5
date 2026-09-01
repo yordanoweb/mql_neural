@@ -45,7 +45,7 @@ input double InpConfidenceStep = 0.002;  // Paso de ajuste del umbral de confian
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs BUY prob
 
 input group "=== GESTION DE RIESGO ==="
-input double InpMaximumRisk        = 0.02;    // Maximum Risk in percentage
+input double InpMaximumRisk        = 0.02;    // Maximum Risk in %
 input double InpDecreaseFactor     = 3;       // Descrease factor
 input double InpSL_ATR_Mult = 1.5;     // Stop Loss = ATR * multiplicador (0 = sin SL)
 input double InpTP_ATR_Mult = 3.0;     // Take Profit = ATR * multiplicador (0 = sin TP)
