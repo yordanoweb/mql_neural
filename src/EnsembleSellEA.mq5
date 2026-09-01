@@ -4,7 +4,7 @@
 //|  CORREGIDO: shapes ONNX, vectorf, 2 outputs, referencias         |
 //+------------------------------------------------------------------+
 #property copyright "Ensemble EA"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -45,12 +45,11 @@ input double InpConfidenceStep = 0.002;  // Paso de ajuste del umbral de confian
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs BUY prob
 
 input group "=== GESTION DE RIESGO ==="
-input double InpLotSize = 0.01;        // Tamaño de lote
-input double InpSL_Pips = 50.0;        // Stop Loss (puntos)
-input double InpTP_Pips = 100.0;       // Take Profit (puntos)
+input double InpMaximumRisk        = 0.02;    // Maximum Risk in percentage
+input double InpDecreaseFactor     = 3;       // Descrease factor
+input double InpSL_ATR_Mult = 1.5;     // Stop Loss = ATR * multiplicador (0 = sin SL)
+input double InpTP_ATR_Mult = 3.0;     // Take Profit = ATR * multiplicador (0 = sin TP)
 input int    InpMaxPositions = 1;      // Max posiciones abiertas simultaneas
-input bool   InpUseTrailingStop = true;// Usar trailing stop
-input double InpTrailDistance = 30.0;  // Distancia trailing (puntos)
 
 input group "=== PARAMETROS DE FEATURES ==="
 input int    InpRSI_Period = 14;       // Periodo RSI
@@ -266,10 +265,6 @@ void OnTick()
                       );
       Log(logMsg);
      }
-
-// Gestion de posiciones existentes
-   if(InpUseTrailingStop)
-      ManageTrailingStops();
 
 // Decision de trading
    int openPositions = CountOpenPositions(POSITION_TYPE_SELL);
@@ -568,6 +563,24 @@ bool RunInference(int modelIdx, const vectorf &inputVec, double &sellProbability
   }
 
 //+------------------------------------------------------------------+
+//| ATR DE LA ULTIMA BARRA CERRADA (shift 1, evita repintado)        |
+//+------------------------------------------------------------------+
+bool GetCurrentATR(double &atr)
+  {
+   atr = 0.0;
+
+   if(g_handleATR == INVALID_HANDLE)
+      return false;
+
+   double buf[];
+   if(CopyBuffer(g_handleATR, 0, 1, 1, buf) < 1)
+      return false;
+
+   atr = buf[0];
+   return (atr > 0.0);
+  }
+
+//+------------------------------------------------------------------+
 //| AGREGAR PROBABILIDADES                                           |
 //+------------------------------------------------------------------+
 double AggregateProbabilities(const double &probs[])
@@ -698,8 +711,15 @@ void OpenSellPosition(double ensembleProb, const double &modelProbs[])
       return;
      }
 
-   double sl = (InpSL_Pips > 0) ? NormalizeDouble(bid + InpSL_Pips * point, digits) : 0.0;
-   double tp = (InpTP_Pips > 0) ? NormalizeDouble(bid - InpTP_Pips * point, digits) : 0.0;
+   double atr = 0.0;
+   if(!GetCurrentATR(atr))
+     {
+      Log("ERROR: ATR no disponible, se omite la entrada");
+      return;
+     }
+
+   double sl = (InpSL_ATR_Mult > 0) ? NormalizeDouble(bid + InpSL_ATR_Mult * atr, digits) : 0.0;
+   double tp = (InpTP_ATR_Mult > 0) ? NormalizeDouble(bid - InpTP_ATR_Mult * atr, digits) : 0.0;
 
    double minStopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
    if(sl > 0 && (sl - bid) < minStopLevel)
@@ -707,9 +727,9 @@ void OpenSellPosition(double ensembleProb, const double &modelProbs[])
    if(tp > 0 && (bid - tp) < minStopLevel)
       tp = NormalizeDouble(bid - minStopLevel - point, digits);
 
-   string comment = StringFormat("Ens:%.2f", ensembleProb);
+   string comment = StringFormat("Ens:%.2f A:%.1f", ensembleProb, atr);
 
-   if(!g_trade.Sell(InpLotSize, _Symbol, bid, sl, tp, comment))
+   if(!g_trade.Sell(TradeSizeOptimized(), _Symbol, bid, sl, tp, comment))
      {
       Log("ERROR abriendo SELL: " + IntegerToString(GetLastError()));
      }
@@ -740,47 +760,6 @@ int CountOpenPositions(ENUM_POSITION_TYPE posType)
      }
    return count;
   }
-
-//+------------------------------------------------------------------+
-//| GESTIONAR TRAILING STOP (posiciones SELL: SL baja con el precio) |
-//+------------------------------------------------------------------+
-void ManageTrailingStops()
-  {
-   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-   double trailDistance = InpTrailDistance * point;
-
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
-     {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket <= 0)
-         continue;
-
-      if(PositionGetString(POSITION_SYMBOL) != _Symbol)
-         continue;
-      if(PositionGetInteger(POSITION_MAGIC) != g_trade.RequestMagic())
-         continue;
-      if(PositionGetInteger(POSITION_TYPE) != POSITION_TYPE_SELL)
-         continue;
-
-      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-      double currentSL = PositionGetDouble(POSITION_SL);
-      double currentTP = PositionGetDouble(POSITION_TP);
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-
-      double newSL = NormalizeDouble(ask + trailDistance, digits);
-
-      if(newSL < openPrice && (currentSL == 0 || newSL < currentSL))
-        {
-         double minStopLevel = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
-         if((newSL - ask) >= minStopLevel)
-           {
-            g_trade.PositionModify(ticket, newSL, currentTP);
-           }
-        }
-     }
-  }
-//+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
 //|
@@ -941,12 +920,10 @@ bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool co
    FileWriteString(file_handle, StringFormat("InpWeightE=%f\r\n", InpWeightE));
    FileWriteString(file_handle, StringFormat("InpConfidenceThreshold=%f\r\n", InpConfidenceThreshold));
    FileWriteString(file_handle, StringFormat("InpMinConfidenceDiff=%f\r\n", InpMinConfidenceDiff));
-   FileWriteString(file_handle, StringFormat("InpLotSize=%f\r\n", InpLotSize));
-   FileWriteString(file_handle, StringFormat("InpSL_Pips=%f\r\n", InpSL_Pips));
-   FileWriteString(file_handle, StringFormat("InpTP_Pips=%f\r\n", InpTP_Pips));
+   FileWriteString(file_handle, StringFormat("InpMaximumRisk=%f\r\n", InpMaximumRisk));
+   FileWriteString(file_handle, StringFormat("InpSL_ATR_Mult=%f\r\n", InpSL_ATR_Mult));
+   FileWriteString(file_handle, StringFormat("InpTP_ATR_Mult=%f\r\n", InpTP_ATR_Mult));
    FileWriteString(file_handle, StringFormat("InpMaxPositions=%d\r\n", InpMaxPositions));
-   FileWriteString(file_handle, StringFormat("InpUseTrailingStop=%s\r\n", InpUseTrailingStop ? "true" : "false"));
-   FileWriteString(file_handle, StringFormat("InpTrailDistance=%f\r\n", InpTrailDistance));
    FileWriteString(file_handle, StringFormat("InpRSI_Period=%d\r\n", InpRSI_Period));
    FileWriteString(file_handle, StringFormat("InpATR_Period=%d\r\n", InpATR_Period));
    FileWriteString(file_handle, StringFormat("InpVerbose=%s\r\n", InpVerbose ? "true" : "false"));
@@ -974,12 +951,10 @@ void SendInitialNotification()
    msg += StringFormat("Ensemble Mode: %s\n", EnumToString(InpEnsembleMode));
    msg += StringFormat("Confidence Threshold: %.2f\n", InpConfidenceThreshold);
    msg += StringFormat("Min Confidence Diff: %.2f\n", InpMinConfidenceDiff);
-   msg += StringFormat("Lot Size: %.2f\n", InpLotSize);
-   msg += StringFormat("Stop Loss (pips): %.2f\n", InpSL_Pips);
-   msg += StringFormat("Take Profit (pips): %.2f\n", InpTP_Pips);
+   msg += StringFormat("Max Risk: %.2f\n", InpMaximumRisk);
+   msg += StringFormat("SL ATR Mult: %.2f\n", InpSL_ATR_Mult);
+   msg += StringFormat("TP ATR Mult: %.2f\n", InpTP_ATR_Mult);
    msg += StringFormat("Max Positions: %d\n", InpMaxPositions);
-   msg += StringFormat("Use Trailing Stop: %s\n", InpUseTrailingStop ? "true" : "false");
-   msg += StringFormat("Trail Distance: %.2f\n", InpTrailDistance);
    msg += StringFormat("RSI Period: %d\n", InpRSI_Period);
    msg += StringFormat("ATR Period: %d\n", InpATR_Period);
 
@@ -1075,5 +1050,70 @@ void HandleDealClosedManually()
    string trade_info = GetLastClosedTradeInfo();
    string message = "Trade Closed Manually: " + trade_info;
    SendTelegramNotification(InpTelegramBotToken, InpTelegramChatID, message);
+  }
+
+//+------------------------------------------------------------------+
+//| Calculate optimal lot size                                       |
+//+------------------------------------------------------------------+
+double TradeSizeOptimized(void)
+  {
+   double price=0.0;
+   double margin=0.0;
+//--- select lot size
+   if(!SymbolInfoDouble(_Symbol,SYMBOL_ASK,price))
+      return(0.0);
+   if(!OrderCalcMargin(ORDER_TYPE_BUY,_Symbol,1.0,price,margin))
+      return(0.0);
+   if(margin<=0.0)
+      return(0.0);
+
+   double lot=NormalizeDouble(AccountInfoDouble(ACCOUNT_MARGIN_FREE)*InpMaximumRisk/margin,2);
+//--- calculate number of losses orders without a break
+   if(InpDecreaseFactor>0)
+     {
+      //--- select history for access
+      HistorySelect(0,TimeCurrent());
+      //---
+      int    orders=HistoryDealsTotal();  // total history deals
+      int    losses=0;                    // number of losses orders without a break
+
+      for(int i=orders-1;i>=0;i--)
+        {
+         ulong ticket=HistoryDealGetTicket(i);
+         if(ticket==0)
+           {
+            Print("HistoryDealGetTicket failed, no trade history");
+            break;
+           }
+         //--- check symbol
+         if(HistoryDealGetString(ticket,DEAL_SYMBOL)!=_Symbol)
+            continue;
+         //--- check Expert Magic number
+         if(HistoryDealGetInteger(ticket,DEAL_MAGIC)!=g_magic_number)
+            continue;
+         //--- check profit
+         double profit=HistoryDealGetDouble(ticket,DEAL_PROFIT);
+         if(profit>0.0)
+            break;
+         if(profit<0.0)
+            losses++;
+        }
+      //---
+      if(losses>1)
+         lot=NormalizeDouble(lot-lot*losses/InpDecreaseFactor,1);
+     }
+//--- normalize and check limits
+   double stepvol=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
+   lot=stepvol*NormalizeDouble(lot/stepvol,0);
+
+   double minvol=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+   if(lot<minvol)
+      lot=minvol;
+
+   double maxvol=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
+   if(lot>maxvol)
+      lot=maxvol;
+//--- return trading volume
+   return(lot);
   }
 //+------------------------------------------------------------------+
