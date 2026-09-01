@@ -43,8 +43,6 @@ input double InpWeightE = 0.20;  // Peso Modelo E
 input double InpConfidenceThreshold = 0.5;  // Umbral confianza BUY (0-1)
 input double InpConfidenceStep = 0.002;  // Paso de ajuste del umbral de confianza
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs SELL prob
-input bool   InpCalibration = true;  // Activar calibracion
-input int    InpCalibrationWindow = 10;  // Ventana de calibracion
 
 input group "=== GESTION DE RIESGO ==="
 input double InpMaximumRisk        = 0.02;    // Maximum Risk in %
@@ -103,8 +101,6 @@ int g_handleATR = INVALID_HANDLE;
 ulong g_magic_number = 0;
 
 double g_confidence_threshold = 0.5; // Umbral de confianza para ejecutar operaciones
-int g_inferences = 0;
-double g_inferences_buffer[];
 
 //+------------------------------------------------------------------+
 //| EXPERT INITIALIZATION                                            |
@@ -256,16 +252,6 @@ void OnTick()
 // Agregar probabilidades
    double ensembleProb = AggregateProbabilities(probs);
    double sellProb = 1.0 - ensembleProb;
-
-// Calibracion basada en la probabilidad de ensemble, no en cada modelo individual
-   g_inferences++;
-   ArrayResize(g_inferences_buffer, g_inferences);
-   g_inferences_buffer[g_inferences - 1] = ensembleProb;
-   if(InpCalibration && g_inferences % InpCalibrationWindow == 0)
-     {
-      Log("Calibracion: Ajustando umbral de confianza tras " + IntegerToString(g_inferences) + " inferencias");
-      AdjustConfidenceThreshold();
-     }
 
 // Logging periodico
    if(InpVerbose && (g_logCounter >= InpLogEveryNBars || allOk))
@@ -574,21 +560,6 @@ bool RunInference(int modelIdx, const vectorf &inputVec, double &buyProbability)
    buyProbability = (double)outputProbs[1];
 
    return true;
-  }
-
-void AdjustConfidenceThreshold()
-  {
-   int n = ArraySize(g_inferences_buffer);
-   if(n == 0)
-      return;
-
-   int window = MathMin(n, InpCalibrationWindow);
-   double sum = 0.0;
-   for(int i = n - window; i < n; i++)
-      sum += g_inferences_buffer[i];
-
-   double mean = sum / window;
-   g_confidence_threshold = mean; // Umbral = media de las ultimas InpCalibrationWindow inferencias
   }
 
 //+------------------------------------------------------------------+
@@ -949,8 +920,6 @@ bool SaveCurrentExperAdvisorInputs(string file_name = "EA_Settings.set", bool co
    FileWriteString(file_handle, StringFormat("InpWeightE=%f\r\n", InpWeightE));
    FileWriteString(file_handle, StringFormat("InpConfidenceThreshold=%f\r\n", InpConfidenceThreshold));
    FileWriteString(file_handle, StringFormat("InpMinConfidenceDiff=%f\r\n", InpMinConfidenceDiff));
-   FileWriteString(file_handle, StringFormat("InpCalibration=%s\r\n", InpCalibration ? "true" : "false"));
-   FileWriteString(file_handle, StringFormat("InpCalibrationWindow=%d\r\n", InpCalibrationWindow));
    FileWriteString(file_handle, StringFormat("InpMaximumRisk=%f\r\n", InpMaximumRisk));
    FileWriteString(file_handle, StringFormat("InpSL_ATR_Mult=%f\r\n", InpSL_ATR_Mult));
    FileWriteString(file_handle, StringFormat("InpTP_ATR_Mult=%f\r\n", InpTP_ATR_Mult));
