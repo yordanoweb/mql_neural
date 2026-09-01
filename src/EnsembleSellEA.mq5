@@ -43,6 +43,8 @@ input double InpWeightE = 0.20;  // Peso Modelo E
 input double InpConfidenceThreshold = 0.5;  // Umbral confianza SELL (0-1)
 input double InpConfidenceStep = 0.002;  // Paso de ajuste del umbral de confianza
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs BUY prob
+input bool   InpCalibration = true;  // Activar calibracion
+input int    InpCalibrationWindow = 10;  // Ventana de calibracion
 
 input group "=== GESTION DE RIESGO ==="
 input double InpMaximumRisk        = 0.02;    // Maximum Risk in %
@@ -101,6 +103,8 @@ int g_handleATR = INVALID_HANDLE;
 ulong g_magic_number = 0;
 
 double g_confidence_threshold = 0.5; // Umbral de confianza para ejecutar operaciones
+int g_inferences = 0;
+double g_inferences_buffer[];
 
 //+------------------------------------------------------------------+
 //| EXPERT INITIALIZATION                                            |
@@ -252,6 +256,16 @@ void OnTick()
 // Agregar probabilidades (probs[i] = P(SELL) segun modelo i)
    double ensembleSellProb = AggregateProbabilities(probs);
    double buyProb = 1.0 - ensembleSellProb;
+
+// Calibracion basada en la probabilidad de ensemble, no en cada modelo individual
+   g_inferences++;
+   ArrayResize(g_inferences_buffer, g_inferences);
+   g_inferences_buffer[g_inferences - 1] = ensembleSellProb;
+   if(InpCalibration && g_inferences % InpCalibrationWindow == 0)
+     {
+      Log("Calibracion: Ajustando umbral de confianza tras " + IntegerToString(g_inferences) + " inferencias");
+      AdjustConfidenceThreshold();
+     }
 
 // Logging periodico
    if(InpVerbose && (g_logCounter >= InpLogEveryNBars || allOk))
@@ -560,6 +574,21 @@ bool RunInference(int modelIdx, const vectorf &inputVec, double &sellProbability
    sellProbability = (double)outputProbs[1];
 
    return true;
+  }
+
+void AdjustConfidenceThreshold()
+  {
+   int n = ArraySize(g_inferences_buffer);
+   if(n == 0)
+      return;
+
+   int window = MathMin(n, InpCalibrationWindow);
+   double sum = 0.0;
+   for(int i = n - window; i < n; i++)
+      sum += g_inferences_buffer[i];
+
+   double mean = sum / window;
+   g_confidence_threshold = mean; // Umbral = media de las ultimas InpCalibrationWindow inferencias
   }
 
 //+------------------------------------------------------------------+
