@@ -41,7 +41,7 @@ input double InpWeightC = 0.25;  // Peso Modelo C
 input double InpWeightD = 0.20;  // Peso Modelo D
 input double InpWeightE = 0.20;  // Peso Modelo E
 input double InpConfidenceThreshold = 0.5;  // Umbral confianza SELL (0-1)
-input double InpConfidenceStep = 0.002;  // Paso de ajuste del umbral de confianza
+input double InpConfidenceStep = 0.01;  // Paso de ajuste del umbral de confianza
 input double InpMinConfidenceDiff = 0.05;    // Diferencia minima vs BUY prob
 
 input group "=== GESTION DE RIESGO ==="
