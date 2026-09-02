@@ -236,20 +236,23 @@ def build_features(df, feature_set, open_col, high_col, low_col, close_col, rsi_
     return df, feature_names
 
 
-def create_windows(df, features, window, forward, close_col, dec_percent = 0.5):
+def create_windows(df, features, window, forward, close_col, low_col, dec_percent = 0.5):
     """
-    Crea ventanas deslizantes y target (SELL: close futuro por debajo del actual).
+    Crea ventanas deslizantes y target (SELL: precio baja al menos dec_percent%).
+    Target SELL = 1 si el precio (low) alcanza la baja deseada en CUALQUIER
+    vela dentro de las proximas `forward` velas, no solo en la vela final.
     Devuelve (X, y, indices).
     """
     df = df.copy()
-    df['target'] = (df[close_col].shift(-forward) < df[close_col] * (1 - dec_percent / 100)).astype(int)
+    future_low = df[low_col].shift(-1)
+    future_min = future_low[::-1].rolling(window=forward, min_periods=1).min()[::-1]
+    df['target'] = (future_min < df[close_col] * (1 - dec_percent / 100)).astype(int)
+    df.loc[future_min.isna(), 'target'] = np.nan
     df.dropna(subset=['target'] + features, inplace=True)
+    df['target'] = df['target'].astype(int)
 
     X, y, indices = [], [], []
     for i in range(window, len(df)):
-        # Asegurar que tenemos suficientes datos hacia adelante para el target
-        if i + forward >= len(df) + window:
-            break
         window_data = df[features].iloc[i - window:i].values.flatten()
         X.append(window_data)
         y.append(df['target'].iloc[i])
@@ -488,7 +491,7 @@ def train_single_model(
     print(f"Features: {features}")
 
     # Crear ventanas
-    X, y, indices = create_windows(df, features, config['window'], forward, close_col)
+    X, y, indices = create_windows(df, features, config['window'], forward, close_col, low_col)
     print(f"Total samples (windows): {len(X)}")
 
     if len(X) == 0:
@@ -596,7 +599,7 @@ def train_single_model(
         "training.samples_total": int(len(X)),
         "training.samples_train": int(len(X_train)),
         "training.samples_test": int(len(X_test)),
-        "training.target": f"close[t+{forward}] < close[t]",
+        "training.target": f"min(low[t+1..t+{forward}]) < close[t] * 0.995",
         "training.target_class_distribution": dict(class_counts),
         "training.model_type": "RandomForestClassifier",
         "training.random_state": 42,
