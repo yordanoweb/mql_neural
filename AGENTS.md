@@ -20,6 +20,7 @@ log/
 onnx/
 src/
   BuyOnly_ONNX_EA.mq5
+  EnsembleBuyEA.mq5
   extract_rates_to_csv.py
   indicators.py
   PrintSymbolPipInfo.mq5
@@ -30,6 +31,7 @@ src/
   smoke_test_onnx_training_balance.py
   test_mt5_connection.py
   train_buy_only.py
+  train_ensemble_buy_only.py
   train_onnx_from_csv.py
   train_sell_only.py
   verify_mt5_data_flow.py
@@ -44,7 +46,11 @@ tmp/
   - `feat_rsi = RSI(close, rsi_period) / 100.0`
 - Output: `float32[1, 2]` — softmax probabilities `[P(no_buy), P(buy)]`
 - Target: `1` when `close[t + forward] > close[t]`, otherwise `0`
-- Required metadata: `training.created_utc`, `training.input_csv_path`, `training.input_csv_name`, `training.output_filename`, `training.symbol`, `training.timeframe`, `training.window`, `training.forward`, `training.rsi_period`, `training.features`, `training.feature_count`, `training.input_size`, `training.n_iter`, `training.n_splits`, `training.n_jobs`, `training.records_loaded`, `training.records_after_dropna`, `training.samples_used`, `training.target`, `training.target_class_distribution`, `training.model_type`, `training.random_state`, `training.param_dist`, `training.best_params`, `training.best_cv_score`, `training.scoring`, `training.train_prediction_distribution`, `training.cli_args`
+- Required metadata: `training.created_utc`, `training.input_csv_path`, `training.input_csv_name`, `training.output_filename`, `training.symbol`, `training.timeframe`, `training.window`, `training.forward`, `training.rsi_period`, `training.features`, `training.feature_count`, `training.input_size`, `training.n_iter`, `training.n_splits`, `training.n_jobs`, `training.records_loaded`, `training.records_after_dropna`, `training.samples_used`, `training.target`, `training.target_class_distribution`, `training.train_prediction_distribution`, `training.model_type`, `training.random_state`, `training.param_dist`, `training.best_params`, `training.best_cv_score`, `training.scoring`, `training.cli_args`
+
+## ONNX Contract — Ensemble buy-only
+- Same input/output shape as single-model contract.
+- Additional required metadata: `ensemble.id`, `ensemble.alias`, `ensemble.perspective`, `ensemble.description`, `ensemble.window`, `ensemble.feature_set`, `ensemble.features`, `ensemble.feature_count`, `ensemble.input_size`, `training.feature_names`, `training.window_size`, `training.n_features`, `training.input_size`, `training.records_after_dropna`, `training.samples_used`, `training.train_prediction_distribution`, `training.cli_args`, `training.param_dist`
 
 ## Naming Conventions
 - ONNX files: `<symbol>_<timeframe>_<n>_feat[_<tag>].onnx`
@@ -54,13 +60,17 @@ tmp/
 | Script | Features (n) | Groups |
 |---|---|---|
 | `train_buy_only.py` | 3 | Price (2) + RSI (1) |
+| `train_ensemble_buy_only.py` | 3 (standard), 3 (structure), 3 (volatility) | Price (2) + RSI (1), Scale-invariant (3), Volatility regime (3) |
 
 ### Price (2): `feat_body`, `feat_range`
 ### RSI (1): `feat_rsi` — `RSI(close, rsi_period) / 100.0`
+### Structure (3): `feat_body_ratio`, `feat_range_norm` (Wilder ATR), `feat_rsi`
+### Volatility (3): `feat_range`, `feat_range_expansion`, `feat_rsi`
 
 ## Classification Target
 - **2 classes**: `0 = no_buy`, `1 = buy`
-- Label: `close[t + forward] > close[t]` → `1 (buy)`, otherwise `0 (no_buy)`
+- Label (single-model): `close[t + forward] > close[t]` → `1 (buy)`, otherwise `0 (no_buy)`
+- Label (ensemble): `max(high[t+1..t+forward]) > close[t] * (1 + inc_percent/100)` → `1 (buy)`, otherwise `0 (no_buy)`
 - Output: `float32[1, 2]` — `[P(no_buy), P(buy)]`
 
 ## CLI Contract
@@ -70,10 +80,12 @@ Every `train_*.py` script must accept:
 --output-filename ONNX output filename/path
 --window         feature window size in bars (default: 20)
 --forward        forward bars used for buy label (default: 10)
+--inc-percent    percent increase threshold for buy label (default: 0.5)
 --rsi-period     RSI period (default: 14)
 --n-iter         RandomizedSearchCV iterations (default: 5)
---n-splits       TimeSeriesSplit folds (default: 2)
+--n-splits       TimeSeriesSplit folds (default: 5)
 --n-jobs         parallel jobs for search (default: -1)
+--scoring        scoring metric for search (default: auto-select)
 --symbol         trading symbol for metadata (default: auto)
 --timeframe      timeframe for metadata (default: auto)
 --date-col       column name for date (default: date)

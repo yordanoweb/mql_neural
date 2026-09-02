@@ -97,6 +97,40 @@ def calculate_atr(highs, lows, closes, period=14, method='sma'):
         raise ValueError(f"Unknown method {method!r}, expected 'sma' or 'ema'.")
 
 
+def calculate_atr_wilder(highs, lows, closes, period=14):
+    """Average True Range using Wilder's smoothing.
+
+    Matches MT5 ``iATR`` smoothing exactly.  The first ATR value is the
+    simple average of the first ``period`` true‑range values; subsequent
+    values are smoothed with Wilder's recursive formula:
+
+        ATR[t] = (ATR[t‑1] * (period‑1) + TR[t]) / period
+
+    Parameters
+    ----------
+    highs, lows, closes : list of float
+    period : int, default 14
+
+    Returns
+    -------
+    atr : list of float or None
+        ATR values aligned with input data; ``None`` until enough data
+        is available.
+    """
+    tr = calculate_true_range(highs, lows, closes)
+    n = len(tr)
+    if n == 0:
+        return []
+
+    atr = [None] * n
+    if n >= period:
+        atr[period - 1] = sum(tr[:period]) / period
+        for i in range(period, n):
+            atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
+
+    return atr
+
+
 def calculate_rsi(closes, period=14):
     """Calculate the Relative Strength Index (RSI).
 

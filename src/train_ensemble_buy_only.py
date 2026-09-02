@@ -47,8 +47,12 @@ import onnx
 # ---------------------------------------------------------------------------
 try:
     from indicators import calculate_rsi as _rsi_external
+    from indicators import calculate_atr_wilder as _atr_wilder_external
     def _rsi_impl(prices, period):
         return _rsi_external(prices, period)
+
+    def _atr_wilder_impl(highs, lows, closes, period):
+        return _atr_wilder_external(highs, lows, closes, period)
 except ImportError:
     def _rsi_impl(prices, period):
         """RSI simple compatible con lista de floats."""
@@ -61,6 +65,32 @@ except ImportError:
         rs = avg_gain / (avg_loss + 1e-12)
         rsi = 100.0 - (100.0 / (1.0 + rs))
         return rsi.fillna(50.0).tolist()
+
+    def _atr_wilder_impl(highs, lows, closes, period):
+        """Fallback ATR Wilder (no disponible en indicators)."""
+        tr1 = [h - l for h, l in zip(highs, lows)]
+        tr2 = [abs(highs[i] - closes[i-1]) for i in range(1, len(highs))]
+        tr2 = [tr1[0]] + tr2
+        tr3 = [abs(lows[i] - closes[i-1]) for i in range(1, len(lows))]
+        tr3 = [tr1[0]] + tr3
+        tr = [max(tr1[i], tr2[i], tr3[i]) for i in range(len(tr1))]
+        atr = [None] * len(tr)
+        if len(tr) >= period:
+            atr[period - 1] = sum(tr[:period]) / period
+            for i in range(period, len(tr)):
+                atr[i] = (atr[i-1] * (period - 1) + tr[i]) / period
+        return atr
+
+
+def _calculate_atr_wilder_pd(high_series, low_series, close_series, period):
+    """Compute Wilder ATR matching MT5 iATR, returns pandas Series aligned to input."""
+    atr_list = _atr_wilder_impl(
+        high_series.values.tolist(),
+        low_series.values.tolist(),
+        close_series.values.tolist(),
+        period
+    )
+    return pd.Series(atr_list, index=high_series.index)
 
 
 def parse_args():
@@ -86,15 +116,20 @@ def parse_args():
     # --- Parámetros de entrenamiento ---
     parser.add_argument("--forward", type=int, default=10,
                         help="Forward bars for buy label: close[t+forward] > close[t]")
+    parser.add_argument("--inc-percent", type=float, default=0.5,
+                        help="Default percent increase threshold for buy label (overridden per-model)")
     parser.add_argument("--rsi-period", type=int, default=14, help="RSI period")
     parser.add_argument("--test-size", type=float, default=0.30,
                         help="Fraction of most recent data reserved for OOS test")
     parser.add_argument("--n-iter", type=int, default=5,
                         help="RandomizedSearchCV iterations")
-    parser.add_argument("--n-splits", type=int, default=3,
+    parser.add_argument("--n-splits", type=int, default=5,
                         help="TimeSeriesSplit folds for cross-validation")
     parser.add_argument("--n-jobs", type=int, default=-1,
                         help="Parallel jobs for search")
+    parser.add_argument("--scoring", default=None,
+                        choices=["balanced_accuracy", "average_precision", "roc_auc"],
+                        help="Scoring metric for RandomizedSearchCV (default: auto-select)")
 
     # --- Columnas CSV ---
     parser.add_argument("--symbol", default="auto", help="Trading symbol for metadata")
@@ -120,35 +155,40 @@ ENSEMBLE_CONFIG = {
         "window": 5,
         "feature_set": "standard",
         "perspective": "microstructure",
-        "description": "Movimiento inmediato. Captura microestructura y momentum instantaneo."
+        "description": "Movimiento inmediato. Captura microestructura y momentum instantaneo.",
+        "inc_percent": 0.3,
     },
     "B": {
         "alias": "swing",
         "window": 15,
         "feature_set": "standard",
         "perspective": "short_term",
-        "description": "Contexto corto. Sweet spot intradia. Equilibrio ruido/senal."
+        "description": "Contexto corto. Sweet spot intradia. Equilibrio ruido/senal.",
+        "inc_percent": 0.5,
     },
     "C": {
         "alias": "trend",
         "window": 30,
         "feature_set": "standard",
         "perspective": "medium_term",
-        "description": "Contexto medio. Identifica direccion dominante en tendencias claras."
+        "description": "Contexto medio. Identifica direccion dominante en tendencias claras.",
+        "inc_percent": 1.0,
     },
     "D": {
         "alias": "structure",
         "window": 20,
         "feature_set": "structure",
         "perspective": "scale_invariant",
-        "description": "Patron independiente de escala. Usa ratios body/range y ATR-normalizados."
+        "description": "Patron independiente de escala. Usa ratios body/range y ATR-normalizados.",
+        "inc_percent": 0.5,
     },
     "E": {
         "alias": "volatility",
         "window": 20,
         "feature_set": "volatility",
         "perspective": "volatility_regime",
-        "description": "Regimen de volatilidad. Detecta expansion/contraccion para timing de entrada."
+        "description": "Regimen de volatilidad. Detecta expansion/contraccion para timing de entrada.",
+        "inc_percent": 0.5,
     },
 }
 
@@ -215,14 +255,14 @@ def build_features(df, feature_set, open_col, high_col, low_col, close_col, rsi_
 
     elif feature_set == "structure":
         df['feat_body_ratio'] = (df[close_col] - df[open_col]) / (df[high_col] - df[low_col] + 1e-9)
-        # ATR simple (media movil del rango)
-        df['atr_20'] = (df[high_col] - df[low_col]).rolling(window=20, min_periods=1).mean()
+        df['atr_20'] = _calculate_atr_wilder_pd(df[high_col], df[low_col], df[close_col], 20)
         df['feat_range_norm'] = (df[high_col] - df[low_col]) / (df['atr_20'] + 1e-9)
         df['feat_rsi'] = calculate_rsi(df[close_col], rsi_period) / 100.0
         feature_names = ['feat_body_ratio', 'feat_range_norm', 'feat_rsi']
 
     elif feature_set == "volatility":
         df['feat_range'] = df[high_col] - df[low_col]
+        # shift(1) gives the previous/older bar, matching EA barIdx+1 in time-series arrays
         df['feat_range_shift'] = df['feat_range'].shift(1)
         df['feat_range_expansion'] = df['feat_range'] / (df['feat_range_shift'] + 1e-9)
         df['feat_range_of_range'] = df['feat_range'].rolling(window=5, min_periods=1).max() - \
@@ -241,7 +281,7 @@ def create_windows(df, features, window, forward, close_col, high_col, inc_perce
     Crea ventanas deslizantes y target.
     Target BUY = 1 si el precio (high) alcanza el alza deseada en CUALQUIER
     vela dentro de las proximas `forward` velas, no solo en la vela final.
-    Devuelve (X, y, indices).
+    Devuelve (X, y, indices, records_after_dropna).
     """
     df = df.copy()
     future_high = df[high_col].shift(-1)
@@ -249,6 +289,7 @@ def create_windows(df, features, window, forward, close_col, high_col, inc_perce
     df['target'] = (future_max > df[close_col] * (1 + inc_percent / 100)).astype(int)
     df.loc[future_max.isna(), 'target'] = np.nan
     df.dropna(subset=['target'] + features, inplace=True)
+    records_after_dropna = len(df)
     df['target'] = df['target'].astype(int)
 
     X, y, indices = [], [], []
@@ -260,7 +301,7 @@ def create_windows(df, features, window, forward, close_col, high_col, inc_perce
 
     X = np.array(X, dtype=np.float32)
     y = np.array(y, dtype=np.int64)
-    return X, y, indices
+    return X, y, indices, records_after_dropna
 
 
 def evaluate_model(model, X, y):
@@ -426,6 +467,7 @@ def train_single_model(
     model_id,
     config,
     forward,
+    inc_percent,
     rsi_period,
     test_size,
     n_iter,
@@ -440,6 +482,8 @@ def train_single_model(
     low_col_pref,
     close_col_pref,
     volume_col_pref,
+    scoring,
+    cli_args_dict,
 ):
     """
     Entrena un unico modelo del ensemble y exporta ONNX.
@@ -491,7 +535,8 @@ def train_single_model(
     print(f"Features: {features}")
 
     # Crear ventanas
-    X, y, indices = create_windows(df, features, config['window'], forward, close_col, high_col)
+    model_inc_percent = config.get('inc_percent', inc_percent)
+    X, y, indices, records_after_dropna = create_windows(df, features, config['window'], forward, close_col, high_col, model_inc_percent)
     print(f"Total samples (windows): {len(X)}")
 
     if len(X) == 0:
@@ -502,6 +547,11 @@ def train_single_model(
     if len(class_counts) < 2:
         raise ValueError(f"Only one class present: {dict(class_counts)}")
 
+    minority_pct = min(class_counts.values()) / len(y) * 100
+    if scoring is None:
+        scoring = 'average_precision' if minority_pct < 5 else 'balanced_accuracy'
+    print(f"Scoring metric: {scoring} (minority class: {minority_pct:.2f}%)")
+
     # Split cronologico OOS
     split_idx = int(len(X) * (1.0 - test_size))
     X_train, X_test = X[:split_idx], X[split_idx:]
@@ -511,12 +561,21 @@ def train_single_model(
     print(f"Train class dist: {dict(Counter(y_train.tolist()))}")
     print(f"Test class dist:  {dict(Counter(y_test.tolist()))}")
 
+    train_counts = Counter(y_train.tolist())
+    test_counts = Counter(y_test.tolist())
+    if len(train_counts) < 2:
+        raise ValueError(f"Only one class in train split: {dict(train_counts)}")
+    if len(test_counts) < 2:
+        raise ValueError(f"Only one class in test split: {dict(test_counts)}")
+
     # Entrenamiento con RandomizedSearchCV + TimeSeriesSplit
     print("Running RandomizedSearchCV (TimeSeriesSplit)...")
     param_dist = {
-        'n_estimators': [100, 150, 200, 250],
-        'max_depth': [5, 8, 12, 16, None],
+        'n_estimators': [200, 300, 400, 500],
+        'max_depth': [8, 12, 16, 20, None],
         'min_samples_leaf': [1, 2, 5, 10],
+        'min_samples_split': [2, 5, 10],
+        'max_features': ['sqrt', 'log2', None],
         'class_weight': [None, 'balanced', 'balanced_subsample']
     }
 
@@ -526,7 +585,7 @@ def train_single_model(
         param_distributions=param_dist,
         n_iter=n_iter,
         cv=tscv,
-        scoring='balanced_accuracy',
+        scoring=scoring,
         n_jobs=n_jobs,
         random_state=42,
         refit=True
@@ -573,6 +632,7 @@ def train_single_model(
     print(f"ONNX probabilities shape: {prob_shape}")
 
     # Metadata enriquecida
+    target_formula = f"max(high[t+1..t+{forward}]) > close[t] * (1 + {model_inc_percent}/100)"
     metadata = {
         "ensemble.id": model_id,
         "ensemble.alias": config['alias'],
@@ -596,16 +656,25 @@ def train_single_model(
         "training.n_splits": n_splits,
         "training.n_jobs": n_jobs,
         "training.records_loaded": int(records_loaded),
+        "training.records_after_dropna": int(records_after_dropna),
+        "training.samples_used": int(len(X)),
         "training.samples_total": int(len(X)),
         "training.samples_train": int(len(X_train)),
         "training.samples_test": int(len(X_test)),
-        "training.target": f"max(high[t+1..t+{forward}]) > close[t] * 1.005",
+        "training.target": target_formula,
         "training.target_class_distribution": dict(class_counts),
+        "training.train_prediction_distribution": train_metrics['prediction_distribution'],
         "training.model_type": "RandomForestClassifier",
         "training.random_state": 42,
         "training.best_params": search.best_params_,
         "training.best_cv_score": float(search.best_score_),
-        "training.scoring": "balanced_accuracy",
+        "training.scoring": scoring,
+        "training.feature_names": features,
+        "training.window_size": int(config['window']),
+        "training.n_features": int(len(features)),
+        "training.input_size": int(input_size),
+        "training.cli_args": json.dumps(cli_args_dict, sort_keys=True),
+        "training.param_dist": json.dumps(param_dist, sort_keys=True),
         "validation.train_balanced_accuracy": train_metrics['balanced_accuracy'],
         "validation.train_precision_buy": train_metrics['precision_buy'],
         "validation.train_recall_buy": train_metrics['recall_buy'],
@@ -652,6 +721,8 @@ def train_single_model(
 def main():
     args = parse_args()
 
+    cli_args_dict = vars(args).copy()
+
     # Inferir simbolo/timeframe
     inferred_symbol, inferred_timeframe = infer_symbol_timeframe_from_filename(args.input_csv)
     resolved_symbol = inferred_symbol if args.symbol == "auto" else args.symbol
@@ -694,6 +765,7 @@ def main():
                 model_id=mid,
                 config=config,
                 forward=args.forward,
+                inc_percent=args.inc_percent,
                 rsi_period=args.rsi_period,
                 test_size=args.test_size,
                 n_iter=args.n_iter,
@@ -708,6 +780,8 @@ def main():
                 low_col_pref=args.low_col,
                 close_col_pref=args.close_col,
                 volume_col_pref=args.volume_col,
+                scoring=args.scoring,
+                cli_args_dict=cli_args_dict,
             )
             results.append(result)
         except Exception as e:
