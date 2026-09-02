@@ -236,13 +236,13 @@ def build_features(df, feature_set, open_col, high_col, low_col, close_col, rsi_
     return df, feature_names
 
 
-def create_windows(df, features, window, forward, close_col):
+def create_windows(df, features, window, forward, close_col, inc_percent = 0.5):
     """
     Crea ventanas deslizantes y target.
     Devuelve (X, y, indices).
     """
     df = df.copy()
-    df['target'] = (df[close_col].shift(-forward) > df[close_col]).astype(int)
+    df['target'] = (df[close_col].shift(-forward) > df[close_col] * (1 + inc_percent / 100)).astype(int)
     df.dropna(subset=['target'] + features, inplace=True)
 
     X, y, indices = [], [], []
